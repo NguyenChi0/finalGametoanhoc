@@ -55,6 +55,12 @@ export default function AdminExams() {
             Chọn khối lớp để xem và quản lý đề kiểm tra, kỳ thi theo từng khối.
           </p>
         </div>
+        <Link to="new" style={styles.btnPrimary}>
+          <span style={styles.btnIcon} aria-hidden>
+            <PlusIcon />
+          </span>
+          Tạo đề / exam mới
+        </Link>
       </header>
 
       {/* Session 1 — lọc khối */}
@@ -199,6 +205,14 @@ export default function AdminExams() {
   );
 }
 
+function PlusIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg
@@ -261,7 +275,32 @@ const styles = {
     fontWeight: 500,
   },
   headerRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
     marginBottom: 20,
+    flexWrap: "wrap",
+  },
+  btnPrimary: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 18px",
+    borderRadius: 10,
+    border: "none",
+    background: "#0969da",
+    color: "#fff",
+    fontWeight: 600,
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    textDecoration: "none",
+    boxShadow: "0 1px 2px rgba(31,35,40,0.08)",
+  },
+  btnIcon: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
     margin: "0 0 8px",

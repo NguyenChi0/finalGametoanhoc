@@ -1,6 +1,8 @@
 import React from "react";
-import { NavLink, useNavigate, Link } from "react-router-dom";
-import { getStoredUser } from "../auth";
+import { NavLink, Link } from "react-router-dom";
+
+/** Cùng chuỗi viền với AdminNavbar — góc giao vertical/horizontal đồng nhất */
+const ADMIN_CHROME_BORDER = "1px solid #d0d7de";
 
 const navItems = [
   { to: "/admin", end: true, label: "Tổng quan" },
@@ -20,22 +22,31 @@ function linkStyle({ isActive }) {
   };
 }
 
-export default function AdminSidebar() {
-  const navigate = useNavigate();
-  const user = getStoredUser();
+/**
+ * @param {{ variant?: "default" | "drawer"; onRequestClose?: () => void }} props
+ * — drawer: panel fixed khi mở từ mobile; onRequestClose: đóng sau khi chọn link hoặc bấm đóng.
+ */
+export default function AdminSidebar({ variant = "default", onRequestClose }) {
+  const isDrawer = variant === "drawer";
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    navigate("/login");
+  const rootStyle = {
+    ...styles.sidebar,
+    ...(isDrawer ? styles.sidebarDrawer : {}),
+  };
+
+  const brandStyle = {
+    ...styles.brand,
+    ...(isDrawer ? styles.brandDrawer : {}),
+  };
+
+  const handleNav = () => {
+    onRequestClose?.();
   };
 
   return (
-    <aside style={styles.sidebar}>
-      {/* Trình duyệt vẽ vòng focus (outline) đen quanh <a> sau khi click — gỡ bằng CSS, chỉ giữ ring khi Tab (a11y) */}
+    <aside style={rootStyle}>
       <style>
         {`
-          /* Không dùng border "transparent" — trên Windows đôi khi vẽ thành viền đen; dùng màu trùng nền sidebar */
           .admin-nav-link {
             outline: none !important;
             -webkit-tap-highlight-color: transparent;
@@ -66,7 +77,24 @@ export default function AdminSidebar() {
         `}
       </style>
 
-      <div style={styles.brand}>Quản trị</div>
+      <div style={brandStyle}>
+        <span style={styles.brandText}>Bảng điều khiển</span>
+        {isDrawer && (
+          <button
+            type="button"
+            style={styles.closeBtn}
+            onClick={handleNav}
+            aria-label="Đóng menu"
+          >
+            <CloseIcon />
+          </button>
+        )}
+      </div>
+      <div style={styles.sidebarHeaderLink}>
+        <Link to="/" style={styles.siteLink}>
+          ← Về trang chủ
+        </Link>
+      </div>
       <nav style={styles.nav} aria-label="Menu quản trị">
         {navItems.map(({ to, end, label }) => (
           <NavLink
@@ -75,23 +103,30 @@ export default function AdminSidebar() {
             end={end}
             style={linkStyle}
             className="admin-nav-link"
+            onClick={handleNav}
           >
             {label}
           </NavLink>
         ))}
       </nav>
-      <div style={styles.sidebarFoot}>
-        {user?.username && (
-          <div style={styles.userHint}>{user.username}</div>
-        )}
-        <button type="button" onClick={handleLogout} style={styles.logoutBtn}>
-          Đăng xuất
-        </button>
-        <Link to="/" style={styles.siteLink}>
-          ← Về trang chủ
-        </Link>
-      </div>
     </aside>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
   );
 }
 
@@ -100,18 +135,56 @@ const styles = {
     width: 260,
     flexShrink: 0,
     background: "#ffffff",
-    borderRight: "1px solid #d0d7de",
+    borderRight: ADMIN_CHROME_BORDER,
     display: "flex",
     flexDirection: "column",
-    padding: "20px 0",
-    boxShadow: "1px 0 0 rgba(31, 35, 40, 0.04)",
+    padding: 0,
+    boxSizing: "border-box",
+  },
+  /** Mobile drawer — trên overlay */
+  sidebarDrawer: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: "min(280px, 88vw)",
+    zIndex: 1002,
+    maxHeight: "100dvh",
+    boxShadow: "4px 0 24px rgba(0, 0, 0, 0.18)",
   },
   brand: {
+    boxSizing: "border-box",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    minHeight: 72,
     fontWeight: 700,
     fontSize: "1.15rem",
-    padding: "0 20px 20px",
-    borderBottom: "1px solid #d0d7de",
+    padding: "0 20px",
+    borderBottom: ADMIN_CHROME_BORDER,
     color: "#1f2328",
+  },
+  brandDrawer: {
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  brandText: {
+    minWidth: 0,
+  },
+  closeBtn: {
+    flexShrink: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    border: "1px solid #d0d7de",
+    background: "#f6f8fa",
+    color: "#24292f",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    boxSizing: "border-box",
   },
   nav: {
     display: "flex",
@@ -121,6 +194,17 @@ const styles = {
     flex: 1,
     overflowY: "auto",
   },
+  sidebarHeaderLink: {
+    padding: "12px 20px",
+    borderBottom: ADMIN_CHROME_BORDER,
+    background: "#f6f8fa",
+  },
+  siteLink: {
+    color: "#0969da",
+    textDecoration: "none",
+    fontSize: "0.9rem",
+    fontWeight: 500,
+  },
   navLink: {
     color: "#24292f",
     textDecoration: "none",
@@ -128,7 +212,6 @@ const styles = {
     borderRadius: 8,
     fontWeight: 600,
     fontSize: "0.92rem",
-    /* Viền trùng nền trắng sidebar — tránh transparent bị vẽ đen trên một số GPU */
     border: "1px solid #ffffff",
     boxSizing: "border-box",
     transition: "background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s",
@@ -140,32 +223,5 @@ const styles = {
     background: "#ddf4ff",
     border: "1px solid #b6e3ff",
     boxShadow: "inset 3px 0 0 #0969da",
-  },
-  sidebarFoot: {
-    padding: "12px 16px",
-    borderTop: "1px solid #d0d7de",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  userHint: {
-    fontSize: "0.85rem",
-    color: "#57606a",
-    wordBreak: "break-all",
-  },
-  logoutBtn: {
-    padding: "10px 12px",
-    fontFamily: "inherit",
-    borderRadius: 8,
-    border: "1px solid #d0d7de",
-    background: "#ffffff",
-    color: "#cf222e",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  siteLink: {
-    color: "#0969da",
-    textDecoration: "none",
-    fontSize: "0.9rem",
   },
 };

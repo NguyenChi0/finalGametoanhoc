@@ -9,6 +9,7 @@ import AdminGrades from "./pages/AdminGrades";
 import AdminMathTypes from "./pages/AdminMathTypes";
 import AdminContest from "./pages/AdminContest";
 import AdminExams from "./pages/AdminExams";
+import AdminExamCreate from "./pages/AdminExamCreate";
 import AdminUsers from "./pages/AdminUsers";
 
 /** Chunk admin — nested routes dưới /admin/* */
@@ -25,6 +26,7 @@ export default function AdminShell() {
           <Route path="lessons" element={<Navigate to="../math-types" replace />} />
           <Route path="operations" element={<Navigate to="../math-types" replace />} />
           <Route path="contest" element={<AdminContest />} />
+          <Route path="exams/new" element={<AdminExamCreate />} />
           <Route path="exams" element={<AdminExams />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
