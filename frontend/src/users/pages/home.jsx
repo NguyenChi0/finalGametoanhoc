@@ -1,7 +1,7 @@
 // src/pages/home.jsx
 import React, { useMemo, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import Leaderboard from "../components/leaderboard2";
+import Leaderboard from "../components/leaderboard";
 import ChooseLesson from "../components/chooselesson";
 import { externalLoginChild } from "../../api";
 import {

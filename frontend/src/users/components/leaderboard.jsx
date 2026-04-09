@@ -9,6 +9,9 @@ export default function Leaderboard() {
   const [leaders, setLeaders] = useState([]);
 
   useEffect(() => {
+    // Xóa dữ liệu cũ ngay lập tức để tránh hiển thị lệch tab
+    setLeaders([]);
+  
     const fetchLeaders = async () => {
       try {
         const res = await api.get(`/leaderboard/${tab}`);
@@ -55,8 +58,8 @@ export default function Leaderboard() {
           ...base,
           borderRadius: 0,
           padding: 0,
-          border: "1px solid rgba(180, 195, 210, 0.95)",
-          background: "#e8edf2",
+          border: "1px solid rgba(0, 150, 80, 0.92)",
+          background: "#2bdd7f",
           backdropFilter: "none",
           WebkitBackdropFilter: "none",
           color: "#1a2433",
@@ -65,11 +68,11 @@ export default function Leaderboard() {
       case 4:
         return {
           ...base,
-          border: "1px solid rgba(130, 82, 48, 0.92)",
-          background: "#a86b3a",
+          border: "1px solid rgba(0, 0, 0, 0.12)",
+          background: "#ffffff",
           backdropFilter: "none",
           WebkitBackdropFilter: "none",
-          color: "#fff",
+          color: "#1a2433",
         };
       default:
         return {
@@ -83,7 +86,6 @@ export default function Leaderboard() {
     }
   };
 
-  // Hàm lấy đường dẫn ảnh cho từng hạng
   const getRankImage = (index) => {
     const baseUrl = publicUrl;
     
@@ -105,7 +107,6 @@ export default function Leaderboard() {
 
   return (
     <div className="leaderboard2-root" style={styles.container}>
-      {/* CSS Styles */}
       <style>
         {`
           .leaderboard-item {
@@ -132,34 +133,6 @@ export default function Leaderboard() {
           .top1 {
             background: #f0c14a !important;
             border: 1px solid rgba(210, 165, 35, 0.95) !important;
-          }
-
-          .top1::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(
-              90deg,
-              transparent,
-              rgba(255, 255, 255, 0.65),
-              transparent
-            );
-            animation: rowShineSweep 3s ease-in-out infinite;
-            z-index: 1;
-          }
-
-          /* Container cho các chấm sáng vàng bay top1 */
-          .top1::after {
-            content: '';
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            top: 0;
-            left: 0;
-            pointer-events: none;
           }
 
           .stars-container {
@@ -199,24 +172,6 @@ export default function Leaderboard() {
             box-shadow: 0 0 6px #fff, 0 0 12px rgba(180, 230, 255, 0.95);
           }
 
-          .top2::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(
-              90deg,
-              transparent,
-              rgba(255, 255, 255, 0.6),
-              transparent
-            );
-            animation: rowShineSweep 3s ease-in-out infinite;
-            z-index: 1;
-          }
-
-          /* Container cho các chấm sáng bạc bay top2 */
           .top2-effects {
             position: absolute;
             top: 0;
@@ -242,10 +197,10 @@ export default function Leaderboard() {
           .silver-crystal:nth-child(3) { top: 85%; left: 25%; animation-delay: 2s; }
           .silver-crystal:nth-child(4) { top: 25%; left: 75%; animation-delay: 1.5s; }
 
-          /* Top 3 — trắng bạc */
+          /* Top 3 — xanh lá #2bdd7f */
           .top3 {
-            background: #e8edf2 !important;
-            border: 1px solid rgba(180, 195, 210, 0.95) !important;
+            background: #2bdd7f !important;
+            border: 1px solid rgba(0, 150, 80, 0.92) !important;
           }
 
           .top3 .silver-mote {
@@ -264,23 +219,6 @@ export default function Leaderboard() {
           .top3 .silver-mote:nth-child(3) { top: 88%; left: 22%; animation-delay: 1.6s; }
           .top3 .silver-mote:nth-child(4) { top: 28%; left: 78%; animation-delay: 2.2s; }
 
-          .top3::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(
-              90deg,
-              transparent,
-              rgba(255, 255, 255, 0.5),
-              transparent
-            );
-            animation: rowShineSweep 3s ease-in-out infinite;
-            z-index: 1;
-          }
-
           .top3-effects {
             position: absolute;
             top: 0;
@@ -290,65 +228,13 @@ export default function Leaderboard() {
             pointer-events: none;
           }
 
-          .bronze-leaf {
-            position: absolute;
-            width: 2px;
-            height: 2px;
-            background: #CD7F32;
-            border-radius: 50%;
-            box-shadow: 0 0 4px #CD7F32, 0 0 8px #CD7F32;
-            opacity: 0;
-            animation: leafFloat 4s ease-in-out infinite;
-          }
-
-          .bronze-leaf:nth-child(1) { top: 15%; left: 10%; animation-delay: 0s; }
-          .bronze-leaf:nth-child(2) { top: 65%; left: 90%; animation-delay: 1.2s; }
-          .bronze-leaf:nth-child(3) { top: 80%; left: 20%; animation-delay: 2.4s; }
-          .bronze-leaf:nth-child(4) { top: 30%; left: 80%; animation-delay: 1.8s; }
-
-          /* Top 4–5 — đồng */
+          /* Top 4–5 — màu trắng */
           .top4,
           .top5 {
-            background: #a86b3a !important;
-            border: 1px solid rgba(130, 82, 48, 0.92) !important;
+            background: #ffffff !important;
+            border: 1px solid rgba(0, 0, 0, 0.12) !important;
           }
 
-          .top4::before,
-          .top5::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(
-              90deg,
-              transparent,
-              rgba(255, 255, 255, 0.5),
-              transparent
-            );
-            animation: rowShineSweep 3s ease-in-out infinite;
-            z-index: 1;
-          }
-
-          .top4-effects,
-          .top5-effects {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-          }
-
-          /* Một nhịp flash chung (Top 1–5 có ::before) */
-          @keyframes rowShineSweep {
-            0% { left: -100%; }
-            50% { left: 100%; }
-            100% { left: 100%; }
-          }
-
-          /* Sao top 1: bay lên → sáng mạnh giữa đường → biến mất */
           @keyframes starFloat {
             0% {
               transform: translateY(0) translateX(0) rotate(0deg);
@@ -403,28 +289,6 @@ export default function Leaderboard() {
             }
           }
 
-          @keyframes leafFloat {
-            0% {
-              transform: translateY(0) translateX(0) rotate(0deg);
-              opacity: 0;
-            }
-            20% { opacity: 0.7; }
-            40% {
-              transform: translateY(-10px) translateX(4px) rotate(90deg);
-              opacity: 0.5;
-            }
-            60% { opacity: 0.3; }
-            80% {
-              transform: translateY(-20px) translateX(8px) rotate(180deg);
-              opacity: 0.1;
-            }
-            100% {
-              transform: translateY(-24px) translateX(10px) rotate(270deg);
-              opacity: 0;
-            }
-          }
-
-          /* Đảm bảo nội dung hiển thị trên cùng các hiệu ứng nền */
           .rank,
           .name,
           .score {
@@ -432,10 +296,11 @@ export default function Leaderboard() {
             z-index: 2;
           }
 
-          /* Top 1–3: thẻ ticket — không bo góc, điểm vùng khía chữ V */
           .top1,
           .top2,
-          .top3 {
+          .top3,
+          .top4,
+          .top5 {
             border-radius: 0 !important;
           }
 
@@ -498,11 +363,15 @@ export default function Leaderboard() {
           }
 
           .top3 .lb-top-score {
-            background: rgba(0, 0, 0, 0.06);
+            background: rgba(0, 0, 0, 0.08);
             color: #1a2433;
           }
 
-          
+          .top4 .lb-top-score,
+          .top5 .lb-top-score {
+            background: rgba(0, 0, 0, 0.04);
+            color: #1a2433;
+          }
         `}
       </style>
 
@@ -547,7 +416,6 @@ export default function Leaderboard() {
               }`}
               style={getRankStyle(index)}
             >
-              {/* Hiệu ứng sao cho top1 */}
               {index === 0 && (
                 <div className="stars-container">
                   <div className="star"></div>
@@ -558,7 +426,6 @@ export default function Leaderboard() {
                 </div>
               )}
 
-              {/* Hiệu ứng crystal cho top2 */}
               {index === 1 && (
                 <div className="top2-effects">
                   <div className="silver-crystal"></div>
@@ -568,7 +435,6 @@ export default function Leaderboard() {
                 </div>
               )}
 
-              {/* Hiệu ứng bạc cho top 3 */}
               {index === 2 && (
                 <div className="top3-effects">
                   <div className="silver-mote"></div>
@@ -578,71 +444,8 @@ export default function Leaderboard() {
                 </div>
               )}
 
-              {/* Hạt đồng cho top 4–5 */}
-              {index === 3 && (
-                <div className="top4-effects">
-                  <div className="bronze-leaf"></div>
-                  <div className="bronze-leaf"></div>
-                  <div className="bronze-leaf"></div>
-                  <div className="bronze-leaf"></div>
-                </div>
-              )}
-              {index === 4 && (
-                <div className="top5-effects">
-                  <div className="bronze-leaf"></div>
-                  <div className="bronze-leaf"></div>
-                  <div className="bronze-leaf"></div>
-                  <div className="bronze-leaf"></div>
-                </div>
-              )}
-
-              {index < 3 ? (
-                <div className="lb-top-body">
-                  <div className="lb-top-main">
-                    <div className="rank" style={styles.rank}>
-                      {index < 5 ? (
-                        <img
-                          src={getRankImage(index)}
-                          alt={`Top ${index + 1}`}
-                          className="rankImage"
-                          style={styles.rankImage}
-                          onError={(e) => {
-                            e.target.style.display = "none";
-                            e.target.nextSibling.style.display = "block";
-                          }}
-                        />
-                      ) : (
-                        `#${index + 1}`
-                      )}
-                      {index < 5 && (
-                        <span
-                          style={{
-                            display: "none",
-                            fontSize: "14px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          #{index + 1}
-                        </span>
-                      )}
-                    </div>
-                    <div className="name" style={styles.name}>
-                      <Link
-                        to={`/profile/${user.username}`}
-                        style={styles.profileLink}
-                      >
-                        {user.username}
-                      </Link>
-                    </div>
-                  </div>
-                  <div className="lb-top-score">
-                    {tab === "week"
-                      ? user.week_score ?? 0
-                      : user.score ?? 0}
-                  </div>
-                </div>
-              ) : (
-                <>
+              <div className="lb-top-body">
+                <div className="lb-top-main">
                   <div className="rank" style={styles.rank}>
                     {index < 5 ? (
                       <img
@@ -678,13 +481,13 @@ export default function Leaderboard() {
                       {user.username}
                     </Link>
                   </div>
-                  <div className="score" style={styles.score}>
-                    {tab === "week"
-                      ? user.week_score ?? 0
-                      : user.score ?? 0}
-                  </div>
-                </>
-              )}
+                </div>
+                <div className="lb-top-score">
+                  {tab === "week"
+                    ? user.week_score ?? 0
+                    : user.score ?? 0}
+                </div>
+              </div>
             </div>
           ))
         )}
@@ -733,55 +536,57 @@ const styles = {
     backdropFilter: "blur(8px)",
     WebkitBackdropFilter: "blur(8px)",
     fontSize: "0.9rem",
+    fontFamily: "inherit",
   },
   activeTab: {
     background: "linear-gradient(45deg, #ff6b6b, #ee5a24)",
     color: "#fff",
     border: "none",
-    padding: "8px 16px", // Giảm từ 12px 24px
-    borderRadius: "0px", // Giảm từ 12px
+    padding: "8px 16px",
+    borderRadius: "0px",
     cursor: "pointer",
     fontWeight: "600",
-    transform: "translateY(-1px)", // Giảm hiệu ứng nâng
-    boxShadow: "0 4px 12px rgba(255, 107, 107, 0.4)", // Giảm shadow
-    fontSize: "0.9rem", // Thêm font size nhỏ hơn
+    transform: "translateY(-1px)",
+    boxShadow: "0 4px 12px rgba(255, 107, 107, 0.4)",
+    fontSize: "0.9rem",
+    fontFamily: "inherit",
   },
   table: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px", // Giảm từ 12px
+    gap: "8px",
   },
   row: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    borderRadius: "0px", // Giảm từ 12px
-    padding: "1px 3px", // Giảm padding
+    borderRadius: "0px",
+    padding: "1px 3px",
     position: "relative",
     transition: "all 0.3s ease",
     backdropFilter: "blur(10px)",
-    minHeight: "45px", // Thêm chiều cao tối thiểu để đảm bảo tỷ lệ
+    minHeight: "45px",
   },
   rank: {
-    width: "50px", // Giảm từ 70px
+    width: "50px",
     fontWeight: "bold",
-    fontSize: "14px", // Giảm từ 16px
+    fontSize: "14px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "6px", // Giảm từ 8px
+    gap: "6px",
   },
   rankImage: {
-    width: "40px", // Giảm từ 60px
-    height: "40px", // Giảm từ 60px
+    width: "40px",
+    height: "40px",
     objectFit: "contain",
   },
   name: {
     flex: 1,
     fontWeight: "200",
     textAlign: "left",
-    fontSize: "1rem", // Giảm từ 1.1rem
-    padding: "0 8px", // Thêm padding nhỏ
+    fontSize: "1rem",
+    padding: "0 8px",
   },
   score: {
     width: "50px",

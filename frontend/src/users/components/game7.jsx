@@ -3,9 +3,10 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import api from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
-export default function Game1({ payload, onLessonComplete }) {
+export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   const questions = payload?.questions || [];
 
+  const [gameState, setGameState] = useState('start'); // 'start', 'playing', 'finished'
   const [selected, setSelected] = useState({});
   const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
@@ -14,6 +15,7 @@ export default function Game1({ payload, onLessonComplete }) {
   const [showResult, setShowResult] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
+  const [finalScore, setFinalScore] = useState(0);
   const gameAreaRef = useRef(null);
   const finishSentRef = useRef(false);
 
@@ -43,7 +45,6 @@ export default function Game1({ payload, onLessonComplete }) {
     if (answerCount === 0) return [];
     
     const positions = [];
-    // Tính khoảng cách đều nhau giữa các cửa
     const gap = 100 / (answerCount + 1);
     
     for (let i = 0; i < answerCount; i++) {
@@ -57,7 +58,7 @@ export default function Game1({ payload, onLessonComplete }) {
   useEffect(() => {
     let animationId;
     let lastTimestamp = 0;
-    const animationDuration = 300; // ms
+    const animationDuration = 300;
     
     const animate = (timestamp) => {
       if (!lastTimestamp) lastTimestamp = timestamp;
@@ -68,7 +69,6 @@ export default function Game1({ payload, onLessonComplete }) {
         const diff = targetPosition - prev;
         if (Math.abs(diff) < 0.1) return targetPosition;
         
-        // Easing function để di chuyển mượt mà
         const easeOutQuart = 1 - Math.pow(1 - progress, 4);
         return prev + diff * easeOutQuart;
       });
@@ -89,11 +89,12 @@ export default function Game1({ payload, onLessonComplete }) {
     };
   }, [currentPosition, targetPosition]);
 
-  // Xử lý sự kiện bàn phím với bước di chuyển 5px
+  // Xử lý sự kiện bàn phím chỉ khi đang chơi và chưa có kết quả
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (showResult) return;
+    if (gameState !== 'playing') return;
+    if (showResult) return;
 
+    const handleKeyDown = (e) => {
       if (e.key === "ArrowLeft") {
         setTargetPosition((prev) => {
           const newPos = prev - 5;
@@ -106,7 +107,6 @@ export default function Game1({ payload, onLessonComplete }) {
           return newPos > maxPos ? maxPos : newPos;
         });
       } else if (e.key === "Enter") {
-        // Tìm cửa gần nhất để chọn
         if (doorPositions.length > 0) {
           let closestIndex = 0;
           let minDistance = Math.abs(currentPosition - doorPositions[0]);
@@ -125,9 +125,9 @@ export default function Game1({ payload, onLessonComplete }) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentPosition, showResult, currentQuestion, doorPositions]);
+  }, [gameState, showResult, currentPosition, currentQuestion, doorPositions]);
 
-  // Gọi API cộng điểm gộp một lần
+  // Gọi API cộng điểm
   async function incrementScoreOnServer(userId, delta = 1) {
     try {
       const resp = await api.post("/score/increment", { userId, delta });
@@ -136,10 +136,6 @@ export default function Game1({ payload, onLessonComplete }) {
       console.warn("Lỗi gọi API cộng điểm:", e);
       return null;
     }
-  }
-
-  function handleGameOver() {
-    setShowResult(true);
   }
 
   function choose(qId, ansIdx) {
@@ -152,57 +148,336 @@ export default function Game1({ payload, onLessonComplete }) {
     if (a && a.correct) {
       setCorrectCount((prev) => prev + 1);
     }
-    handleGameOver();
+    setShowResult(true);
   }
 
   function nextQuestion() {
     setShowResult(false);
     setCurrentPosition(0);
     setTargetPosition(0);
-    setCurrentQuestionIndex((prev) => prev + 1);
+    
+    if (currentQuestionIndex + 1 < qs.length) {
+      setCurrentQuestionIndex((prev) => prev + 1);
+    } else {
+      // Đã hết câu hỏi -> kết thúc game
+      finishGame();
+    }
   }
 
-  // Khi hết câu hỏi lần đầu tiên, cộng tổng điểm một lần
-  useEffect(() => {
-    if (!currentQuestion && qs.length > 0 && !finishSentRef.current && correctCount > 0) {
-      finishSentRef.current = true;
-      const userId =
-        payload?.user?.id ||
-        (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
-
-      if (!userId) return;
-
-      incrementScoreOnServer(userId, correctCount).then((data) => {
-        if (data && data.success) {
-          setUserScore(data.score);
-          setWeekScore(data.week_score ?? 0);
-
-          const raw = localStorage.getItem("user");
-          if (raw) {
-            try {
-              const u = JSON.parse(raw);
-              u.score = data.score;
-              u.week_score = data.week_score;
-              localStorage.setItem("user", JSON.stringify(u));
-            } catch (err) {
-              console.warn("Không cập nhật được user trong localStorage:", err);
-            }
+  async function finishGame() {
+    setFinalScore(correctCount);
+    
+    const userId =
+      payload?.user?.id ||
+      (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
+    
+    if (userId && correctCount > 0) {
+      const data = await incrementScoreOnServer(userId, correctCount);
+      if (data && data.success) {
+        setUserScore(data.score);
+        setWeekScore(data.week_score ?? 0);
+        
+        const raw = localStorage.getItem("user");
+        if (raw) {
+          try {
+            const u = JSON.parse(raw);
+            u.score = data.score;
+            u.week_score = data.week_score;
+            localStorage.setItem("user", JSON.stringify(u));
+          } catch (err) {
+            console.warn("Không cập nhật được user trong localStorage:", err);
           }
         }
-      });
-      onLessonComplete?.(correctCount);
+      }
     }
-  }, [currentQuestion, qs.length, correctCount, payload]);
+    
+    onLessonComplete?.(correctCount);
+    setGameState('finished');
+  }
 
-  if (!currentQuestion) {
+  function startGame() {
+    setGameState('playing');
+    setSelected({});
+    setCurrentQuestionIndex(0);
+    setCorrectCount(0);
+    setFinalScore(0);
+    setShowResult(false);
+    setCurrentPosition(0);
+    setTargetPosition(0);
+    finishSentRef.current = false;
+  }
+
+  function restartGame() {
+    startGame();
+  }
+
+  function handleReturnHome() {
+    if (onReturnHome) {
+      onReturnHome();
+    } else {
+      window.location.href = "/gametoanhoc";
+    }
+  }
+
+  // Màn hình Start (giống game2)
+  if (gameState === 'start') {
     return (
-      <div style={{ 
-        textAlign: "center", 
-        padding: "20px",
-        background: "#000",
-        color: "white",
-        minHeight: "100vh"
-      }}>
+      <div
+        style={{
+          width: "100%",
+          minHeight: "100vh",
+          padding: "clamp(10px, 3vw, 24px)",
+          boxSizing: "border-box",
+          textAlign: "center",
+          background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          overflowX: "hidden",
+          overflowY: "auto",
+        }}
+      >
+        <style>{`
+          .game7-start-card {
+            width: 100%;
+            max-width: min(600px, calc(100vw - 24px));
+            box-sizing: border-box;
+            background: white;
+            padding: clamp(16px, 5vw, 36px);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+          }
+          .game7-start-title {
+            margin: 0 0 clamp(12px, 3vw, 20px);
+            color: #2c3e50;
+            font-size: clamp(1.1rem, 4.2vw, 1.65rem);
+            line-height: 1.25;
+            word-wrap: break-word;
+          }
+          .game7-start-scores {
+            margin-bottom: clamp(12px, 3vw, 18px);
+            font-size: clamp(0.85rem, 3.2vw, 1rem);
+            line-height: 1.45;
+            word-wrap: break-word;
+          }
+          .game7-start-rules {
+            background: #ecf0f1;
+            padding: clamp(12px, 3.5vw, 20px);
+            border-radius: 12px;
+            margin: 0 auto clamp(14px, 3vw, 20px);
+            text-align: left;
+          }
+          .game7-start-rules h3 {
+            margin: 0 0 8px;
+            color: #34495e;
+            font-size: clamp(0.95rem, 3.4vw, 1.1rem);
+          }
+          .game7-start-rules ul {
+            margin: 0;
+            padding-left: 1.15rem;
+            line-height: 1.65;
+            font-size: clamp(0.8rem, 2.8vw, 0.95rem);
+          }
+          .game7-start-btn {
+            width: 100%;
+            max-width: 320px;
+            padding: clamp(12px, 3vw, 16px) clamp(20px, 5vw, 40px);
+            font-size: clamp(0.95rem, 3.5vw, 1.15rem);
+            font-weight: 700;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border: none;
+            border-radius: 999px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+            box-sizing: border-box;
+          }
+        `}</style>
+        <div className="game7-start-card">
+          <h2 className="game7-start-title">🚪 HÀNH TRÌNH QUA CÁNH CỬA 🚪</h2>
+
+          {userScore !== null && (
+            <div className="game7-start-scores">
+              <span style={{ marginRight: "clamp(8px, 2vw, 16px)" }}>
+                Điểm tổng: <b style={{ color: "#e74c3c" }}>{userScore}</b>
+              </span>
+              <span>
+                Điểm tuần: <b style={{ color: "#3498db" }}>{weekScore}</b>
+              </span>
+            </div>
+          )}
+
+          <div className="game7-start-rules">
+            <h3>📜 Cách chơi:</h3>
+            <ul>
+              <li>Di chuyển nhân vật bằng phím ← →</li>
+              <li>Nhấn ENTER để chọn cánh cửa gần nhất</li>
+              <li>Chọn đúng cánh cửa có đáp án đúng</li>
+              <li>
+                Bài gồm <b>{qs.length}</b> câu hỏi
+              </li>
+            </ul>
+          </div>
+
+          <button
+            type="button"
+            className="game7-start-btn"
+            onClick={startGame}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = "scale(1.02)";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+            }}
+          >
+            🎮 Bắt đầu cuộc phiêu lưu
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Màn hình kết thúc
+  if (gameState === 'finished') {
+    return (
+      <div
+        style={{
+          width: "100%",
+          minHeight: "100vh",
+          padding: "clamp(10px, 3vw, 24px)",
+          boxSizing: "border-box",
+          textAlign: "center",
+          background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          overflowX: "hidden",
+          overflowY: "auto",
+        }}
+      >
+        <style>{`
+          .game7-end-card {
+            width: 100%;
+            max-width: min(600px, calc(100vw - 24px));
+            box-sizing: border-box;
+          }
+          .game7-end-title {
+            margin: 0 0 clamp(12px, 3vw, 20px);
+            color: #2c3e50;
+            font-size: clamp(1.15rem, 4.5vw, 1.75rem);
+            line-height: 1.25;
+            word-wrap: break-word;
+          }
+          .game7-end-score {
+            margin: 0 0 clamp(16px, 4vw, 28px);
+            font-size: clamp(0.95rem, 3.8vw, 1.35rem);
+            line-height: 1.35;
+            font-weight: bold;
+            word-wrap: break-word;
+            padding: 0 2px;
+          }
+          .game7-end-actions {
+            display: flex;
+            gap: clamp(10px, 2.5vw, 16px);
+            justify-content: center;
+            flex-wrap: wrap;
+            width: 100%;
+          }
+          .game7-end-actions button {
+            box-sizing: border-box;
+            padding: clamp(10px, 2.5vw, 14px) clamp(16px, 4vw, 28px);
+            font-size: clamp(0.9rem, 3.2vw, 1.05rem);
+            font-weight: 700;
+            border: none;
+            border-radius: 999px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+            flex: 1 1 auto;
+            min-width: min(100%, 140px);
+            max-width: 100%;
+          }
+          @media (max-width: 480px) {
+            .game7-end-actions {
+              flex-direction: column;
+              align-items: stretch;
+            }
+            .game7-end-actions button {
+              min-width: 0;
+              width: 100%;
+            }
+          }
+        `}</style>
+        <div
+          className="game7-end-card"
+          style={{
+            background: "white",
+            padding: "clamp(16px, 5vw, 36px)",
+            borderRadius: 16,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+          }}
+        >
+          <h2 className="game7-end-title">🏆 Kết thúc hành trình! 🏆</h2>
+
+          <div
+            className="game7-end-score"
+            style={{
+              background: "linear-gradient(135deg, #ffd89b 0%, #19547b 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Bạn đã trả lời đúng: {finalScore}/{qs.length} câu hỏi
+          </div>
+
+          <div className="game7-end-actions">
+            <button
+              type="button"
+              onClick={restartGame}
+              style={{
+                background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
+                color: "white",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              🔄 Chơi lại
+            </button>
+
+            <button
+              type="button"
+              onClick={handleReturnHome}
+              style={{
+                background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+                color: "white",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              🏠 Trang chủ
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Giao diện khi đang chơi (giữ nguyên logic cũ)
+  if (!currentQuestion) {
+    // Fallback: nếu không có câu hỏi thì hiển thị kết thúc
+    return (
+      <div style={{ textAlign: "center", padding: "20px", background: "#000", color: "white", minHeight: "100vh" }}>
         <h2>Hoàn thành cuộc phiêu lưu!</h2>
         {userScore !== null && (
           <p>
@@ -210,6 +485,7 @@ export default function Game1({ payload, onLessonComplete }) {
             Điểm tuần: <b style={{ color: "#ffd700" }}>{weekScore}</b>
           </p>
         )}
+        <button onClick={handleReturnHome}>Về trang chủ</button>
       </div>
     );
   }
@@ -232,8 +508,6 @@ export default function Game1({ payload, onLessonComplete }) {
         padding: "10px",
         position: "relative"
       }}>
-
-        {/* Khu vực game - TỔNG HỢP TẤT CẢ VÀO MỘT FRAME */}
         <div 
           ref={gameAreaRef}
           style={{ 
@@ -247,7 +521,6 @@ export default function Game1({ payload, onLessonComplete }) {
             border: "2px solid #222"
           }}
         >
-
           {/* Menu game */}
           <div style={{
             position: "absolute",
@@ -259,12 +532,7 @@ export default function Game1({ payload, onLessonComplete }) {
             border: "2px solid #8B4513",
             zIndex: 5
           }}>
-            <p style={{ 
-              margin: 0, 
-              fontSize: "12px",
-              color: "#fff",
-              maxWidth: "200px"
-            }}>
+            <p style={{ margin: 0, fontSize: "12px", color: "#fff", maxWidth: "200px" }}>
               Hãy chọn cửa đúng
             </p>
           </div>
@@ -288,7 +556,7 @@ export default function Game1({ payload, onLessonComplete }) {
             </div>
           )}
 
-          {/* Câu hỏi - HIỂN THỊ TRONG CÙNG FRAME */}
+          {/* Câu hỏi */}
           <div style={{
             position: "absolute",
             top: "30px",
@@ -302,16 +570,10 @@ export default function Game1({ payload, onLessonComplete }) {
             zIndex: 3,
             textAlign: "center"
           }}>
-            <div style={{
-              color: "#fff",
-              fontSize: "14px",
-              
-              fontWeight: "bold"
-            }}>
+            <div style={{ color: "#fff", fontSize: "14px", fontWeight: "bold" }}>
               Câu {currentQuestionIndex + 1}/{qs.length}
             </div>
             
-            {/* Hiển thị ảnh câu hỏi */}
             {currentQuestion.question_image && (
               <img
                 src={
@@ -330,7 +592,6 @@ export default function Game1({ payload, onLessonComplete }) {
               />
             )}
             
-            {/* Hiển thị text câu hỏi */}
             <div style={{
               color: "#fff",
               fontSize: "18px",
@@ -358,7 +619,7 @@ export default function Game1({ payload, onLessonComplete }) {
             pointerEvents: "none"
           }}></div>
 
-          {/* Các cánh cửa - vị trí động dựa trên số lượng câu trả lời */}
+          {/* Các cánh cửa */}
           <div style={{
             position: "absolute",
             bottom: "80px",
@@ -385,7 +646,6 @@ export default function Game1({ payload, onLessonComplete }) {
                   }}
                   onClick={() => !showResult && choose(currentQuestion.id, index)}
                 >
-                  {/* Cánh cửa */}
                   <img
                     src={`${publicUrl}/game-images/game7-door.png`}
                     alt={`Cửa ${index + 1}`}
@@ -400,7 +660,6 @@ export default function Game1({ payload, onLessonComplete }) {
                     }}
                   />
                   
-                  {/* Hiển thị đáp án trên cửa */}
                   <div style={{
                     position: "absolute",
                     top: "50%",
@@ -437,7 +696,6 @@ export default function Game1({ payload, onLessonComplete }) {
             flexDirection: "column",
             alignItems: "center"
           }}>
-            {/* Đuốc với hiệu ứng lửa GIF */}
             <div style={{
               position: "relative",
               width: "10px",
@@ -456,7 +714,6 @@ export default function Game1({ payload, onLessonComplete }) {
               />
             </div>
 
-            {/* Nhân vật */}
             <img
               src={`${publicUrl}/game-images/game7-nv.png`}
               alt="Nhân vật"
@@ -482,7 +739,7 @@ export default function Game1({ payload, onLessonComplete }) {
             opacity: 0.9
           }}></div>
 
-          {/* Hướng dẫn đơn giản */}
+          {/* Hướng dẫn */}
           <div style={{
             position: "absolute",
             bottom: "10px",
@@ -527,11 +784,7 @@ export default function Game1({ payload, onLessonComplete }) {
               }}>
                 {isCorrect ? "🎉 CHÍNH XÁC! 🎉" : "❌ SAI RỒI! ❌"}
               </h2>
-              <p style={{ 
-                marginBottom: "15px", 
-                fontSize: "14px",
-                lineHeight: "1.4"
-              }}>
+              <p style={{ marginBottom: "15px", fontSize: "14px", lineHeight: "1.4" }}>
                 {isCorrect 
                   ? "Bạn đã chọn đúng cánh cửa!" 
                   : "Cánh cửa này không đúng. Thử câu tiếp theo nhé!"}

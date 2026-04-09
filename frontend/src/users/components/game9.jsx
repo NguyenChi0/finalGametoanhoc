@@ -119,7 +119,7 @@ export default function Game1({ payload, onLessonComplete }) {
     }
   }, [gameState, correctAnswers, payload]);
 
-  // Menu game — cùng khung với game2 (full width, minHeight 70vh, thẻ trắng rộng, chữ clamp)
+  // Menu game
   if (gameState === "menu") {
     return (
       <div
@@ -197,7 +197,7 @@ export default function Game1({ payload, onLessonComplete }) {
           }
         `}</style>
         <div className="game9-start-card">
-          <h2 className="game9-start-title">🐰 Dẫn thỏ về hang 🐰</h2>
+          <h2 className="game9-start-title">🐰 Dẫn thỏ về nhà 🐰</h2>
 
           {userScore !== null && (
             <div className="game9-start-scores">
@@ -213,9 +213,9 @@ export default function Game1({ payload, onLessonComplete }) {
           <div className="game9-start-rules">
             <h3>📜 Cách chơi:</h3>
             <ul>
-              <li>Vẽ đường trên vùng chơi để dẫn thỏ về hang an toàn</li>
-              <li>Tránh các ô nhà sói — chỉ về đúng hang tương ứng đáp án đúng</li>
-              <li>Đọc câu hỏi bên trái, sau đó hoàn thành nhiệm vụ trên sân chơi</li>
+              <li>Vẽ đường để dẫn thỏ về hang an toàn</li>
+              <li>Tránh các nhà hiển thị đáp án sai nhé vì đó nhà của sói đấy !!!</li>
+              <li>Lưu ý: Giao diện chỉ áp dụng cho thiết bị là máy tính, không hỗ trợ thiết bị di động</li>
               <li>
                 Chủ đề gồm <b>{qs.length}</b> câu hỏi
               </li>
@@ -239,85 +239,115 @@ export default function Game1({ payload, onLessonComplete }) {
       </div>
     );
   }
-  // Trong phần màn hình kết thúc (gameState === 'finished'), thêm hàm và nút:
-function handleGoHome() {
-  // Điều hướng về trang chủ
-  window.location.href = '/gametoanhoc'; // Hoặc sử dụng React Router nếu có
-}
 
-  // Màn hình kết thúc
+  // Màn hình kết thúc - giao diện giống menu, không hiển thị điểm
   if (gameState === 'finished') {
-    return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        color: 'white',
-        padding: '20px',
-        textAlign: 'center'
-      }}>
-        <h1 style={{ fontSize: '48px', marginBottom: '20px' }}>
-          {correctAnswers === qs.length ? '🎉 Xuất sắc!' : 'Hoàn thành!'}
-        </h1>
-        
-        <div style={{
-          background: 'rgba(255,255,255,0.1)',
-          padding: '30px',
-          borderRadius: '15px',
-          marginBottom: '30px',
-          backdropFilter: 'blur(10px)'
-        }}>
-          <div style={{ fontSize: '24px', marginBottom: '20px' }}>
-            Bạn đã trả lời đúng <span style={{ color: '#4ECDC4', fontWeight: 'bold' }}>{correctAnswers}</span>/{qs.length} câu hỏi
-          </div>
-          
-          {userScore !== null && (
-            <div style={{ fontSize: '18px' }}>
-              <div>Điểm tổng: <span style={{ color: '#4ECDC4', fontWeight: 'bold' }}>{userScore}</span></div>
-              <div>Điểm tuần: <span style={{ color: '#4ECDC4', fontWeight: 'bold' }}>{weekScore}</span></div>
-            </div>
-          )}
-        </div>
+    const handleGoHome = () => {
+      window.location.href = '/gametoanhoc';
+    };
 
-       
-<div style={{ display: 'flex', gap: '20px', flexDirection: 'column', alignItems: 'center' }}>
-  <div style={{ display: 'flex', gap: '20px' }}>
-    <button
-      onClick={restartGame}
-      style={{
-        padding: '12px 30px',
-        fontSize: '18px',
-        background: '#4ECDC4',
-        color: 'white',
-        border: 'none',
-        borderRadius: '25px',
-        cursor: 'pointer',
-        boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
-      }}
-    >
-      🔄 Chơi Lại
-    </button>
-    
-    <button
-      onClick={handleGoHome}
-      style={{
-        padding: '12px 30px',
-        fontSize: '18px',
-        background: '#FF6B6B',
-        color: 'white',
-        border: 'none',
-        borderRadius: '25px',
-        cursor: 'pointer',
-        boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
-      }}
-    >
-      🏠 Trang Chủ
-    </button>
-  </div>
-</div>
+    return (
+      <div
+        style={{
+          width: "100%",
+          minHeight: "70vh",
+          padding: "clamp(10px, 3vw, 24px)",
+          boxSizing: "border-box",
+          textAlign: "center",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          overflowX: "hidden",
+          overflowY: "auto",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "min(600px, calc(100vw - 24px))",
+            boxSizing: "border-box",
+            background: "white",
+            padding: "clamp(16px, 5vw, 36px)",
+            borderRadius: "16px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+          }}
+        >
+          <h2
+            style={{
+              margin: "0 0 clamp(12px, 3vw, 20px)",
+              color: "#2c3e50",
+              fontSize: "clamp(1.1rem, 4.2vw, 1.65rem)",
+              lineHeight: 1.25,
+              wordWrap: "break-word",
+            }}
+          >
+            {correctAnswers === qs.length ? "🎉 Xuất sắc!" : "🏁 Hoàn thành!"}
+          </h2>
+
+          <div
+            style={{
+              background: "#ecf0f1",
+              padding: "clamp(12px, 3.5vw, 20px)",
+              borderRadius: "12px",
+              margin: "0 auto clamp(20px, 4vw, 30px)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "clamp(0.95rem, 3.5vw, 1.2rem)",
+                fontWeight: "bold",
+                color: "#2c3e50",
+              }}
+            >
+              Bạn đã trả lời đúng{" "}
+              <span style={{ color: "#e74c3c" }}>{correctAnswers}</span> / {qs.length} câu hỏi
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "clamp(12px, 3vw, 20px)", justifyContent: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={restartGame}
+              style={{
+                padding: "clamp(10px, 2.5vw, 14px) clamp(20px, 5vw, 32px)",
+                fontSize: "clamp(0.9rem, 3.2vw, 1rem)",
+                fontWeight: 700,
+                background: "#4ECDC4",
+                color: "white",
+                border: "none",
+                borderRadius: "999px",
+                cursor: "pointer",
+                boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
+                transition: "transform 0.2s",
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
+              onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            >
+              🔄 Chơi Lại
+            </button>
+            <button
+              onClick={handleGoHome}
+              style={{
+                padding: "clamp(10px, 2.5vw, 14px) clamp(20px, 5vw, 32px)",
+                fontSize: "clamp(0.9rem, 3.2vw, 1rem)",
+                fontWeight: 700,
+                background: "#FF6B6B",
+                color: "white",
+                border: "none",
+                borderRadius: "999px",
+                cursor: "pointer",
+                boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
+                transition: "transform 0.2s",
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
+              onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            >
+              🏠 Trang Chủ
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

@@ -155,6 +155,7 @@ const styles = {
   },
   logoutBtn: {
     padding: "10px 12px",
+    fontFamily: "inherit",
     borderRadius: 8,
     border: "1px solid #d0d7de",
     background: "#ffffff",

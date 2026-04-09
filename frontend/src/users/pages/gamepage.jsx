@@ -18,10 +18,6 @@ const gameLazyMap = {
   game9: lazy(() => import("../components/game9")),
   game10: lazy(() => import("../components/game10")),
   game11: lazy(() => import("../components/game11")),
-  game12: lazy(() => import("../components/game12")),
-  game13: lazy(() => import("../components/game13")),
-  game14: lazy(() => import("../components/game14")),
-  game15: lazy(() => import("../components/game15")),
 };
 
 function getKiloviaFromSearch(search) {
@@ -44,14 +40,10 @@ const gameLabels = {
   game5: "Tìm người nói thật",
   game6: "Chém hoa quả",
   game7: "Nhà thám hiểm tài ba",
-  game8: "Làm bài giúp Nobita",
+  game8: "Bài kiểm tra",
   game9: "Dẫn thỏ về hang",
   game10: "Xạ thủ đỉnh cao",
   game11: "Đố vui nhanh tay",
-  game12: "Đuổi hình bắt chữ",
-  game13: "Tính toán thần tốc",
-  game14: "Ai nhanh hơn",
-  game15: "Vượt qua thử thách",
 };
 
 function GameLoadFallback() {

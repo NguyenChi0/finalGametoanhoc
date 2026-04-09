@@ -6,6 +6,8 @@ import Navbar from "./users/components/navbar";
 const Home = lazy(() => import("./users/pages/home"));
 const Login = lazy(() => import("./users/pages/login"));
 const Register = lazy(() => import("./users/pages/register"));
+const Contest = lazy(() => import("./users/pages/contest"));
+const ContestDetailPage = lazy(() => import("./users/pages/contestDetailPage"));
 const GamePage = lazy(() => import("./users/pages/gamepage"));
 const Profile = lazy(() => import("./users/pages/profile"));
 const Shop = lazy(() => import("./users/pages/shop"));
@@ -38,6 +40,8 @@ function AppShell() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/contest" element={<Contest />} />
+          <Route path="/contest/:contestId" element={<ContestDetailPage />} />
           <Route path="/game/:gameId" element={<GamePage />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile/:username" element={<Profile />} />

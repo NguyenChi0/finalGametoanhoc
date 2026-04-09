@@ -87,7 +87,7 @@ export default function Profile() {
 
         {/* Danh sách vật phẩm */}
         <div style={{ marginTop: 16 }}>
-          <h3 style={{ marginBottom: 8 }}>🎁 Vật phẩm đã mua</h3>
+          <h3 style={{ marginBottom: 8 }}>Vật phẩm</h3>
           {userData.itemsOwned && userData.itemsOwned.length > 0 ? (
             <div style={styles.itemsGrid}>
               {userData.itemsOwned.map((item, idx) => {
@@ -103,9 +103,7 @@ export default function Profile() {
                     <div style={{ marginTop: 8, textAlign: "center" }}>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
                       {item.description && <div style={{ fontSize: 12 }}>{item.description}</div>}
-                      <div style={{ fontSize: 11, color: "#666", marginTop: 6 }}>
-                        Mua: {item.purchased_at ? new Date(item.purchased_at).toLocaleString() : "—"}
-                      </div>
+                      {/* Đã bỏ dòng hiển thị thời gian mua */}
                     </div>
                   </div>
                 );
@@ -131,11 +129,6 @@ const styles = {
     margin: "0 auto",
     padding: 24,
     borderRadius: 16,
-    background: "rgba(255, 255, 255, 0.25)",
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
-    border: "1px solid rgba(255, 255, 255, 0.4)",
-    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
     boxSizing: "border-box",
   },
   itemsGrid: {
@@ -145,12 +138,17 @@ const styles = {
   },
   itemCard: {
     padding: 10,
-    border: "1px solid #e6e6e6",
-    borderRadius: 8,
-    backgroundColor: "#fff",
+    border: "1px solid rgba(255, 255, 255, 0.4)",
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    transition: "transform 0.2s, box-shadow 0.2s",
+    cursor: "default",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
   },
   itemImage: {
     width: 80,

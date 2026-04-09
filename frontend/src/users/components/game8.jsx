@@ -1,7 +1,6 @@
 // src/components/games/game8.jsx
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import api from "../../api";
-import { publicUrl } from "../../lib/publicUrl";
 
 export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -10,12 +9,15 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const [gameState, setGameState] = useState('start'); // 'start', 'playing', 'finished'
   const [answers, setAnswers] = useState({});
   const [currentPage, setCurrentPage] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
-  const [showScore, setShowScore] = useState(false);
   const [userScore, setUserScore] = useState(payload?.user?.score ?? 0);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
-  const [timeLeft, setTimeLeft] = useState(3);
   const [finalScore, setFinalScore] = useState(0);
+
+  // Lấy thông tin người dùng
+  const userName = payload?.user?.name || 
+                   (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).name) || 
+                   "Học sinh";
+  const userClass = payload?.user?.class || "Chưa có lớp";
 
   // Shuffle câu trả lời
   const qs = useMemo(() => {
@@ -37,17 +39,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const startIndex = currentPage * questionsPerPage;
   const currentQuestions = qs.slice(startIndex, startIndex + questionsPerPage);
 
-  // Đếm ngược khi đã nộp bài
-  useEffect(() => {
-    if (submitted && timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (submitted && timeLeft === 0) {
-      setShowScore(true);
-      calculateAndSubmitScore();
-    }
-  }, [submitted, timeLeft]);
-
   // Gọi API cộng điểm
   async function incrementScoreOnServer(userId, delta = 1) {
     try {
@@ -59,11 +50,10 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     }
   }
 
-  // Tính điểm và gửi lên server
-  async function calculateAndSubmitScore() {
+  // Tính điểm và gửi lên server, sau đó chuyển sang màn hình kết thúc
+  async function handleSubmit() {
+    // Tính số câu đúng
     let correctAnswers = 0;
-    
-    // Đếm số câu trả lời đúng
     Object.keys(answers).forEach(questionId => {
       const question = qs.find(q => q.id === parseInt(questionId));
       const answerIndex = answers[questionId];
@@ -80,6 +70,7 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
       (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
 
     onLessonComplete?.(correctAnswers);
+
     if (userId && correctAnswers > 0) {
       const data = await incrementScoreOnServer(userId, correctAnswers);
       if (data && data.success) {
@@ -100,15 +91,14 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
         }
       }
     }
+
+    // Chuyển sang màn hình kết thúc
+    setGameState('finished');
   }
 
   function choose(qId, ansIdx) {
-    if (submitted) return;
+    if (gameState !== 'playing') return;
     setAnswers(prev => ({ ...prev, [qId]: ansIdx }));
-  }
-
-  function handleSubmit() {
-    setSubmitted(true);
   }
 
   function goToNextPage() {
@@ -131,9 +121,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     setGameState('playing');
     setAnswers({});
     setCurrentPage(0);
-    setSubmitted(false);
-    setShowScore(false);
-    setTimeLeft(3);
     setFinalScore(0);
   }
 
@@ -142,6 +129,15 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
       onReturnHome();
     }
   }
+
+  // Gradient backgrounds
+  const gradientStart = {
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  };
+
+  const gradientFinish = {
+    background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+  };
 
   // Container styles
   const containerStyle = {
@@ -152,7 +148,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     minHeight: "100vh",
   };
 
-  // Paper styles (tờ giấy bài kiểm tra)
   const paperStyle = {
     backgroundColor: "white",
     padding: "30px",
@@ -163,7 +158,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     position: "relative"
   };
 
-  // Header styles
   const headerStyle = {
     textAlign: "center",
     marginBottom: "30px",
@@ -178,17 +172,7 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     color: "#333"
   };
 
-  const studentInfoStyle = {
-    fontSize: "16px",
-    margin: "5px 0"
-  };
-
-  // Question styles
-  const questionStyle = {
-    marginBottom: "25px",
-    paddingBottom: "15px",
-    borderBottom: "1px dashed #ccc"
-  };
+  
 
   const questionTextStyle = {
     fontSize: "16px",
@@ -229,7 +213,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     minWidth: "20px"
   };
 
-  // Navigation styles
   const navigationStyle = {
     display: "flex",
     justifyContent: "space-between",
@@ -262,19 +245,15 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     padding: "10px 20px"
   };
 
-  // Start Screen styles
+  // Start Screen styles - gradient background, không ảnh
   const startScreenStyle = {
-    backgroundImage: `url(${publicUrl}/game-images/game8-startgame.png)`,
-    
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
+    ...gradientStart,
     width: "100%",
-    height: "500px",
+    minHeight: "100vh",
     display: "flex",
     justifyContent: "center",
-    alignItems: "flex-end",
-    paddingBottom: "100px"
+    alignItems: "center",
+    flexDirection: "column"
   };
 
   const startButtonStyle = {
@@ -286,57 +265,28 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     borderRadius: "25px",
     cursor: "pointer",
     fontWeight: "bold",
-    boxShadow: "0 4px 8px rgba(0,0,0,0.3)"
+    boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+    transition: "transform 0.2s, background-color 0.2s"
   };
 
-  // Result styles
-  const resultContainerStyle = {
-    textAlign: "center",
-    padding: "40px 20px"
-  };
-
-  const checkingImageStyle = {
-    maxWidth: "300px",
-    margin: "20px auto",
-    display: "block"
-  };
-
-  const timerStyle = {
-    fontSize: "18px",
-    fontWeight: "bold",
-    margin: "20px 0",
-    color: "#1890ff"
-  };
-
-  const scoreStyle = {
-    fontSize: "32px",
-    fontWeight: "bold",
-    color: "#1890ff",
-    margin: "20px 0"
-  };
-
-  // Finish Screen styles
+  // Finish Screen styles - gradient background, không ảnh
   const finishScreenStyle = {
-    backgroundImage: `url(${publicUrl}/game-images/game8-finish.png)`,
-
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
+    ...gradientFinish,
     width: "100%",
-    height: "600px",
+    minHeight: "100vh",
     display: "flex",
-    flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
     padding: "20px"
   };
 
   const finishContentStyle = {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     padding: "40px",
     borderRadius: "15px",
     textAlign: "center",
     maxWidth: "500px",
+    width: "90%",
     boxShadow: "0 4px 15px rgba(0,0,0,0.2)"
   };
 
@@ -349,112 +299,280 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     borderRadius: "8px",
     cursor: "pointer",
     margin: "0 10px",
-    fontWeight: "bold"
+    fontWeight: "bold",
+    transition: "transform 0.2s"
   };
 
   const homeButtonStyle = {
     ...finishButtonStyle,
     backgroundColor: "#2196F3"
   };
-
-  // Màn hình Start
+  // Màn hình Start (giống template game2)
   if (gameState === 'start') {
     return (
-      <div style={startScreenStyle}>
-        <button 
-          style={startButtonStyle}
-          onClick={startGame}
-          onMouseEnter={(e) => {
-            e.target.style.transform = "scale(1.05)";
-            e.target.style.backgroundColor = "#ff5252";
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.transform = "scale(1)";
-            e.target.style.backgroundColor = "#ff6b6b";
-          }}
-        >
-          Bắt Đầu
-        </button>
-      </div>
-    );
-  }
+      <div
+        style={{
+          width: "100%",
+          minHeight: "100vh",
+          padding: "clamp(10px, 3vw, 24px)",
+          boxSizing: "border-box",
+          textAlign: "center",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          overflowX: "hidden",
+          overflowY: "auto",
+        }}
+      >
+        <style>{`
+          .game8-start-card {
+            width: 100%;
+            max-width: min(600px, calc(100vw - 24px));
+            box-sizing: border-box;
+            background: white;
+            padding: clamp(16px, 5vw, 36px);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+          }
+          .game8-start-title {
+            margin: 0 0 clamp(12px, 3vw, 20px);
+            color: #2c3e50;
+            font-size: clamp(1.1rem, 4.2vw, 1.65rem);
+            line-height: 1.25;
+            word-wrap: break-word;
+          }
+          .game8-start-scores {
+            margin-bottom: clamp(12px, 3vw, 18px);
+            font-size: clamp(0.85rem, 3.2vw, 1rem);
+            line-height: 1.45;
+            word-wrap: break-word;
+          }
+          .game8-start-rules {
+            background: #ecf0f1;
+            padding: clamp(12px, 3.5vw, 20px);
+            border-radius: 12px;
+            margin: 0 auto clamp(14px, 3vw, 20px);
+            text-align: left;
+          }
+          .game8-start-rules h3 {
+            margin: 0 0 8px;
+            color: #34495e;
+            font-size: clamp(0.95rem, 3.4vw, 1.1rem);
+          }
+          .game8-start-rules ul {
+            margin: 0;
+            padding-left: 1.15rem;
+            line-height: 1.65;
+            font-size: clamp(0.8rem, 2.8vw, 0.95rem);
+          }
+          .game8-start-btn {
+            width: 100%;
+            max-width: 320px;
+            padding: clamp(12px, 3vw, 16px) clamp(20px, 5vw, 40px);
+            font-size: clamp(0.95rem, 3.5vw, 1.15rem);
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 999px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+            box-sizing: border-box;
+          }
+        `}</style>
+        <div className="game8-start-card">
+          <h2 className="game8-start-title">📝 BÀI KIỂM TRA</h2>
 
-  // Nếu đang chấm bài
-  if (submitted && !showScore) {
-    return (
-      <div style={containerStyle}>
-        <div style={paperStyle}>
-          <div style={resultContainerStyle}>
-            <h2 style={titleStyle}>Cô giáo đang chấm bài bạn vui lòng chờ nhé....</h2>
-            <img 
-              src={`${publicUrl}/game-images/game8-chambai.png`}
-              alt="Đang chấm bài" 
-              style={checkingImageStyle}
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-            <div style={timerStyle}>Sẽ có kết quả sau: {timeLeft} giây</div>
+          {/* Hiển thị điểm tổng và điểm tuần nếu có */}
+          {userScore !== null && (
+            <div className="game8-start-scores">
+              <span style={{ marginRight: "clamp(8px, 2vw, 16px)" }}>
+                Điểm tổng: <b style={{ color: "#e74c3c" }}>{userScore}</b>
+              </span>
+              <span>
+                Điểm tuần: <b style={{ color: "#3498db" }}>{weekScore}</b>
+              </span>
+            </div>
+          )}
+
+          <div className="game8-start-rules">
+            <h3>📜 Cách chơi:</h3>
+            <ul>
+              <li>Trả lời các câu hỏi trắc nghiệm</li>
+              <li>Chọn đáp án đúng nhất</li>
+              <li>Mỗi câu chỉ được chọn một lần</li>
+              <li>
+                Bài gồm <b>{qs.length}</b> câu hỏi
+              </li>
+            </ul>
           </div>
+
+          <button
+            type="button"
+            className="game8-start-btn"
+            onClick={startGame}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = "scale(1.02)";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+            }}
+          >
+            🎮 Bắt đầu làm bài
+          </button>
         </div>
       </div>
     );
   }
 
-  // Màn hình kết thúc
+  // Màn hình kết thúc (giống template game2)
   if (gameState === 'finished') {
     return (
-      <div style={finishScreenStyle}>
-        <div style={finishContentStyle}>
-          <h2 style={titleStyle}>Nhờ sự nỗ lực của bạn Nobita được:</h2>
-          <div style={scoreStyle}>{finalScore} / {qs.length}</div>
-          <div style={studentInfoStyle}>Điểm tổng: {userScore}</div>
-          <div style={studentInfoStyle}>Điểm tuần: {weekScore}</div>
-          <div style={{ marginTop: "30px" }}>
-            <button 
-              style={finishButtonStyle}
+      <div
+        style={{
+          width: "100%",
+          minHeight: "100vh",
+          padding: "clamp(10px, 3vw, 24px)",
+          boxSizing: "border-box",
+          textAlign: "center",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          overflowX: "hidden",
+          overflowY: "auto",
+        }}
+      >
+        <style>{`
+          .game8-end-card {
+            width: 100%;
+            max-width: min(600px, calc(100vw - 24px));
+            box-sizing: border-box;
+          }
+          .game8-end-title {
+            margin: 0 0 clamp(12px, 3vw, 20px);
+            color: #2c3e50;
+            font-size: clamp(1.15rem, 4.5vw, 1.75rem);
+            line-height: 1.25;
+            word-wrap: break-word;
+          }
+          .game8-end-score {
+            margin: 0 0 clamp(16px, 4vw, 28px);
+            font-size: clamp(0.95rem, 3.8vw, 1.35rem);
+            line-height: 1.35;
+            font-weight: bold;
+            word-wrap: break-word;
+            padding: 0 2px;
+          }
+          .game8-end-actions {
+            display: flex;
+            gap: clamp(10px, 2.5vw, 16px);
+            justify-content: center;
+            flex-wrap: wrap;
+            width: 100%;
+          }
+          .game8-end-actions button {
+            box-sizing: border-box;
+            padding: clamp(10px, 2.5vw, 14px) clamp(16px, 4vw, 28px);
+            font-size: clamp(0.9rem, 3.2vw, 1.05rem);
+            font-weight: 700;
+            border: none;
+            border-radius: 999px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+            flex: 1 1 auto;
+            min-width: min(100%, 140px);
+            max-width: 100%;
+          }
+          @media (max-width: 480px) {
+            .game8-end-actions {
+              flex-direction: column;
+              align-items: stretch;
+            }
+            .game8-end-actions button {
+              min-width: 0;
+              width: 100%;
+            }
+          }
+        `}</style>
+        <div
+          className="game8-end-card"
+          style={{
+            background: "white",
+            padding: "clamp(16px, 5vw, 36px)",
+            borderRadius: 16,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+          }}
+        >
+          <h2 className="game8-end-title">🏆 Kết thúc bài kiểm tra! 🏆</h2>
+
+          <div
+            className="game8-end-score"
+            style={{
+              background: "linear-gradient(135deg, #ffd89b 0%, #19547b 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Bạn đã trả lời đúng: {finalScore}/{qs.length} câu hỏi
+          </div>
+
+          <div className="game8-end-actions">
+            <button
+              type="button"
               onClick={restartGame}
-              onMouseEnter={(e) => {
-                e.target.style.transform = "scale(1.05)";
+              style={{
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                color: "white",
               }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = "scale(1)";
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
               }}
             >
-              Làm Lại
+              🔄 Làm lại
             </button>
-            <button 
-              style={homeButtonStyle}
+
+            <button
+              type="button"
               onClick={handleReturnHome}
-              onMouseEnter={(e) => {
-                e.target.style.transform = "scale(1.05)";
+              style={{
+                background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+                color: "white",
               }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = "scale(1)";
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
               }}
             >
-              Trang Chủ
+              🏠 Trang chủ
             </button>
           </div>
         </div>
       </div>
     );
   }
-
-  // Giao diện bài kiểm tra bình thường
+  // Giao diện bài kiểm tra (gameState === 'playing')
   return (
     <div style={containerStyle}>
       <div style={paperStyle}>
         {/* Header */}
         <div style={headerStyle}>
           <h1 style={titleStyle}>BÀI KIỂM TRA</h1>
-          <div style={studentInfoStyle}>Mã đề : <strong>10</strong></div>
-          <div style={studentInfoStyle}>Lớp : Hạt giống</div>
-          <div style={studentInfoStyle}>Mã học sinh : 0123456</div>
+          
         </div>
 
         {/* Questions */}
-        <div style={questionStyle}>
+        <div>
           {currentQuestions.map((q, index) => {
             const globalIndex = startIndex + index;
             const selectedAnswer = answers[q.id];
@@ -535,13 +653,7 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                 Trang sau →
               </button>
             ) : (
-              <button 
-                style={submitButtonStyle} 
-                onClick={() => {
-                  handleSubmit();
-                  setTimeout(() => setGameState('finished'), 10000);
-                }}
-              >
+              <button style={submitButtonStyle} onClick={handleSubmit}>
                 Nộp bài
               </button>
             )}
@@ -549,7 +661,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
         </div>
       </div>
 
-      {/* CSS cho responsive */}
       <style>{`
         @media (max-width: 768px) {
           .answers-grid {

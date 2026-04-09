@@ -18,14 +18,10 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
     { id: "game5", label: "Tìm người nói thật" },
     { id: "game6", label: "Chém hoa quả" },
     { id: "game7", label: "Nhà thám hiểm tài ba" },
-    { id: "game8", label: "Làm bài giúp Nobita" },
+    { id: "game8", label: "Bài kiểm tra" },
     { id: "game9", label: "Dẫn thỏ về hang" },
     { id: "game10", label: "Xạ thủ đỉnh cao" },
     { id: "game11", label: "Đố vui nhanh tay" },
-    { id: "game12", label: "Đuổi hình bắt chữ" },
-    { id: "game13", label: "Tính toán thần tốc" },
-    { id: "game14", label: "Ai nhanh hơn" },
-    { id: "game15", label: "Vượt qua thử thách" },
   ];
 
   // Tải danh sách lớp học
@@ -125,7 +121,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
 
       {/* Giao diện chọn game */}
       <div style={{ marginBottom: 20 }}>
-        <label style={{ fontWeight: "bold" }}>🎮 Chọn giao diện game:</label>
+        <label style={{ fontWeight: "bold" }}>Chọn giao diện game:</label>
         <select
           value={selectedGameInterface}
           onChange={(e) => setSelectedGameInterface(e.target.value)}
@@ -154,7 +150,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
             color: "#1a1a1a",
           }}
         >
-          Lớp
+          Chọn khối lớp bạn muốn học nhé 
         </div>
         <div
           className="grade-chevron-row"
@@ -207,7 +203,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
                         : last && !first
                           ? "10px 16px 10px 26px"
                           : "10px 20px",
-                  background: selectedGrade === g.id ? "#4a9ec4" : "#ffffff",
+                  background: selectedGrade === g.id ? "#0f4c75" : "#ffffff",
                   color: selectedGrade === g.id ? "#fff" : "#1a1a1a",
                   border: "none",
                   cursor: "pointer",
@@ -221,7 +217,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
                   WebkitClipPath: clipPath,
                   boxShadow:
                     selectedGrade === g.id
-                      ? "0 4px 14px rgba(74, 158, 196, 0.4)"
+                      ? "0 4px 14px #0f4c75"
                       : "0 2px 8px rgba(0,0,0,0.1)",
                   transition:
                     "transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease",
@@ -246,21 +242,22 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
       <style>{`
         .grade-chevron-row {
           overflow-x: auto;
+          font-family: inherit;
           overflow-y: visible;
           padding-bottom: 4px;
           -webkit-overflow-scrolling: touch;
         }
         .grade-chevron-btn:hover {
-          background: #64bde1 !important;
+          background: #3282b8 !important;
           color: white !important;
           transform: translateY(-1px);
-          box-shadow: 0 6px 16px rgba(100, 189, 225, 0.45) !important;
+          box-shadow: 0 6px 16px rgb(15, 76, 117) !important;
           z-index: 40 !important;
         }
 
         .play-button:hover {
           transform: scale(1.05);
-          background: #64bde1 !important;
+          background: #3282b8 !important;
           color: white !important;
         }
       `}</style>
@@ -289,7 +286,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
                     <button className="play-button"
                       onClick={() => handleStartGame(selectedGrade, t.id, o.id)}
                       style={{
-                        background: "#4a9ec4",
+                        background: "#0f4c75",
                         color: "white",
                         border: "none",
                         borderRadius: 0,
@@ -307,41 +304,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
         </div>
       )}
 
-      {/* Overlay loading quay tròn */}
-      {loading && (
-        <div style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          background: "rgba(255, 255, 255, 0.7)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 999,
-          backdropFilter: "blur(2px)"
-        }}>
-          <div style={{
-            width: 60,
-            height: 60,
-            border: "6px solid #f3f3f3",
-            borderTop: "6px solid #3498db",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite"
-          }} />
-          <div style={{ marginTop: 10, fontWeight: "bold", color: "#333" }}>
-            Đang tải dữ liệu...
-          </div>
-          <style>{`
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          `}</style>
-        </div>
-      )}
+      
     </div>
   );
 }
