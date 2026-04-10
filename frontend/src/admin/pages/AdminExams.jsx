@@ -10,17 +10,53 @@ const GRADE_OPTIONS = [
   { id: "5", name: "Lớp 5" },
 ];
 
-/** Mẫu đề demo theo khối (giao diện — chưa nối API) */
+/** Mẫu đề demo — mỗi đề 3 câu hỏi (giao diện — chưa nối API) */
 const MOCK_EXAMS = [
-  { id: 1, name: "Đề kiểm tra giữa kỳ", description: "Chưa có mô tả." },
-  { id: 2, name: "Đề ôn tuần 1", description: "Chưa có mô tả." },
-  { id: 3, name: "Đề kiểm tra cuối kỳ", description: "Chưa có mô tả." },
+  {
+    id: 1,
+    name: "Đề kiểm tra giữa kỳ",
+    description: "Kiểm tra nội dung tuần 1–5.",
+    questions: [
+      { id: "1-q1", text: "Tính giá trị biểu thức: 25 + 17 − 8." },
+      { id: "1-q2", text: "Hình chữ nhật có chiều dài 12 cm, chiều rộng 5 cm. Tính chu vi." },
+      { id: "1-q3", text: "Viết số 3047 thành tổng các hàng: nghìn, trăm, chục, đơn vị." },
+    ],
+  },
+  {
+    id: 2,
+    name: "Đề ôn tuần 1",
+    description: "Ôn tập phép cộng, trừ trong phạm vi 100.",
+    questions: [
+      { id: "2-q1", text: "Điền dấu thích hợp: 45 + 12 ○ 50 + 8." },
+      { id: "2-q2", text: "Lan có 24 viên bi, Hà cho thêm 15 viên. Hỏi Lan có tất cả bao nhiêu viên bi?" },
+      { id: "2-q3", text: "Tìm số liền trước và liền sau của số 89." },
+    ],
+  },
+  {
+    id: 3,
+    name: "Đề kiểm tra cuối kỳ",
+    description: "Tổng hợp kiến thức học kỳ I.",
+    questions: [
+      { id: "3-q1", text: "Một tuần lễ có bao nhiêu ngày? Một ngày có bao nhiêu giờ?" },
+      { id: "3-q2", text: "Xếp các số 431, 413, 341, 143 theo thứ tự từ bé đến lớn." },
+      { id: "3-q3", text: "Một hình vuông có cạnh 6 cm. Tính diện tích hình vuông đó." },
+    ],
+  },
 ];
+
+function initialQuestionsByExam() {
+  const m = {};
+  for (const e of MOCK_EXAMS) {
+    m[e.id] = (e.questions || []).map((q) => ({ ...q }));
+  }
+  return m;
+}
 
 export default function AdminExams() {
   const [gradeId, setGradeId] = useState("1");
   const [search, setSearch] = useState("");
   const [expandedExamId, setExpandedExamId] = useState("1");
+  const [questionsByExamId, setQuestionsByExamId] = useState(initialQuestionsByExam);
 
   const selectedGrade = GRADE_OPTIONS.find((g) => g.id === gradeId);
 
@@ -36,6 +72,14 @@ export default function AdminExams() {
   const toggleExpand = (row) => {
     const id = String(row.id);
     setExpandedExamId((prev) => (prev === id ? null : id));
+  };
+
+  const removeQuestion = (examId, questionId, e) => {
+    e.stopPropagation();
+    setQuestionsByExamId((prev) => ({
+      ...prev,
+      [examId]: (prev[examId] || []).filter((q) => q.id !== questionId),
+    }));
   };
 
   return (
@@ -176,16 +220,29 @@ export default function AdminExams() {
                         <td colSpan={4} style={styles.nestedCell}>
                           <div style={styles.nestedPanel}>
                             <div style={styles.nestedHeader}>
-                              <span style={styles.nestedTitle}>
-                                Câu hỏi trong đề
-                              </span>
-                              <button type="button" style={styles.btnAdd}>
-                                + Thêm câu hỏi
-                              </button>
+                              <span style={styles.nestedTitle}>Câu hỏi trong đề</span>
                             </div>
-                            <p style={styles.mutedSmall}>
-                              Chưa có câu hỏi. Thêm mới bằng nút bên trên.
-                            </p>
+                            {(questionsByExamId[row.id] || []).length === 0 ? (
+                              <p style={styles.mutedSmall}>Chưa có câu hỏi trong đề này.</p>
+                            ) : (
+                              <ul style={styles.questionList}>
+                                {(questionsByExamId[row.id] || []).map((q, index) => (
+                                  <li key={q.id} style={styles.questionItem}>
+                                    <p style={styles.questionText}>
+                                      Câu {index + 1}: {q.text}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      style={styles.questionDeleteBtn}
+                                      title="Xóa câu hỏi"
+                                      onClick={(e) => removeQuestion(row.id, q.id, e)}
+                                    >
+                                      Xóa
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -263,7 +320,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: {
@@ -289,7 +346,7 @@ const styles = {
     padding: "10px 18px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.95rem",
@@ -434,7 +491,7 @@ const styles = {
   },
   examName: {
     fontWeight: 700,
-    color: "#0969da",
+    color: "#2d5a76",
     textAlign: "left",
   },
   iconBtn: {
@@ -458,30 +515,56 @@ const styles = {
   },
   nestedPanel: {
     padding: "14px 16px 16px 28px",
-    borderLeft: "3px solid #0969da",
+    borderLeft: "3px solid #2d5a76",
   },
   nestedHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   nestedTitle: {
     fontSize: "0.88rem",
     fontWeight: 700,
     color: "#24292f",
   },
-  btnAdd: {
-    padding: "6px 12px",
-    borderRadius: 8,
-    border: "1px solid #0969da",
+  questionList: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  questionItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "12px 14px",
+    borderRadius: 10,
     background: "#fff",
-    color: "#0969da",
+    border: "1px solid #d0d7de",
+    boxSizing: "border-box",
+    minWidth: 0,
+  },
+  questionText: {
+    margin: 0,
+    flex: 1,
+    minWidth: 0,
+    fontSize: "0.9rem",
+    lineHeight: 1.45,
+    color: "#24292f",
+    overflowWrap: "anywhere",
+  },
+  questionDeleteBtn: {
+    flexShrink: 0,
+    padding: "8px 14px",
+    borderRadius: 8,
+    border: "1px solid #cf222e",
+    background: "#fff",
+    color: "#cf222e",
     fontWeight: 600,
-    fontSize: "0.85rem",
+    fontSize: "0.82rem",
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   mutedSmall: {
     margin: 0,

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 /** Giao diện tĩnh (mock) — chưa nối API */
@@ -11,6 +11,9 @@ const MOCK_ROWS = [
     content:
       "Giá trị của chữ số 7 trong số 67 là bao nhiêu đơn vị?",
     answer: "A. 7",
+    grade: "Lớp 2",
+    subject: "Toán",
+    lesson: "Các số trong phạm vi 1000",
     gradeLine: "Lớp 2 > Toán 2",
     topicLine: "Các số trong phạm vi 1000 > Giá trị của chữ số -...",
     createdAt: "14:55 06/04/2026",
@@ -21,6 +24,9 @@ const MOCK_ROWS = [
     content:
       "Số gồm 3 trăm, 0 chục và 7 đơn vị được viết là số nào?",
     answer: "A. 307",
+    grade: "Lớp 2",
+    subject: "Toán",
+    lesson: "Các số trong phạm vi 1000",
     gradeLine: "Lớp 2 > Toán 2",
     topicLine: "Các số trong phạm vi 1000 > Viết số có ba chữ số -...",
     createdAt: "14:55 06/04/2026",
@@ -31,6 +37,9 @@ const MOCK_ROWS = [
     content:
       "Số 0 là số có bao nhiêu chữ số?",
     answer: "A. 1",
+    grade: "Lớp 2",
+    subject: "Toán",
+    lesson: "Các số trong phạm vi 1000",
     gradeLine: "Lớp 2 > Toán 2",
     topicLine: "Các số trong phạm vi 1000 > Các số có ba chữ số -...",
     createdAt: "14:55 06/04/2026",
@@ -41,6 +50,9 @@ const MOCK_ROWS = [
     content:
       "Số liền trước của 999 là số nào?",
     answer: "A. 998",
+    grade: "Lớp 2",
+    subject: "Toán",
+    lesson: "Các số trong phạm vi 1000",
     gradeLine: "Lớp 2 > Toán 2",
     topicLine: "Các số trong phạm vi 1000 > Số liền trước, số liền sau -...",
     createdAt: "14:55 06/04/2026",
@@ -51,6 +63,9 @@ const MOCK_ROWS = [
     content:
       "Số 1000 là số có bao nhiêu chữ số?",
     answer: "A. 4",
+    grade: "Lớp 2",
+    subject: "Toán",
+    lesson: "Các số trong phạm vi 1000",
     gradeLine: "Lớp 2 > Toán 2",
     topicLine: "Các số trong phạm vi 1000 > Các số có bốn chữ số -...",
     createdAt: "14:55 06/04/2026",
@@ -60,14 +75,59 @@ const MOCK_ROWS = [
     typeLabel: "Trắc nghiệm 2",
     content: "Một cửa hàng buổi sáng bán được 120 kg gạo, buổi chiều bán được nhiều hơn buổi sáng 35 kg gạo. Hỏi cả hai buổi cửa hàng đó bán được bao nhiêu ki-lô-gam gạo?",
     answer: "A. 275",
+    grade: "Lớp 2",
+    subject: "Toán",
+    lesson: "Ôn tập các số trong phạm vi 1000",
     gradeLine: "Lớp 2 > Toán 2",
     topicLine: "Ôn tập các số trong phạm vi 1000 > Giải bài toán có lời văn -...",
     createdAt: "09:12 05/04/2026",
   },
 ];
 
+const GRADE_OPTIONS = [
+  { id: "", label: "Tất cả lớp" },
+  { id: "Lớp 2", label: "Lớp 2" },
+  { id: "Lớp 3", label: "Lớp 3" },
+];
+
+const SUBJECT_OPTIONS = [
+  { id: "", label: "Tất cả dạng toán" },
+  { id: "Toán", label: "Toán" },
+  { id: "Luyện tập", label: "Luyện tập" },
+];
+
+const LESSON_OPTIONS = [
+  { id: "", label: "Tất cả bài học" },
+  { id: "Các số trong phạm vi 1000", label: "Các số trong phạm vi 1000" },
+  { id: "Ôn tập các số trong phạm vi 1000", label: "Ôn tập các số trong phạm vi 1000" },
+];
+
 export default function AdminQuestions() {
+  const [selectedGrade, setSelectedGrade] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [selectedLesson, setSelectedLesson] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
   const totalFormatted = TOTAL_QUESTIONS.toLocaleString("vi-VN");
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return MOCK_ROWS.filter((row) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        row.content.toLowerCase().includes(normalizedSearch) ||
+        row.id.toString().includes(normalizedSearch);
+
+      return (
+        matchesSearch &&
+        (!selectedGrade || row.grade === selectedGrade) &&
+        (!selectedSubject || row.subject === selectedSubject) &&
+        (!selectedLesson || row.lesson === selectedLesson)
+      );
+    });
+  }, [selectedGrade, selectedSubject, selectedLesson, searchTerm]);
 
   return (
     <div style={styles.root}>
@@ -104,24 +164,104 @@ export default function AdminQuestions() {
         </div>
       </section>
 
-      <div style={styles.filterBar}>
+      <div
+        style={{ ...styles.filterBar, cursor: "pointer" }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isFilterOpen}
+        onClick={() => setIsFilterOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            setIsFilterOpen((value) => !value);
+          }
+        }}
+      >
         <div style={styles.filterBarLeft}>
           <span style={styles.filterIcon} aria-hidden>
             <FilterIcon />
           </span>
           <span style={styles.filterTitle}>Bộ lọc tìm kiếm</span>
         </div>
-        <span style={styles.chevron} aria-hidden>
+        <span
+          style={{
+            ...styles.chevron,
+            transform: isFilterOpen ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s ease",
+          }}
+          aria-hidden
+        >
           <ChevronDownIcon />
         </span>
       </div>
+
+      {isFilterOpen && (
+        <section style={styles.filterPanel}>
+          <div style={styles.filterPanelHeading}>Lọc theo phân cấp</div>
+          <div style={styles.filterGrid}>
+            <label style={styles.filterField}>
+              <span style={styles.filterFieldLabel}>Tìm kiếm</span>
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Tìm theo nội dung hoặc ID"
+                style={styles.filterInput}
+              />
+            </label>
+
+            <label style={styles.filterField}>
+              <span style={styles.filterFieldLabel}>Lớp</span>
+              <select
+                value={selectedGrade}
+                onChange={(event) => setSelectedGrade(event.target.value)}
+                style={styles.filterSelect}
+              >
+                {GRADE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={styles.filterField}>
+              <span style={styles.filterFieldLabel}>Dạng toán</span>
+              <select
+                value={selectedSubject}
+                onChange={(event) => setSelectedSubject(event.target.value)}
+                style={styles.filterSelect}
+              >
+                {SUBJECT_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={styles.filterField}>
+              <span style={styles.filterFieldLabel}>Bài học</span>
+              <select
+                value={selectedLesson}
+                onChange={(event) => setSelectedLesson(event.target.value)}
+                style={styles.filterSelect}
+              >
+                {LESSON_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+      )}
 
       <div style={styles.tableWrap}>
         <table style={styles.table}>
           <thead>
             <tr>
               <th style={{ ...styles.th, width: 44 }} aria-label="Chọn" />
-              <th style={{ ...styles.th, width: 140 }}>Loại câu hỏi</th>
+              <th style={{ ...styles.th, width: 72 }}>ID</th>
               <th style={styles.th}>Nội dung câu hỏi</th>
               <th style={{ ...styles.th, width: 100 }}>Đáp án</th>
               <th style={{ ...styles.th, minWidth: 220 }}>Phân cấp</th>
@@ -132,40 +272,43 @@ export default function AdminQuestions() {
             </tr>
           </thead>
           <tbody>
-            {MOCK_ROWS.map((row) => (
-              <tr key={row.id}>
-                <td style={styles.td}>
-                  <span style={styles.checkboxMock} aria-hidden />
-                </td>
-                <td style={styles.td}>
-                  <span style={styles.badge}>{row.typeLabel}</span>
-                </td>
-                <td style={{ ...styles.td, ...styles.tdContent }}>{row.content}</td>
-                <td style={{ ...styles.td, fontWeight: 600 }}>{row.answer}</td>
-                <td style={styles.td}>
-                  <div style={styles.hierarchy}>
-                    <span style={styles.hierarchyMain}>{row.gradeLine}</span>
-                    <span style={styles.hierarchySub}>{row.topicLine}</span>
-                  </div>
-                </td>
-                <td style={{ ...styles.td, color: "#57606a", whiteSpace: "nowrap" }}>
-                  {row.createdAt}
-                </td>
-                <td style={{ ...styles.td, textAlign: "right" }}>
-                  <div style={styles.actionGroup}>
-                    <span style={styles.actionBtn} title="Xem">
-                      <EyeIcon />
-                    </span>
-                    <span style={styles.actionBtn} title="Sửa">
-                      <PencilIcon />
-                    </span>
-                    <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
-                      <TrashIcon />
-                    </span>
-                  </div>
+            {filteredRows.length > 0 ? (
+              filteredRows.map((row) => (
+                <tr key={row.id}>
+                  <td style={styles.td}>
+                    <span style={styles.checkboxMock} aria-hidden />
+                  </td>
+                  <td style={styles.td}>{row.id}</td>
+                  <td style={{ ...styles.td, ...styles.tdContent }}>{row.content}</td>
+                  <td style={{ ...styles.td, fontWeight: 600 }}>{row.answer}</td>
+                  <td style={styles.td}>
+                    <div style={styles.hierarchy}>
+                      <span style={styles.hierarchyMain}>{row.gradeLine}</span>
+                      <span style={styles.hierarchySub}>{row.topicLine}</span>
+                    </div>
+                  </td>
+                  <td style={{ ...styles.td, color: "#57606a", whiteSpace: "nowrap" }}>
+                    {row.createdAt}
+                  </td>
+                  <td style={{ ...styles.td, textAlign: "right" }}>
+                    <div style={styles.actionGroup}>
+                      <span style={styles.actionBtn} title="Sửa">
+                        <PencilIcon />
+                      </span>
+                      <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
+                        <TrashIcon />
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td style={styles.emptyState} colSpan={7}>
+                  Không có câu hỏi nào khớp với bộ lọc.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -184,7 +327,7 @@ function PlusIcon() {
 
 function DocumentIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0969da" strokeWidth="1.8">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="1.8">
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" strokeLinejoin="round" />
       <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" strokeLinecap="round" />
     </svg>
@@ -193,7 +336,7 @@ function DocumentIcon() {
 
 function FilterIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0969da" strokeWidth="2">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="2">
       <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" strokeLinejoin="round" />
     </svg>
   );
@@ -249,7 +392,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: {
@@ -288,7 +431,7 @@ const styles = {
     padding: "10px 18px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.95rem",
@@ -362,6 +505,68 @@ const styles = {
     display: "flex",
     alignItems: "center",
     opacity: 0.85,
+  },
+  filterPanel: {
+    display: "grid",
+    gap: 16,
+    padding: "16px 20px",
+    marginBottom: 16,
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  filterPanelHeading: {
+    fontSize: "0.95rem",
+    fontWeight: 600,
+    color: "#24292f",
+  },
+  filterGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 12,
+  },
+  filterField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  filterFieldLabel: {
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    color: "#57606a",
+  },
+  filterSelect: {
+    width: "100%",
+    height: 44,
+    minHeight: 44,
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    fontSize: "0.95rem",
+    lineHeight: "1.4",
+    color: "#24292f",
+    background: "#fff",
+    appearance: "none",
+  },
+  filterInput: {
+    width: "100%",
+    height: 44,
+    minHeight: 44,
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    fontSize: "0.95rem",
+    lineHeight: "1.4",
+    color: "#24292f",
+    background: "#fff",
+  },
+  emptyState: {
+    padding: "24px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
   },
   tableWrap: {
     width: "100%",

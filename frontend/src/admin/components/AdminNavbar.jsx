@@ -145,7 +145,7 @@ const styles = {
     transition: "all 0.15s",
   },
   siteLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
     fontSize: "0.9rem",
     fontWeight: 500,

@@ -751,7 +751,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: {
@@ -790,7 +790,7 @@ const styles = {
     padding: "10px 18px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.95rem",
@@ -912,7 +912,7 @@ const styles = {
   linkBtn: {
     background: "none",
     border: "none",
-    color: "#0969da",
+    color: "#2d5a76",
     cursor: "pointer",
     textDecoration: "underline",
     marginLeft: 8,
@@ -957,7 +957,7 @@ const styles = {
     cursor: "inherit",
     textAlign: "left",
     font: "inherit",
-    color: "#0969da",
+    color: "#2d5a76",
     fontWeight: 700,
     maxWidth: "100%",
   },
@@ -969,7 +969,7 @@ const styles = {
   },
   nestedPanel: {
     padding: "14px 16px 16px 28px",
-    borderLeft: "3px solid #0969da",
+    borderLeft: "3px solid #2d5a76",
   },
   nestedHeader: {
     display: "flex",
@@ -987,9 +987,9 @@ const styles = {
   btnAddOp: {
     padding: "6px 12px",
     borderRadius: 8,
-    border: "1px solid #0969da",
+    border: "1px solid #2d5a76",
     background: "#fff",
-    color: "#0969da",
+    color: "#2d5a76",
     fontWeight: 600,
     fontSize: "0.85rem",
     cursor: "pointer",
@@ -1134,7 +1134,7 @@ const styles = {
     padding: "8px 18px",
     borderRadius: 8,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     cursor: "pointer",

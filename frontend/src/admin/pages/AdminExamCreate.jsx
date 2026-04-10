@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 const GRADE_OPTIONS = [
+  { id: "", label: "Tất cả các lớp" },
   { id: "4", label: "Lớp 4" },
   { id: "5", label: "Lớp 5" },
 ];
@@ -19,15 +20,32 @@ const EXAM_TITLE_OPTIONS = [
   { id: "5-5", grade: "5", name: "Kiểm tra tổng hợp" },
 ];
 
-const QUESTION_LIST = Array.from({ length: 30 }, (_, index) => {
-  const grade = index < 15 ? "4" : "5";
-  const groupIndex = Math.floor((index % 15) / 3);
-  const title = EXAM_TITLE_OPTIONS.filter((item) => item.grade === grade)[groupIndex];
+const LESSON_OPTIONS = [
+  { id: "", label: "Tất cả bài học" },
+  { id: "lesson-1", label: "Ôn tập số học" },
+  { id: "lesson-2", label: "Hình học cơ bản" },
+  { id: "lesson-3", label: "Kiểm tra nhanh" },
+];
+
+const lessonNames = {
+  "lesson-1": "Ôn tập số học",
+  "lesson-2": "Hình học cơ bản",
+  "lesson-3": "Kiểm tra nhanh",
+};
+
+const QUESTION_LIST = Array.from({ length: 45 }, (_, index) => {
+  const grade = index < 30 ? "4" : "5";
+  const groupIndex = Math.floor((index % (grade === "4" ? 30 : 15)) / 3);
+  const titlesByGrade = EXAM_TITLE_OPTIONS.filter((item) => item.grade === grade);
+  const title = titlesByGrade[groupIndex % titlesByGrade.length];
+  const lessonId = `lesson-${(groupIndex % LESSON_OPTIONS.length) + 1}`;
   return {
     id: index + 1,
     grade,
     titleId: title.id,
     titleName: title.name,
+    lessonId,
+    lessonName: lessonNames[lessonId],
     text: `Câu hỏi ${index + 1}: ${title.name}`,
     detail: `Nội dung câu hỏi ${index + 1} cho ${grade}`,
   };
@@ -36,32 +54,39 @@ const QUESTION_LIST = Array.from({ length: 30 }, (_, index) => {
 export default function AdminExamCreate() {
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
-  const [gradeId, setGradeId] = useState("4");
-  const [titleId, setTitleId] = useState("4-1");
+  const [gradeId, setGradeId] = useState("");
+  const [titleId, setTitleId] = useState("");
   const [search, setSearch] = useState("");
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
   const [message, setMessage] = useState("");
 
-  const titleOptions = EXAM_TITLE_OPTIONS.filter((item) => item.grade === gradeId);
+  const titleOptions = useMemo(() => {
+    const base = !gradeId
+      ? EXAM_TITLE_OPTIONS
+      : EXAM_TITLE_OPTIONS.filter((item) => item.grade === gradeId);
+    return [{ id: "", name: "Tất cả chủ đề" }, ...base];
+  }, [gradeId]);
+
+  const [lessonId, setLessonId] = useState("");
 
   const filteredQuestions = useMemo(() => {
     const query = search.trim().toLowerCase();
     return QUESTION_LIST.filter((question) => {
-      const matchesGrade = question.grade === gradeId;
-      const matchesTitle = question.titleId === titleId;
+      const matchesGrade = !gradeId || question.grade === gradeId;
+      const matchesTitle = !titleId || question.titleId === titleId;
+      const matchesLesson = !lessonId || question.lessonId === lessonId;
       const matchesSearch = `${question.id} ${question.text} ${question.detail}`
         .toLowerCase()
         .includes(query);
-      return matchesGrade && matchesTitle && matchesSearch;
+      return matchesGrade && matchesTitle && matchesLesson && matchesSearch;
     });
-  }, [gradeId, titleId, search]);
+  }, [gradeId, titleId, lessonId, search]);
 
   const selectedQuestions = QUESTION_LIST.filter((question) => selectedQuestionIds.includes(question.id));
 
   const handleGradeChange = (value) => {
     setGradeId(value);
-    const nextTitle = EXAM_TITLE_OPTIONS.find((item) => item.grade === value);
-    setTitleId(nextTitle?.id || "");
+    setTitleId("");
   };
 
   const toggleQuestion = (questionId) => {
@@ -97,15 +122,12 @@ export default function AdminExamCreate() {
       </nav>
 
       <header style={styles.headerRow}>
-        <div>
+        <div style={styles.headerText}>
           <h1 style={styles.title}>Tạo exam mới</h1>
           <p style={styles.lead}>
             Nhập tiêu đề và mô tả exam rồi chọn câu hỏi phù hợp từ bộ lọc bên dưới.
           </p>
         </div>
-        <Link to="/admin/exams" style={styles.btnSecondary}>
-          ← Quay lại quản lý exams
-        </Link>
       </header>
 
       <section style={styles.examInfo}>
@@ -138,15 +160,10 @@ export default function AdminExamCreate() {
 
       <section style={styles.filterSection}>
         <div style={styles.filterHeader}>
-          <div>
-            <h2 style={styles.sectionTitle}>Bộ lọc câu hỏi</h2>
-            <p style={styles.sectionSubtitle}>
-              Chọn lớp, tiêu đề exam và tìm kiếm để lọc danh sách câu hỏi.
-            </p>
-          </div>
-          <button type="button" style={styles.btnPrimary} onClick={handleSaveExam}>
-            Lưu exam
-          </button>
+          <h2 style={styles.sectionTitle}>Bộ lọc câu hỏi</h2>
+          <p style={styles.sectionSubtitle}>
+            Chọn lớp, chủ đề, bài học và tìm kiếm để lọc danh sách câu hỏi.
+          </p>
         </div>
 
         <div style={styles.filterRow}>
@@ -161,7 +178,7 @@ export default function AdminExamCreate() {
               style={styles.select}
             >
               {GRADE_OPTIONS.map((grade) => (
-                <option key={grade.id} value={grade.id}>
+                <option key={grade.id || "all-grades"} value={grade.id}>
                   {grade.label}
                 </option>
               ))}
@@ -170,7 +187,7 @@ export default function AdminExamCreate() {
 
           <div style={styles.filterField}>
             <label htmlFor="title-filter" style={styles.filterLabel}>
-              Tiêu đề exam
+              Chủ đề
             </label>
             <select
               id="title-filter"
@@ -179,8 +196,26 @@ export default function AdminExamCreate() {
               style={styles.select}
             >
               {titleOptions.map((title) => (
-                <option key={title.id} value={title.id}>
+                <option key={title.id || "all-topics"} value={title.id}>
                   {title.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={styles.filterField}>
+            <label htmlFor="lesson-filter" style={styles.filterLabel}>
+              Bài học
+            </label>
+            <select
+              id="lesson-filter"
+              value={lessonId}
+              onChange={(e) => setLessonId(e.target.value)}
+              style={styles.select}
+            >
+              {LESSON_OPTIONS.map((lesson) => (
+                <option key={lesson.id || "all-lessons"} value={lesson.id}>
+                  {lesson.label}
                 </option>
               ))}
             </select>
@@ -207,6 +242,7 @@ export default function AdminExamCreate() {
               <h3 style={styles.panelTitle}>Danh sách câu hỏi</h3>
               <span style={styles.panelMeta}>{filteredQuestions.length} câu hỏi</span>
             </div>
+            <div style={styles.panelScroll}>
             {filteredQuestions.length === 0 ? (
               <div style={styles.emptyState}>
                 Không tìm thấy câu hỏi phù hợp với bộ lọc.
@@ -214,20 +250,21 @@ export default function AdminExamCreate() {
             ) : (
               filteredQuestions.map((question) => (
                 <div key={question.id} style={styles.questionCard}>
-                  <div>
+                  <div style={styles.cardBody}>
                     <p style={styles.questionText}>{question.text}</p>
                     <p style={styles.questionDetail}>{question.detail}</p>
                   </div>
                   <button
                     type="button"
-                    style={styles.addButton}
+                    style={styles.cardActionBtn}
                     onClick={() => toggleQuestion(question.id)}
                   >
-                    {selectedQuestionIds.includes(question.id) ? "Đã thêm" : "+"}
+                    {selectedQuestionIds.includes(question.id) ? "−" : "+"}
                   </button>
                 </div>
               ))
             )}
+            </div>
           </div>
 
           <aside style={styles.summaryPanel}>
@@ -235,30 +272,42 @@ export default function AdminExamCreate() {
               <h3 style={styles.panelTitle}>Câu hỏi đã chọn</h3>
               <span style={styles.panelMeta}>{selectedQuestionIds.length} mục</span>
             </div>
-            {selectedQuestions.length === 0 ? (
-              <div style={styles.emptyState}>Chưa có câu hỏi nào được thêm.</div>
-            ) : (
-              selectedQuestions.map((question) => (
-                <div key={question.id} style={styles.selectedItem}>
-                  <div>
-                    <p style={styles.selectedText}>{question.text}</p>
-                    <p style={styles.selectedMeta}>{question.titleName}</p>
+            <div style={styles.panelScroll}>
+              {selectedQuestions.length === 0 ? (
+                <div style={styles.emptyState}>Chưa có câu hỏi nào được thêm.</div>
+              ) : (
+                selectedQuestions.map((question) => (
+                  <div key={question.id} style={styles.questionCard}>
+                    <div style={styles.cardBody}>
+                      <p style={styles.questionText}>{question.text}</p>
+                      <p style={styles.questionDetail}>{question.titleName}</p>
+                    </div>
+                    <button
+                      type="button"
+                      style={styles.cardActionBtn}
+                      onClick={() => toggleQuestion(question.id)}
+                      aria-label="Gỡ khỏi danh sách"
+                    >
+                      ×
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    style={styles.removeButton}
-                    onClick={() => toggleQuestion(question.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </aside>
         </div>
       </section>
 
       {message && <div style={styles.messageBox}>{message}</div>}
+
+      <footer style={styles.pageFooter}>
+        <button type="button" style={styles.btnSaveFooter} onClick={handleSaveExam}>
+          Lưu exam
+        </button>
+        <Link to="/admin/exams" style={styles.btnCancelFooter}>
+          Hủy và quay về trang quản lý exams
+        </Link>
+      </footer>
     </div>
   );
 }
@@ -279,7 +328,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: {
@@ -293,10 +342,16 @@ const styles = {
   headerRow: {
     display: "flex",
     alignItems: "flex-start",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     gap: 16,
     marginBottom: 24,
     flexWrap: "wrap",
+    minWidth: 0,
+  },
+  headerText: {
+    minWidth: 0,
+    flex: "1 1 auto",
+    maxWidth: "100%",
   },
   title: {
     margin: "0 0 8px",
@@ -304,6 +359,7 @@ const styles = {
     fontWeight: 700,
     color: "#1f2328",
     letterSpacing: "-0.02em",
+    overflowWrap: "anywhere",
   },
   lead: {
     margin: 0,
@@ -311,66 +367,70 @@ const styles = {
     color: "#57606a",
     lineHeight: 1.5,
     maxWidth: 640,
-  },
-  btnSecondary: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "10px 18px",
-    borderRadius: 10,
-    border: "1px solid #d0d7de",
-    background: "#fff",
-    color: "#24292f",
-    fontWeight: 600,
-    textDecoration: "none",
-    fontSize: "0.95rem",
+    overflowWrap: "anywhere",
   },
   examInfo: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "minmax(0, 1fr)",
     gap: 20,
     marginBottom: 24,
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
   },
   fieldGroup: {
     display: "grid",
     gap: 10,
+    minWidth: 0,
+    maxWidth: "100%",
   },
   label: {
     color: "#24292f",
     fontWeight: 600,
   },
   input: {
+    boxSizing: "border-box",
     width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
     borderRadius: 10,
     border: "1px solid #d0d7de",
     padding: "12px 14px",
     fontSize: "0.95rem",
+    fontFamily: "inherit",
     color: "#24292f",
     outline: "none",
+    overflowWrap: "anywhere",
   },
   textarea: {
+    boxSizing: "border-box",
     width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
     minHeight: 120,
     borderRadius: 10,
     border: "1px solid #d0d7de",
     padding: "12px 14px",
     fontSize: "0.95rem",
+    fontFamily: "inherit",
     color: "#24292f",
     outline: "none",
     resize: "vertical",
+    overflowWrap: "anywhere",
+    overflow: "auto",
   },
   filterSection: {
     background: "#fff",
     border: "1px solid #d0d7de",
     borderRadius: 16,
     padding: 24,
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
   },
   filterHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
     marginBottom: 20,
-    flexWrap: "wrap",
+    minWidth: 0,
   },
   sectionTitle: {
     margin: "0 0 4px",
@@ -386,13 +446,15 @@ const styles = {
   },
   filterRow: {
     display: "grid",
-    gridTemplateColumns: "240px 240px minmax(200px,1fr)",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 16,
     marginBottom: 20,
+    minWidth: 0,
   },
   filterField: {
     display: "grid",
     gap: 10,
+    minWidth: 0,
   },
   filterLabel: {
     fontSize: "0.9rem",
@@ -415,105 +477,143 @@ const styles = {
     border: "1px solid #d0d7de",
     padding: "12px 14px",
     fontSize: "0.95rem",
+    fontFamily: "inherit",
     color: "#24292f",
     outline: "none",
   },
   gridLayout: {
     display: "grid",
-    gridTemplateColumns: "2fr 1fr",
+    gridTemplateColumns: "1fr 1fr",
     gap: 20,
+    alignItems: "stretch",
   },
+  /** Fixed height panels; scrollable body */
   questionPanel: {
+    boxSizing: "border-box",
     display: "grid",
-    gap: 12,
+    gridTemplateRows: "52px 1fr",
+    gap: 0,
+    height: 520,
+    minHeight: 520,
+    maxHeight: 520,
+    padding: "0 16px 16px",
+    borderRadius: 14,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    overflow: "hidden",
+  },
+  summaryPanel: {
+    boxSizing: "border-box",
+    display: "grid",
+    gridTemplateRows: "52px 1fr",
+    gap: 0,
+    height: 520,
+    minHeight: 520,
+    maxHeight: 520,
+    padding: "0 16px 16px",
+    borderRadius: 14,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    overflow: "hidden",
   },
   panelHeader: {
+    boxSizing: "border-box",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    marginBottom: 12,
+    height: 52,
+    minHeight: 52,
+    maxHeight: 52,
+    paddingTop: 4,
+    flexShrink: 0,
+    borderBottom: "1px solid #eaeef2",
+  },
+  panelScroll: {
+    boxSizing: "border-box",
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
+    paddingTop: 12,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
   },
   panelTitle: {
     margin: 0,
     fontSize: "1rem",
     fontWeight: 700,
+    lineHeight: 1.25,
   },
   panelMeta: {
     color: "#57606a",
     fontSize: "0.9rem",
+    lineHeight: 1.25,
+    whiteSpace: "nowrap",
   },
+  /** Question cards: same width/height both columns */
   questionCard: {
+    boxSizing: "border-box",
     display: "flex",
-    alignItems: "center",
+    alignItems: "stretch",
     justifyContent: "space-between",
-    gap: 16,
-    padding: 16,
-    borderRadius: 14,
-    background: "#f8fafb",
-    border: "1px solid #d8dee2",
+    gap: 12,
+    width: "100%",
+    minHeight: 108,
+    height: 108,
+    maxHeight: 108,
+    padding: "12px 14px",
+    borderRadius: 12,
+    background: "#f6f8fa",
+    border: "1px solid #e1e4e8",
+    flexShrink: 0,
+  },
+  cardBody: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   questionText: {
     margin: 0,
-    fontSize: "0.96rem",
+    fontSize: "0.93rem",
     fontWeight: 700,
     color: "#1f2328",
+    lineHeight: 1.35,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
   },
   questionDetail: {
-    margin: "8px 0 0",
-    fontSize: "0.9rem",
+    margin: "4px 0 0",
+    fontSize: "0.88rem",
     color: "#57606a",
+    lineHeight: 1.35,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
   },
-  addButton: {
+  cardActionBtn: {
+    flexShrink: 0,
+    alignSelf: "center",
     width: 44,
     height: 44,
     borderRadius: 12,
-    border: "1px solid #0969da",
+    border: "1px solid #2d5a76",
     background: "#ffffff",
-    color: "#09606a",
-    fontSize: "1.1rem",
+    color: "#2d5a76",
+    fontSize: "1.15rem",
     cursor: "pointer",
     fontWeight: 700,
-  },
-  summaryPanel: {
-    display: "grid",
-    gap: 12,
-    padding: 16,
-    borderRadius: 14,
-    border: "1px solid #d0d7de",
-    background: "#fff",
-    minHeight: 280,
-  },
-  selectedItem: {
     display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: 14,
-    borderRadius: 12,
-    border: "1px solid #e1e4e8",
-    background: "#f6f8fa",
-  },
-  selectedText: {
-    margin: 0,
-    fontSize: "0.95rem",
-    fontWeight: 700,
-    color: "#1f2328",
-  },
-  selectedMeta: {
-    margin: "6px 0 0",
-    fontSize: "0.85rem",
-    color: "#57606a",
-  },
-  removeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    border: "1px solid #d0d7de",
-    background: "#fff",
-    color: "#24292f",
-    fontSize: "1.1rem",
-    cursor: "pointer",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    fontFamily: "inherit",
   },
   btnPrimary: {
     display: "inline-flex",
@@ -523,11 +623,61 @@ const styles = {
     padding: "12px 22px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "1rem",
     cursor: "pointer",
+  },
+  pageFooter: {
+    marginTop: 32,
+    paddingTop: 24,
+    borderTop: "1px solid #eaeef2",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+    width: "100%",
+  },
+  btnSaveFooter: {
+    boxSizing: "border-box",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: "12px 20px",
+    borderRadius: 10,
+    border: "none",
+    background: "#2d5a76",
+    color: "#fff",
+    fontWeight: 600,
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    width: "100%",
+    maxWidth: "100%",
+    fontFamily: "inherit",
+    textAlign: "center",
+  },
+  btnCancelFooter: {
+    boxSizing: "border-box",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    maxWidth: "100%",
+    padding: "12px 20px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    color: "#24292f",
+    fontWeight: 600,
+    fontSize: "0.95rem",
+    textDecoration: "none",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    overflowWrap: "anywhere",
+    textAlign: "center",
   },
   emptyState: {
     padding: 22,
@@ -541,7 +691,7 @@ const styles = {
     padding: 16,
     borderRadius: 14,
     background: "#f0f8ff",
-    color: "#0969da",
+    color: "#2d5a76",
     fontWeight: 600,
   },
 };

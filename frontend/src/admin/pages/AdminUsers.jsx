@@ -265,7 +265,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: {
@@ -304,7 +304,7 @@ const styles = {
     padding: "10px 18px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.95rem",
@@ -407,7 +407,7 @@ const styles = {
     fontSize: "0.78rem",
     fontWeight: 600,
     background: "#ddf4ff",
-    color: "#0969da",
+    color: "#2d5a76",
     border: "1px solid #b6e3ff",
   },
   badgeUser: {

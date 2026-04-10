@@ -55,7 +55,7 @@ export default function AdminSidebar({ variant = "default", onRequestClose }) {
           }
           .admin-nav-link[aria-current="page"] {
             border: 1px solid #b6e3ff !important;
-            box-shadow: inset 3px 0 0 #0969da !important;
+            box-shadow: inset 3px 0 0 #2d5a76 !important;
           }
           .admin-nav-link:focus {
             outline: none !important;
@@ -65,7 +65,7 @@ export default function AdminSidebar({ variant = "default", onRequestClose }) {
             box-shadow: none !important;
           }
           .admin-nav-link:focus-visible {
-            outline: 2px solid #0969da !important;
+            outline: 2px solid #2d5a76 !important;
             outline-offset: 2px;
           }
           .admin-nav-link:focus-visible[aria-current="page"] {
@@ -200,7 +200,7 @@ const styles = {
     background: "#f6f8fa",
   },
   siteLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
     fontSize: "0.9rem",
     fontWeight: 500,
@@ -219,9 +219,9 @@ const styles = {
     WebkitTapHighlightColor: "transparent",
   },
   navLinkActive: {
-    color: "#0969da",
+    color: "#2d5a76",
     background: "#ddf4ff",
     border: "1px solid #b6e3ff",
-    boxShadow: "inset 3px 0 0 #0969da",
+    boxShadow: "inset 3px 0 0 #2d5a76",
   },
 };

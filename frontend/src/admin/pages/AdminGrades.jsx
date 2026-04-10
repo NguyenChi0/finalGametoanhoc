@@ -350,7 +350,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: {
@@ -389,7 +389,7 @@ const styles = {
     padding: "10px 18px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.95rem",
@@ -466,7 +466,7 @@ const styles = {
   linkBtn: {
     background: "none",
     border: "none",
-    color: "#0969da",
+    color: "#2d5a76",
     cursor: "pointer",
     textDecoration: "underline",
     marginLeft: 8,
@@ -586,7 +586,7 @@ const styles = {
     padding: "8px 18px",
     borderRadius: 8,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     cursor: "pointer",

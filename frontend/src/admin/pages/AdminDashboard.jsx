@@ -57,7 +57,7 @@ const styles = {
   cardTitle: {
     margin: "0 0 8px",
     fontSize: "1.05rem",
-    color: "#0969da",
+    color: "#2d5a76",
   },
   cardText: {
     margin: 0,

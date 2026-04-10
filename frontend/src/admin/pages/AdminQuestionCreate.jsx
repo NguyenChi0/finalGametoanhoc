@@ -16,6 +16,7 @@ export default function AdminQuestionCreate() {
 
   const [questionText, setQuestionText] = useState("");
   const [questionImage, setQuestionImage] = useState("");
+  const [questionImagePreview, setQuestionImagePreview] = useState("");
   const [answers, setAnswers] = useState(initialAnswers);
   const [correctIndex, setCorrectIndex] = useState(0);
 
@@ -24,6 +25,7 @@ export default function AdminQuestionCreate() {
   const [loadingLessons, setLoadingLessons] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const loadGrades = useCallback(async () => {
     setLoadingGrades(true);
@@ -115,9 +117,60 @@ export default function AdminQuestionCreate() {
     });
   };
 
+  const readImageFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setQuestionImage(String(dataUrl || ""));
+      setQuestionImagePreview(String(dataUrl || ""));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      readImageFile(file);
+    } else {
+      setQuestionImage("");
+      setQuestionImagePreview("");
+    }
+  };
+
+  const handlePaste = (event) => {
+    const items = event.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            event.preventDefault();
+            readImageFile(file);
+            return;
+          }
+        }
+      }
+    }
+
+    const text = event.clipboardData?.getData("text");
+    if (text) {
+      setQuestionImage(text.trim());
+      setQuestionImagePreview(text.trim());
+    }
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      readImageFile(file);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setSuccessMessage(null);
     if (!gradeId || !typeId || !lessonId) {
       setError("Vui lòng chọn khối lớp, chủ đề và bài học.");
       return;
@@ -133,7 +186,13 @@ export default function AdminQuestionCreate() {
         answers,
         correct_index: correctIndex,
       });
-      navigate("/admin/questions");
+
+      setQuestionText("");
+      setQuestionImage("");
+      setQuestionImagePreview("");
+      setAnswers(initialAnswers);
+      setCorrectIndex(0);
+      setSuccessMessage("Đã lưu câu hỏi. Bạn có thể tiếp tục nhập câu hỏi mới.");
     } catch (err) {
       const msg =
         err?.response?.data?.message ||
@@ -190,7 +249,9 @@ export default function AdminQuestionCreate() {
           <h2 style={styles.sectionTitle}>Phân cấp</h2>
           <div style={styles.grid3}>
             <label style={styles.label}>
-              Khối lớp <span style={styles.req}>*</span>
+              <span style={styles.labelTitle}>
+                Khối lớp <span style={styles.req}>*</span>
+              </span>
               <select
                 value={gradeId}
                 onChange={(e) => setGradeId(e.target.value)}
@@ -207,7 +268,9 @@ export default function AdminQuestionCreate() {
               </select>
             </label>
             <label style={styles.label}>
-              Chủ đề <span style={styles.req}>*</span>
+              <span style={styles.labelTitle}>
+                Chủ đề <span style={styles.req}>*</span>
+              </span>
               <select
                 value={typeId}
                 onChange={(e) => setTypeId(e.target.value)}
@@ -226,7 +289,9 @@ export default function AdminQuestionCreate() {
               </select>
             </label>
             <label style={styles.label}>
-              Bài học <span style={styles.req}>*</span>
+              <span style={styles.labelTitle}>
+                Bài học <span style={styles.req}>*</span>
+              </span>
               <select
                 value={lessonId}
                 onChange={(e) => setLessonId(e.target.value)}
@@ -256,7 +321,9 @@ export default function AdminQuestionCreate() {
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Nội dung câu hỏi</h2>
           <label style={styles.label}>
-            Câu hỏi <span style={styles.req}>*</span>
+            <span style={styles.labelTitle}>
+              Câu hỏi <span style={styles.req}>*</span>
+            </span>
             <textarea
               value={questionText}
               onChange={(e) => setQuestionText(e.target.value)}
@@ -266,16 +333,58 @@ export default function AdminQuestionCreate() {
               required
             />
           </label>
-          <label style={styles.label}>
-            Link ảnh câu hỏi (tùy chọn)
-            <input
-              type="url"
-              value={questionImage}
-              onChange={(e) => setQuestionImage(e.target.value)}
-              style={styles.input}
-              placeholder="https://…"
-            />
-          </label>
+          <div style={styles.uploadLabelContainer}>
+            <span style={styles.uploadLabelText}>Ảnh câu hỏi (tùy chọn)</span>
+            <div
+              style={styles.uploadDropZone}
+              onPaste={handlePaste}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={handleDrop}
+              tabIndex={0}
+              aria-label="Click để paste ảnh hoặc kéo thả file vào đây"
+            >
+              <div style={styles.uploadIcon} aria-hidden>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 5 17 10" />
+                  <path d="M12 5v12" />
+                </svg>
+              </div>
+              <div style={styles.uploadTextBlock}>
+                <p style={styles.uploadTitle}>Click để paste ảnh (Ctrl+V)</p>
+                <p style={styles.uploadSubtitle}>hoặc kéo thả file vào đây</p>
+                <p style={styles.uploadHint}>Hỗ trợ: JPG, PNG, GIF (tối đa 5MB)</p>
+              </div>
+              <label style={styles.uploadButton}>
+                Chọn file từ thiết bị
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  style={styles.fileInput}
+                />
+              </label>
+            </div>
+          </div>
+          {questionImagePreview && (
+            <div style={styles.imagePreviewWrap}>
+              <img
+                src={questionImagePreview}
+                alt="Xem trước ảnh câu hỏi"
+                style={styles.previewImage}
+              />
+              <button
+                type="button"
+                style={styles.removeImageButton}
+                onClick={() => {
+                  setQuestionImage("");
+                  setQuestionImagePreview("");
+                }}
+              >
+                Xóa ảnh
+              </button>
+            </div>
+          )}
         </section>
 
         <section style={styles.section}>
@@ -325,6 +434,11 @@ export default function AdminQuestionCreate() {
           </button>
         </div>
       </form>
+      {successMessage && (
+        <div style={styles.successBanner} role="status">
+          {successMessage}
+        </div>
+      )}
     </div>
   );
 }
@@ -345,7 +459,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: { color: "#d0d7de", userSelect: "none" },
@@ -407,16 +521,37 @@ const styles = {
   },
   grid3: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-    gap: 16,
+    gridTemplateColumns: "repeat(3, minmax(240px, 1fr))",
+    gap: 20,
+    alignItems: "start",
   },
   label: {
+    marginTop: 12,
     display: "flex",
     flexDirection: "column",
     gap: 8,
     fontWeight: 600,
     fontSize: "0.88rem",
     color: "#24292f",
+  },
+  uploadLabelContainer: {
+    marginTop: 12,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    fontWeight: 600,
+    fontSize: "0.88rem",
+    color: "#24292f",
+  },
+  uploadLabelText: {
+    fontWeight: 600,
+    color: "#24292f",
+  },
+  labelTitle: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    whiteSpace: "nowrap",
   },
   req: { color: "#cf222e" },
   select: {
@@ -431,6 +566,95 @@ const styles = {
     borderRadius: 8,
     border: "1px solid #d0d7de",
     fontSize: "0.95rem",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  uploadDropZone: {
+    display: "grid",
+    gridTemplateColumns: "auto 1fr auto",
+    alignItems: "center",
+    gap: 16,
+    padding: "22px 20px",
+    borderRadius: 16,
+    border: "1px dashed #c9d3dd",
+    background: "#f8fafc",
+    color: "#24292f",
+    minHeight: 132,
+  },
+  uploadIcon: {
+    width: 48,
+    height: 48,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#eaf4ff",
+    borderRadius: 14,
+  },
+  uploadTextBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  uploadTitle: {
+    margin: 0,
+    fontSize: "1rem",
+    fontWeight: 700,
+    color: "#24292f",
+  },
+  uploadSubtitle: {
+    margin: 0,
+    fontSize: "0.95rem",
+    color: "#57606a",
+  },
+  uploadHint: {
+    margin: 0,
+    fontSize: "0.82rem",
+    color: "#8b96a5",
+  },
+  uploadButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "10px 18px",
+    borderRadius: 10,
+    background: "#2d5a76",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    position: "relative",
+    overflow: "hidden",
+  },
+  fileInput: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    opacity: 0,
+    cursor: "pointer",
+  },
+  imagePreviewWrap: {
+    marginTop: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  previewImage: {
+    maxWidth: 200,
+    maxHeight: 140,
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    objectFit: "contain",
+  },
+  removeImageButton: {
+    padding: "8px 14px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    color: "#24292f",
+    cursor: "pointer",
+    fontWeight: 600,
   },
   textarea: {
     padding: "12px 14px",
@@ -503,7 +727,7 @@ const styles = {
     padding: "10px 22px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.95rem",
@@ -520,5 +744,13 @@ const styles = {
     color: "#9a3412",
     fontWeight: 500,
     marginTop: 4,
+  },
+  successBanner: {
+    padding: "12px 16px",
+    marginBottom: 16,
+    background: "#ecfdf5",
+    border: "1px solid #b7ebc6",
+    color: "#14532d",
+    fontSize: "0.95rem",
   },
 };

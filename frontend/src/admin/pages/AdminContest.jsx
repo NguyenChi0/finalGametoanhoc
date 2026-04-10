@@ -62,9 +62,11 @@ export default function AdminContest() {
   const [contests, setContests] = useState(MOCK_CONTESTS);
   const [editingContest, setEditingContest] = useState(null);
   const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [editStatus, setEditStatus] = useState("published");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newContestName, setNewContestName] = useState("");
+  const [newContestDescription, setNewContestDescription] = useState("");
   const [newContestStatus, setNewContestStatus] = useState("published");
 
   const selectedStatus = STATUS_OPTIONS.find((item) => item.id === statusId);
@@ -72,6 +74,7 @@ export default function AdminContest() {
   const openEditModal = (contest) => {
     setEditingContest(contest);
     setEditName(contest.name);
+    setEditDescription(contest.description || "");
     setEditStatus(contest.status);
   };
 
@@ -84,7 +87,7 @@ export default function AdminContest() {
     setContests((prev) =>
       prev.map((contest) =>
         contest.id === editingContest.id
-          ? { ...contest, name: editName, status: editStatus }
+          ? { ...contest, name: editName, description: editDescription.trim(), status: editStatus }
           : contest
       )
     );
@@ -94,6 +97,7 @@ export default function AdminContest() {
   const openCreateModal = () => {
     setIsCreateModalOpen(true);
     setNewContestName("");
+    setNewContestDescription("");
     setNewContestStatus("published");
   };
 
@@ -108,7 +112,7 @@ export default function AdminContest() {
       id: nextId,
       name: newContestName.trim(),
       status: newContestStatus,
-      description: "Contest mới vừa được tạo.",
+      description: newContestDescription.trim() || "Chưa có mô tả.",
       examId: null,
     };
     setContests((prev) => [...prev, newContest]);
@@ -209,6 +213,7 @@ export default function AdminContest() {
             <tr>
               <th style={styles.th}>ID</th>
               <th style={styles.th}>Tên contest</th>
+              <th style={styles.th}>Mô tả</th>
               <th style={styles.th}>Exam được chọn</th>
               <th style={styles.th}>Trạng thái</th>
               <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
@@ -219,7 +224,7 @@ export default function AdminContest() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} style={styles.tdEmpty}>
+                <td colSpan={6} style={styles.tdEmpty}>
                   Không có kết quả phù hợp với “{search}”.
                 </td>
               </tr>
@@ -237,6 +242,9 @@ export default function AdminContest() {
                       <td style={styles.td}>{contest.id}</td>
                       <td style={styles.td}>
                         <div style={styles.examName}>{contest.name}</div>
+                      </td>
+                      <td style={{ ...styles.td, color: "#57606a", fontSize: "0.88rem", maxWidth: 280 }}>
+                        <div style={styles.tableDesc}>{contest.description || "—"}</div>
                       </td>
                       <td style={styles.td}>
                         {contest.examId ? (
@@ -284,7 +292,7 @@ export default function AdminContest() {
                     </tr>
                     {isOpen && (
                       <tr>
-                        <td colSpan={5} style={styles.nestedCell}>
+                        <td colSpan={6} style={styles.nestedCell}>
                           <div style={styles.nestedPanel}>
                             <div style={styles.nestedHeader}>
                             </div>
@@ -343,32 +351,50 @@ export default function AdminContest() {
               </button>
             </div>
             <div style={styles.modalBody}>
-              <label style={styles.modalLabel} htmlFor="edit-contest-name">
-                Tên contest
-              </label>
-              <input
-                id="edit-contest-name"
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                style={styles.modalInput}
-              />
+              <div style={styles.modalField}>
+                <label style={styles.modalLabel} htmlFor="edit-contest-name">
+                  Tên contest
+                </label>
+                <input
+                  id="edit-contest-name"
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  style={styles.modalTextInput}
+                />
+              </div>
 
-              <label style={styles.modalLabel} htmlFor="edit-contest-status">
-                Trạng thái
-              </label>
-              <select
-                id="edit-contest-status"
-                value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value)}
-                style={styles.modalInput}
-              >
+              <div style={styles.modalField}>
+                <label style={styles.modalLabel} htmlFor="edit-contest-description">
+                  Mô tả
+                </label>
+                <textarea
+                  id="edit-contest-description"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Mô tả ngắn về contest"
+                  rows={3}
+                  style={styles.modalTextarea}
+                />
+              </div>
+
+              <div style={styles.modalField}>
+                <label style={styles.modalLabel} htmlFor="edit-contest-status">
+                  Trạng thái
+                </label>
+                <select
+                  id="edit-contest-status"
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  style={styles.modalSelect}
+                >
                 {STATUS_OPTIONS.filter((item) => item.id !== "all").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>
+                </select>
+              </div>
             </div>
             <div style={styles.modalActions}>
               <button type="button" style={styles.btnSave} onClick={saveEditModal}>
@@ -394,32 +420,51 @@ export default function AdminContest() {
               </button>
             </div>
             <div style={styles.modalBody}>
-              <label style={styles.modalLabel} htmlFor="create-contest-name">
-                Tên contest
-              </label>
-              <input
-                id="create-contest-name"
-                type="text"
-                value={newContestName}
-                onChange={(e) => setNewContestName(e.target.value)}
-                style={styles.modalInput}
-              />
+              <div style={styles.modalField}>
+                <label style={styles.modalLabel} htmlFor="create-contest-name">
+                  Tên contest
+                </label>
+                <input
+                  id="create-contest-name"
+                  type="text"
+                  value={newContestName}
+                  onChange={(e) => setNewContestName(e.target.value)}
+                  placeholder="Nhập tên contest"
+                  style={styles.modalTextInput}
+                />
+              </div>
 
-              <label style={styles.modalLabel} htmlFor="create-contest-status">
-                Trạng thái
-              </label>
-              <select
-                id="create-contest-status"
-                value={newContestStatus}
-                onChange={(e) => setNewContestStatus(e.target.value)}
-                style={styles.modalInput}
-              >
+              <div style={styles.modalField}>
+                <label style={styles.modalLabel} htmlFor="create-contest-description">
+                  Mô tả
+                </label>
+                <textarea
+                  id="create-contest-description"
+                  value={newContestDescription}
+                  onChange={(e) => setNewContestDescription(e.target.value)}
+                  placeholder="Mô tả ngắn về contest"
+                  rows={3}
+                  style={styles.modalTextarea}
+                />
+              </div>
+
+              <div style={styles.modalField}>
+                <label style={styles.modalLabel} htmlFor="create-contest-status">
+                  Trạng thái
+                </label>
+                <select
+                  id="create-contest-status"
+                  value={newContestStatus}
+                  onChange={(e) => setNewContestStatus(e.target.value)}
+                  style={styles.modalSelect}
+                >
                 {STATUS_OPTIONS.filter((item) => item.id !== "all").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>
+                </select>
+              </div>
             </div>
             <div style={styles.modalActions}>
               <button type="button" style={styles.btnSave} onClick={saveCreateModal}>
@@ -494,7 +539,7 @@ const styles = {
     flexWrap: "wrap",
   },
   crumbLink: {
-    color: "#0969da",
+    color: "#2d5a76",
     textDecoration: "none",
   },
   crumbSep: {
@@ -521,7 +566,7 @@ const styles = {
     padding: "10px 18px",
     borderRadius: 10,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.95rem",
@@ -667,8 +712,17 @@ const styles = {
   },
   examName: {
     fontWeight: 700,
-    color: "#0969da",
+    color: "#2d5a76",
     textAlign: "left",
+  },
+  tableDesc: {
+    margin: 0,
+    lineHeight: 1.45,
+    overflowWrap: "anywhere",
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
   },
   statusBadge: {
     default: {
@@ -678,7 +732,7 @@ const styles = {
       padding: "6px 10px",
       borderRadius: 999,
       background: "#f1f8ff",
-      color: "#0969da",
+      color: "#2d5a76",
       fontSize: "0.82rem",
       fontWeight: 700,
       textTransform: "capitalize",
@@ -702,7 +756,7 @@ const styles = {
       padding: "6px 10px",
       borderRadius: 999,
       background: "#ddf4ff",
-      color: "#0969da",
+      color: "#2d5a76",
       fontSize: "0.82rem",
       fontWeight: 700,
       textTransform: "capitalize",
@@ -741,7 +795,7 @@ const styles = {
   },
   nestedPanel: {
     padding: "14px 16px 16px 28px",
-    borderLeft: "3px solid #0969da",
+    borderLeft: "3px solid #2d5a76",
   },
   nestedHeader: {
     display: "flex",
@@ -812,7 +866,7 @@ const styles = {
     padding: "8px 16px",
     borderRadius: 8,
     border: "none",
-    background: "#0969da",
+    background: "#2d5a76",
     color: "#fff",
     fontWeight: 600,
     fontSize: "0.9rem",
@@ -839,12 +893,14 @@ const styles = {
     padding: 16,
   },
   modal: {
-    width: "min(520px, 100%)",
+    width: "min(520px, calc(100vw - 32px))",
+    maxWidth: "100%",
     background: "#fff",
     borderRadius: 18,
     boxShadow: "0 24px 56px rgba(15, 23, 42, 0.18)",
     padding: 24,
     boxSizing: "border-box",
+    minWidth: 0,
   },
   modalHeader: {
     display: "flex",
@@ -872,18 +928,30 @@ const styles = {
   },
   modalBody: {
     display: "grid",
-    gap: 16,
+    gap: 18,
     marginBottom: 20,
+    minWidth: 0,
+  },
+  modalField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    minWidth: 0,
+    width: "100%",
+    maxWidth: "100%",
   },
   modalLabel: {
     display: "block",
     fontSize: "0.9rem",
     fontWeight: 600,
     color: "#24292f",
-    marginBottom: 8,
+    margin: 0,
   },
-  modalInput: {
+  modalTextInput: {
+    boxSizing: "border-box",
     width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
     padding: "10px 12px",
     borderRadius: 10,
     border: "1px solid #d0d7de",
@@ -891,6 +959,43 @@ const styles = {
     color: "#24292f",
     background: "#fff",
     outline: "none",
+    fontFamily: "inherit",
+    lineHeight: 1.45,
+    overflowWrap: "anywhere",
+  },
+  modalTextarea: {
+    boxSizing: "border-box",
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    fontSize: "0.95rem",
+    color: "#24292f",
+    background: "#fff",
+    outline: "none",
+    fontFamily: "inherit",
+    lineHeight: 1.45,
+    resize: "vertical",
+    minHeight: 88,
+    overflowWrap: "anywhere",
+  },
+  modalSelect: {
+    boxSizing: "border-box",
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    fontSize: "0.95rem",
+    color: "#24292f",
+    background: "#fff",
+    outline: "none",
+    fontFamily: "inherit",
+    lineHeight: 1.45,
+    cursor: "pointer",
   },
   modalActions: {
     display: "flex",
