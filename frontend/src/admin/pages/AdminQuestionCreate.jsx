@@ -229,9 +229,6 @@ export default function AdminQuestionCreate() {
             trắc nghiệm, đánh dấu đáp án đúng.
           </p>
         </div>
-        <Link to="/admin/questions" style={styles.btnGhost}>
-          ← Quay lại danh sách
-        </Link>
       </header>
 
       {error && (
@@ -484,18 +481,6 @@ const styles = {
     fontSize: "0.95rem",
     color: "#57606a",
     lineHeight: 1.5,
-  },
-  btnGhost: {
-    display: "inline-block",
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #d0d7de",
-    background: "#fff",
-    color: "#24292f",
-    fontWeight: 600,
-    fontSize: "0.9rem",
-    textDecoration: "none",
-    whiteSpace: "nowrap",
   },
   errorBanner: {
     padding: "12px 16px",

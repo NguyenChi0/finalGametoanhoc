@@ -159,9 +159,6 @@ export default function AdminQuestionUpdate() {
             Hãy mở từ <strong>Quản lý câu hỏi</strong> → nút chỉnh sửa (bút) trên một dòng. Truy cập trực
             tiếp URL hoặc F5 sẽ mất <code style={styles.code}>location.state</code>.
           </p>
-          <Link to="/admin/questions" style={styles.btnGhost}>
-            ← Quay lại danh sách
-          </Link>
         </div>
       </div>
     );
@@ -189,9 +186,6 @@ export default function AdminQuestionUpdate() {
             đáp án đúng.
           </p>
         </div>
-        <Link to="/admin/questions" style={styles.btnGhost}>
-          ← Quay lại danh sách
-        </Link>
       </header>
 
       <p style={styles.demoBanner}>
@@ -374,18 +368,6 @@ const styles = {
     fontSize: "0.95rem",
     color: "#57606a",
     lineHeight: 1.5,
-  },
-  btnGhost: {
-    display: "inline-block",
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #d0d7de",
-    background: "#fff",
-    color: "#24292f",
-    fontWeight: 600,
-    fontSize: "0.9rem",
-    textDecoration: "none",
-    whiteSpace: "nowrap",
   },
   demoBanner: {
     margin: "0 0 16px",
