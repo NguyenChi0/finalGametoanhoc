@@ -1,5 +1,18 @@
 import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+/** Draft gửi sang trang cập nhật exam (demo — pool câu hỏi 1–12 ở AdminExamUpdate). */
+function buildExamEditDraft(row, questionsInExam) {
+  const n = (questionsInExam || []).length;
+  const k = n > 0 ? Math.min(n, 12) : 3;
+  const selectedQuestionIds = Array.from({ length: k }, (_, i) => i + 1);
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    selectedQuestionIds,
+  };
+}
 
 /** Khối lớp demo — chưa nối API */
 const GRADE_OPTIONS = [
@@ -53,6 +66,7 @@ function initialQuestionsByExam() {
 }
 
 export default function AdminExams() {
+  const navigate = useNavigate();
   const [gradeId, setGradeId] = useState("1");
   const [search, setSearch] = useState("");
   const [expandedExamId, setExpandedExamId] = useState("1");
@@ -200,8 +214,14 @@ export default function AdminExams() {
                         <button
                           type="button"
                           style={styles.iconBtn}
-                          title="Chỉnh sửa"
-                          onClick={() => {}}
+                          title="Chỉnh sửa đề"
+                          onClick={() =>
+                            navigate("/admin/exams/edit", {
+                              state: {
+                                draft: buildExamEditDraft(row, questionsByExamId[row.id]),
+                              },
+                            })
+                          }
                         >
                           <PencilIcon />
                         </button>

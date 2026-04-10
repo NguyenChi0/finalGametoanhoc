@@ -5,11 +5,13 @@ import AdminLayout from "./components/AdminLayout";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminQuestions from "./pages/AdminQuestions";
 import AdminQuestionCreate from "./pages/AdminQuestionCreate";
+import AdminQuestionUpdate from "./pages/AdminQuestionUpdate";
 import AdminGrades from "./pages/AdminGrades";
 import AdminMathTypes from "./pages/AdminMathTypes";
 import AdminContest from "./pages/AdminContest";
 import AdminExams from "./pages/AdminExams";
 import AdminExamCreate from "./pages/AdminExamCreate";
+import AdminExamUpdate from "./pages/AdminExamUpdate";
 import AdminUsers from "./pages/AdminUsers";
 
 /** Chunk admin — nested routes dưới /admin/* */
@@ -20,6 +22,7 @@ export default function AdminShell() {
         <Route element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="questions/new" element={<AdminQuestionCreate />} />
+          <Route path="questions/edit" element={<AdminQuestionUpdate />} />
           <Route path="questions" element={<AdminQuestions />} />
           <Route path="grades" element={<AdminGrades />} />
           <Route path="math-types" element={<AdminMathTypes />} />
@@ -27,6 +30,7 @@ export default function AdminShell() {
           <Route path="operations" element={<Navigate to="../math-types" replace />} />
           <Route path="contest" element={<AdminContest />} />
           <Route path="exams/new" element={<AdminExamCreate />} />
+          <Route path="exams/edit" element={<AdminExamUpdate />} />
           <Route path="exams" element={<AdminExams />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />

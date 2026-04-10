@@ -1,5 +1,29 @@
 import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+/** Một dòng bảng mock → payload đưa sang trang sửa (demo, không gọi API). */
+function buildQuestionEditDraft(row) {
+  const correctText = row.answer.replace(/^[A-D]\.\s*/i, "").trim() || row.answer;
+  return {
+    id: row.id,
+    gradeLabel: row.grade,
+    subjectLabel: row.subject,
+    lessonLabel: row.lesson,
+    gradeLine: row.gradeLine,
+    topicLine: row.topicLine,
+    typeLabel: row.typeLabel,
+    questionText: row.content,
+    answers: [
+      correctText,
+      `${correctText} (nhiễu 1)`,
+      `${correctText} (nhiễu 2)`,
+      "Phương án D — demo",
+    ],
+    correctIndex: 0,
+    questionImage: "",
+    questionImagePreview: "",
+  };
+}
 
 /** Giao diện tĩnh (mock) — chưa nối API */
 const TOTAL_QUESTIONS = 4939;
@@ -103,6 +127,7 @@ const LESSON_OPTIONS = [
 ];
 
 export default function AdminQuestions() {
+  const navigate = useNavigate();
   const [selectedGrade, setSelectedGrade] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedLesson, setSelectedLesson] = useState("");
@@ -292,9 +317,18 @@ export default function AdminQuestions() {
                   </td>
                   <td style={{ ...styles.td, textAlign: "right" }}>
                     <div style={styles.actionGroup}>
-                      <span style={styles.actionBtn} title="Sửa">
+                      <button
+                        type="button"
+                        style={styles.actionBtn}
+                        title="Chỉnh sửa câu hỏi"
+                        onClick={() =>
+                          navigate("/admin/questions/edit", {
+                            state: { draft: buildQuestionEditDraft(row) },
+                          })
+                        }
+                      >
                         <PencilIcon />
-                      </span>
+                      </button>
                       <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
                         <TrashIcon />
                       </span>
@@ -654,7 +688,9 @@ const styles = {
     borderRadius: 8,
     border: "1px solid #d0d7de",
     background: "#f6f8fa",
-    cursor: "default",
+    cursor: "pointer",
+    padding: 0,
+    fontFamily: "inherit",
   },
   actionBtnDanger: {
     background: "#fff8f8",
