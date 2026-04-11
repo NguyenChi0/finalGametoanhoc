@@ -1,5 +1,19 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const fn = () => setMatches(m.matches);
+    fn();
+    m.addEventListener("change", fn);
+    return () => m.removeEventListener("change", fn);
+  }, [query]);
+  return matches;
+}
 
 /** Một dòng bảng mock → payload đưa sang trang sửa (demo, không gọi API). */
 function buildQuestionEditDraft(row) {
@@ -40,7 +54,7 @@ const MOCK_ROWS = [
     lesson: "Các số trong phạm vi 1000",
     gradeLine: "Lớp 2 > Toán 2",
     topicLine: "Các số trong phạm vi 1000 > Giá trị của chữ số -...",
-    createdAt: "14:55 06/04/2026",
+    createdAt: "14:55 06/04/2026", // vẫn giữ trong mock nếu cần, nhưng không hiển thị
   },
   {
     id: 2,
@@ -128,6 +142,7 @@ const LESSON_OPTIONS = [
 
 export default function AdminQuestions() {
   const navigate = useNavigate();
+  const isNarrow = useMediaQuery("(max-width: 768px)");
   const [selectedGrade, setSelectedGrade] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedLesson, setSelectedLesson] = useState("");
@@ -281,76 +296,118 @@ export default function AdminQuestions() {
         </section>
       )}
 
-      <div style={styles.tableWrap}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ ...styles.th, width: 44 }} aria-label="Chọn" />
-              <th style={{ ...styles.th, width: 72 }}>ID</th>
-              <th style={styles.th}>Nội dung câu hỏi</th>
-              <th style={{ ...styles.th, width: 100 }}>Đáp án</th>
-              <th style={{ ...styles.th, minWidth: 220 }}>Phân cấp</th>
-              <th style={{ ...styles.th, width: 130 }}>Ngày tạo</th>
-              <th style={{ ...styles.th, width: 120, textAlign: "right" }}>
-                Thao tác
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.length > 0 ? (
-              filteredRows.map((row) => (
-                <tr key={row.id}>
-                  <td style={styles.td}>
-                    <span style={styles.checkboxMock} aria-hidden />
-                  </td>
-                  <td style={styles.td}>{row.id}</td>
-                  <td style={{ ...styles.td, ...styles.tdContent }}>{row.content}</td>
-                  <td style={{ ...styles.td, fontWeight: 600 }}>{row.answer}</td>
-                  <td style={styles.td}>
-                    <div style={styles.hierarchy}>
-                      <span style={styles.hierarchyMain}>{row.gradeLine}</span>
-                      <span style={styles.hierarchySub}>{row.topicLine}</span>
-                    </div>
-                  </td>
-                  <td style={{ ...styles.td, color: "#57606a", whiteSpace: "nowrap" }}>
-                    {row.createdAt}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: "right" }}>
-                    <div style={styles.actionGroup}>
-                      <button
-                        type="button"
-                        style={styles.actionBtn}
-                        title="Chỉnh sửa câu hỏi"
-                        onClick={() =>
-                          navigate("/admin/questions/edit", {
-                            state: { draft: buildQuestionEditDraft(row) },
-                          })
-                        }
-                      >
-                        <PencilIcon />
-                      </button>
-                      <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
-                        <TrashIcon />
-                      </span>
-                    </div>
+      {isNarrow ? (
+        <div style={styles.cardList}>
+          {filteredRows.length > 0 ? (
+            filteredRows.map((row) => (
+              <article key={row.id} style={styles.questionCard}>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>ID</span>
+                  <span style={styles.cardValue}>{row.id}</span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Nội dung câu hỏi</span>
+                  <span style={{ ...styles.cardValue, ...styles.cardValueMultiline }}>
+                    {row.content}
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Đáp án</span>
+                  <span style={{ ...styles.cardValue, fontWeight: 600 }}>{row.answer}</span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Phân cấp</span>
+                  <div style={styles.hierarchyInCard}>
+                    <span style={styles.hierarchyMain}>{row.gradeLine}</span>
+                    <span style={styles.hierarchySub}>{row.topicLine}</span>
+                  </div>
+                </div>
+                <div style={styles.cardActions}>
+                  <button
+                    type="button"
+                    style={styles.actionBtn}
+                    title="Chỉnh sửa câu hỏi"
+                    onClick={() =>
+                      navigate("/admin/questions/edit", {
+                        state: { draft: buildQuestionEditDraft(row) },
+                      })
+                    }
+                  >
+                    <PencilIcon />
+                  </button>
+                  <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
+                    <TrashIcon />
+                  </span>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div style={styles.cardEmpty}>Không có câu hỏi nào khớp với bộ lọc.</div>
+          )}
+        </div>
+      ) : (
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={{ ...styles.th, width: 72 }}>ID</th>
+                <th style={styles.th}>Nội dung câu hỏi</th>
+                <th style={{ ...styles.th, width: 100 }}>Đáp án</th>
+                <th style={{ ...styles.th, minWidth: 220 }}>Phân cấp</th>
+                <th style={{ ...styles.th, width: 120, textAlign: "right" }}>
+                  Thao tác
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.length > 0 ? (
+                filteredRows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={styles.td}>{row.id}</td>
+                    <td style={{ ...styles.td, ...styles.tdContent }}>{row.content}</td>
+                    <td style={{ ...styles.td, fontWeight: 600 }}>{row.answer}</td>
+                    <td style={styles.td}>
+                      <div style={styles.hierarchy}>
+                        <span style={styles.hierarchyMain}>{row.gradeLine}</span>
+                        <span style={styles.hierarchySub}>{row.topicLine}</span>
+                      </div>
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      <div style={styles.actionGroup}>
+                        <button
+                          type="button"
+                          style={styles.actionBtn}
+                          title="Chỉnh sửa câu hỏi"
+                          onClick={() =>
+                            navigate("/admin/questions/edit", {
+                              state: { draft: buildQuestionEditDraft(row) },
+                            })
+                          }
+                        >
+                          <PencilIcon />
+                        </button>
+                        <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
+                          <TrashIcon />
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td style={styles.emptyState} colSpan={5}>
+                    Không có câu hỏi nào khớp với bộ lọc.
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td style={styles.emptyState} colSpan={7}>
-                  Không có câu hỏi nào khớp với bộ lọc.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
-
+// Icons
 function PlusIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -384,15 +441,6 @@ function ChevronDownIcon() {
   );
 }
 
-function EyeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#57606a" strokeWidth="2">
-      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
 function PencilIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#57606a" strokeWidth="2">
@@ -410,6 +458,7 @@ function TrashIcon() {
   );
 }
 
+// Styles
 const styles = {
   root: {
     width: "100%",
@@ -602,6 +651,73 @@ const styles = {
     color: "#57606a",
     fontSize: "0.95rem",
   },
+  cardList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+  },
+  questionCard: {
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+    padding: "16px 14px",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  },
+  cardField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginBottom: 14,
+    minWidth: 0,
+  },
+  cardLabel: {
+    fontSize: "0.68rem",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "#57606a",
+  },
+  cardValue: {
+    fontSize: "0.9rem",
+    color: "#24292f",
+    lineHeight: 1.5,
+    wordBreak: "break-word",
+    overflowWrap: "break-word",
+  },
+  cardValueMultiline: {
+    lineHeight: 1.55,
+  },
+  hierarchyInCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    minWidth: 0,
+    maxWidth: "100%",
+  },
+  cardActions: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingTop: 12,
+    marginTop: 4,
+    borderTop: "1px solid #eaeef2",
+  },
+  cardEmpty: {
+    padding: "28px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
   tableWrap: {
     width: "100%",
     overflowX: "auto",
@@ -615,18 +731,17 @@ const styles = {
     fontSize: "0.875rem",
     minWidth: 960,
   },
-  // Trong object styles, tìm phần th (khoảng dòng 500+)
-th: {
-  textAlign: "left",
-  padding: "14px 16px",
-  background: "#2d5a76",  
-  color: "#fff",       
-  fontWeight: 700,
-  fontSize: "0.7rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  borderBottom: "1px solid #d0d7de",
-},
+  th: {
+    textAlign: "left",
+    padding: "14px 16px",
+    background: "#2d5a76",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: "0.7rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    borderBottom: "1px solid #d0d7de",
+  },
   td: {
     padding: "14px 16px",
     borderBottom: "1px solid #eaeef2",
@@ -636,26 +751,6 @@ th: {
   tdContent: {
     lineHeight: 1.5,
     maxWidth: 360,
-  },
-  checkboxMock: {
-    display: "inline-block",
-    width: 16,
-    height: 16,
-    border: "1px solid #d0d7de",
-    borderRadius: 4,
-    background: "#fff",
-    verticalAlign: "middle",
-  },
-  badge: {
-    display: "inline-block",
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: "0.8rem",
-    fontWeight: 600,
-    background: "#dafbe1",
-    color: "#1a7f37",
-    border: "1px solid #aceebb",
-    whiteSpace: "nowrap",
   },
   hierarchy: {
     display: "flex",

@@ -1,5 +1,19 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const fn = () => setMatches(m.matches);
+    fn();
+    m.addEventListener("change", fn);
+    return () => m.removeEventListener("change", fn);
+  }, [query]);
+  return matches;
+}
 
 const STATUS_OPTIONS = [
   { id: "all", name: "Tất cả trạng thái" },
@@ -56,6 +70,7 @@ const MOCK_CONTESTS = [
 ];
 
 export default function AdminContest() {
+  const isNarrow = useMediaQuery("(max-width: 768px)");
   const [statusId, setStatusId] = useState("all");
   const [search, setSearch] = useState("");
   const [expandedContestId, setExpandedContestId] = useState("101");
@@ -137,6 +152,36 @@ export default function AdminContest() {
     setExpandedContestId((prev) => (prev === id ? null : id));
   };
 
+  const renderExamAssignment = (contest, detailsStyle = {}) => (
+    <div style={{ ...styles.contestDetails, ...detailsStyle }}>
+      <div style={styles.detailRow}>
+        <label style={styles.detailLabel} htmlFor={`exam-select-${contest.id}`}>
+          Chọn exam cho contest
+        </label>
+        <select
+          id={`exam-select-${contest.id}`}
+          style={styles.detailSelect}
+          defaultValue={contest.examId || ""}
+        >
+          <option value="">-- Chọn exam --</option>
+          {MOCK_EXAMS.map((exam) => (
+            <option key={exam.id} value={exam.id}>
+              {exam.name} ({exam.grade})
+            </option>
+          ))}
+        </select>
+      </div>
+      <div style={styles.detailActions}>
+        <button type="button" style={styles.btnSave}>
+          Lưu thay đổi
+        </button>
+        <button type="button" style={styles.btnCancel}>
+          Hủy
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div style={styles.root}>
       <nav style={styles.breadcrumb} aria-label="Breadcrumb">
@@ -207,136 +252,176 @@ export default function AdminContest() {
         </div>
       </div>
 
-      <div style={styles.tableWrap}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>Tên contest</th>
-              <th style={styles.th}>Mô tả</th>
-              <th style={styles.th}>Exam được chọn</th>
-              <th style={styles.th}>Trạng thái</th>
-              <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
-                Thao tác
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+      {isNarrow ? (
+        <div style={styles.cardList}>
+          {filtered.length === 0 ? (
+            <div style={styles.cardEmpty}>Không có kết quả phù hợp với “{search}”.</div>
+          ) : (
+            filtered.map((contest) => (
+              <article key={contest.id} style={styles.contestCard}>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>ID</span>
+                  <span style={styles.cardValue}>{contest.id}</span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Tên contest</span>
+                  <span style={{ ...styles.cardValue, fontWeight: 700, color: "#2d5a76" }}>
+                    {contest.name}
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Mô tả</span>
+                  <span style={{ ...styles.cardValue, color: "#57606a", fontSize: "0.88rem" }}>
+                    {contest.description || "—"}
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Exam được chọn</span>
+                  {contest.examId ? (
+                    <span>
+                      <span style={{ ...styles.cardValue, fontWeight: 700, color: "#2d5a76", display: "block" }}>
+                        {MOCK_EXAMS.find((e) => e.id === contest.examId)?.name}
+                      </span>
+                      <span style={styles.mutedSmall}>{MOCK_EXAMS.find((e) => e.id === contest.examId)?.grade}</span>
+                    </span>
+                  ) : (
+                    <span style={styles.mutedSmall}>Chưa chọn exam</span>
+                  )}
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Trạng thái</span>
+                  <span>
+                    <span style={styles.statusBadge[contest.status] || styles.statusBadge.default}>
+                      {STATUS_OPTIONS.find((item) => item.id === contest.status)?.name || contest.status}
+                    </span>
+                  </span>
+                </div>
+                <div style={styles.cardExamWrap}>
+                  {renderExamAssignment(contest, { marginTop: 0 })}
+                </div>
+                <div style={styles.cardActions}>
+                  <button
+                    type="button"
+                    style={styles.iconBtn}
+                    title="Chỉnh sửa"
+                    onClick={() => openEditModal(contest)}
+                  >
+                    <PencilIcon />
+                  </button>
+                  <button type="button" style={styles.iconBtn} title="Xóa" onClick={() => {}}>
+                    <TrashIcon />
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      ) : (
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
               <tr>
-                <td colSpan={6} style={styles.tdEmpty}>
-                  Không có kết quả phù hợp với “{search}”.
-                </td>
+                <th style={styles.th}>ID</th>
+                <th style={styles.th}>Tên contest</th>
+                <th style={styles.th}>Mô tả</th>
+                <th style={styles.th}>Exam được chọn</th>
+                <th style={styles.th}>Trạng thái</th>
+                <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
+                  Thao tác
+                </th>
               </tr>
-            ) : (
-              filtered.map((contest) => {
-                const cid = String(contest.id);
-                const isOpen = expandedContestId === cid;
-                return (
-                  <React.Fragment key={contest.id}>
-                    <tr
-                      style={styles.dataRow}
-                      onClick={() => toggleExpand(contest)}
-                      aria-expanded={isOpen}
-                    >
-                      <td style={styles.td}>{contest.id}</td>
-                      <td style={styles.td}>
-                        <div style={styles.examName}>{contest.name}</div>
-                      </td>
-                      <td style={{ ...styles.td, color: "#57606a", fontSize: "0.88rem", maxWidth: 280 }}>
-                        <div style={styles.tableDesc}>{contest.description || "—"}</div>
-                      </td>
-                      <td style={styles.td}>
-                        {contest.examId ? (
-                          <div>
-                            <div style={styles.examName}>
-                              {MOCK_EXAMS.find(e => e.id === contest.examId)?.name}
-                            </div>
-                            <div style={styles.mutedSmall}>
-                              {MOCK_EXAMS.find(e => e.id === contest.examId)?.grade}
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={styles.mutedSmall}>Chưa chọn exam</div>
-                        )}
-                      </td>
-                      <td style={styles.td}>
-                        <span style={styles.statusBadge[contest.status] || styles.statusBadge.default}>
-                          {STATUS_OPTIONS.find((item) => item.id === contest.status)?.name || contest.status}
-                        </span>
-                      </td>
-                      <td
-                        style={{ ...styles.td, textAlign: "right" }}
-                        onClick={(e) => e.stopPropagation()}
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={styles.tdEmpty}>
+                    Không có kết quả phù hợp với “{search}”.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((contest) => {
+                  const cid = String(contest.id);
+                  const isOpen = expandedContestId === cid;
+                  return (
+                    <React.Fragment key={contest.id}>
+                      <tr
+                        style={styles.dataRow}
+                        onClick={() => toggleExpand(contest)}
+                        aria-expanded={isOpen}
                       >
-                        <button
-                          type="button"
-                          style={styles.iconBtn}
-                          title="Chỉnh sửa"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditModal(contest);
-                          }}
-                        >
-                          <PencilIcon />
-                        </button>
-                        <button
-                          type="button"
-                          style={{ ...styles.iconBtn, marginLeft: 8 }}
-                          title="Xóa"
-                          onClick={() => {}}
-                        >
-                          <TrashIcon />
-                        </button>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={6} style={styles.nestedCell}>
-                          <div style={styles.nestedPanel}>
-                            <div style={styles.nestedHeader}>
-                            </div>
-                            <div style={styles.contestDetails}>
-                              <div style={styles.detailRow}>
-                                <label style={styles.detailLabel} htmlFor={`exam-select-${contest.id}`}>
-                                  Chọn exam cho contest
-                                </label>
-                                <select
-                                  id={`exam-select-${contest.id}`}
-                                  style={styles.detailSelect}
-                                  defaultValue={contest.examId || ""}
-                                >
-                                  <option value="">-- Chọn exam --</option>
-                                  {MOCK_EXAMS.map((exam) => (
-                                    <option key={exam.id} value={exam.id}>
-                                      {exam.name} ({exam.grade})
-                                    </option>
-                                  ))}
-                                </select>
+                        <td style={styles.td}>{contest.id}</td>
+                        <td style={styles.td}>
+                          <div style={styles.examName}>{contest.name}</div>
+                        </td>
+                        <td style={{ ...styles.td, color: "#57606a", fontSize: "0.88rem", maxWidth: 280 }}>
+                          <div style={styles.tableDesc}>{contest.description || "—"}</div>
+                        </td>
+                        <td style={styles.td}>
+                          {contest.examId ? (
+                            <div>
+                              <div style={styles.examName}>
+                                {MOCK_EXAMS.find((e) => e.id === contest.examId)?.name}
                               </div>
-                              <div style={styles.detailActions}>
-                                <button type="button" style={styles.btnSave}>
-                                  Lưu thay đổi
-                                </button>
-                                <button type="button" style={styles.btnCancel}>
-                                  Hủy
-                                </button>
+                              <div style={styles.mutedSmall}>
+                                {MOCK_EXAMS.find((e) => e.id === contest.examId)?.grade}
                               </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div style={styles.mutedSmall}>Chưa chọn exam</div>
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          <span style={styles.statusBadge[contest.status] || styles.statusBadge.default}>
+                            {STATUS_OPTIONS.find((item) => item.id === contest.status)?.name || contest.status}
+                          </span>
+                        </td>
+                        <td
+                          style={{ ...styles.td, textAlign: "right" }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            style={styles.iconBtn}
+                            title="Chỉnh sửa"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(contest);
+                            }}
+                          >
+                            <PencilIcon />
+                          </button>
+                          <button
+                            type="button"
+                            style={{ ...styles.iconBtn, marginLeft: 8 }}
+                            title="Xóa"
+                            onClick={() => {}}
+                          >
+                            <TrashIcon />
+                          </button>
                         </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={6} style={styles.nestedCell}>
+                            <div style={styles.nestedPanel}>
+                              <div style={styles.nestedHeader} />
+                              {renderExamAssignment(contest)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <p style={styles.demoNote}>
-        Giao diện demo — chưa nối API. Bấm dòng để xem/điều chỉnh chi tiết contest và chọn exam.
+        Giao diện demo — chưa nối API. Trên màn hình lớn: bấm dòng để mở phần chọn exam. Trên mobile: danh sách dạng thẻ,
+        phần chọn exam luôn hiển thị ngay trong từng thẻ.
       </p>
 
       {editingContest && (
@@ -673,6 +758,73 @@ const styles = {
     flexShrink: 0,
     padding: "0 12px 0 4px",
   },
+  cardList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+  },
+  contestCard: {
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+    padding: "16px 14px",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  },
+  cardField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginBottom: 14,
+    minWidth: 0,
+  },
+  cardLabel: {
+    fontSize: "0.68rem",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "#57606a",
+  },
+  cardValue: {
+    fontSize: "0.9rem",
+    color: "#24292f",
+    lineHeight: 1.5,
+    wordBreak: "break-word",
+    overflowWrap: "break-word",
+  },
+  cardExamWrap: {
+    marginBottom: 14,
+    padding: "14px 12px 16px",
+    background: "#f6f8fa",
+    border: "1px solid #e1e4e8",
+    borderLeft: "3px solid #2d5a76",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  },
+  cardActions: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingTop: 12,
+    marginTop: 4,
+    borderTop: "1px solid #eaeef2",
+  },
+  cardEmpty: {
+    padding: "28px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
   tableWrap: {
     width: "100%",
     overflowX: "auto",
@@ -684,6 +836,7 @@ const styles = {
     width: "100%",
     borderCollapse: "collapse",
     fontSize: "0.9rem",
+    minWidth: 960,
   },
   th: {
   textAlign: "left",
@@ -837,6 +990,10 @@ const styles = {
     outline: "none",
   },
   detailSelect: {
+    boxSizing: "border-box",
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
     padding: "10px 12px",
     borderRadius: 8,
     border: "1px solid #d0d7de",

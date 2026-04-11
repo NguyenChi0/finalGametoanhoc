@@ -1,8 +1,22 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-/** Giao diện demo — chưa nối API */
-const MOCK_USERS = [
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const fn = () => setMatches(m.matches);
+    fn();
+    m.addEventListener("change", fn);
+    return () => m.removeEventListener("change", fn);
+  }, [query]);
+  return matches;
+}
+
+/** Dữ liệu mẫu ban đầu */
+const INITIAL_USERS = [
   {
     id: 1,
     username: "admin",
@@ -91,12 +105,28 @@ function TrashIcon() {
 }
 
 export default function AdminUsers() {
+  const isNarrow = useMediaQuery("(max-width: 768px)");
+  const [users, setUsers] = useState(INITIAL_USERS);
   const [search, setSearch] = useState("");
+
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState("edit"); // "edit" or "add"
+  const [editingUser, setEditingUser] = useState(null); // chỉ dùng khi edit
+  const [editForm, setEditForm] = useState({
+    username: "",
+    week_score: 0,
+    score: 0,
+    role: 0,
+    email: "",
+    phone: "",
+    password: "",
+  });
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return MOCK_USERS;
-    return MOCK_USERS.filter((u) => {
+    if (!q) return users;
+    return users.filter((u) => {
       const blob = [
         u.id,
         u.username,
@@ -110,7 +140,113 @@ export default function AdminUsers() {
         .toLowerCase();
       return blob.includes(q);
     });
-  }, [search]);
+  }, [search, users]);
+
+  const openEditModal = (user) => {
+    setModalMode("edit");
+    setEditingUser(user);
+    setEditForm({
+      username: user.username,
+      week_score: user.week_score,
+      score: user.score,
+      role: user.role,
+      email: user.email || "",
+      phone: user.phone || "",
+      password: "",
+    });
+    setShowModal(true);
+  };
+
+  const openAddModal = () => {
+    setModalMode("add");
+    setEditingUser(null);
+    setEditForm({
+      username: "",
+      week_score: 0,
+      score: 0,
+      role: 0,
+      email: "",
+      phone: "",
+      password: "",
+    });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingUser(null);
+    setEditForm({
+      username: "",
+      week_score: 0,
+      score: 0,
+      role: 0,
+      email: "",
+      phone: "",
+      password: "",
+    });
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm((prev) => ({
+      ...prev,
+      [name]: name === "week_score" || name === "score" ? Number(value) : value,
+    }));
+  };
+
+  const handleSave = () => {
+    // Validate required fields
+    if (!editForm.username.trim()) {
+      alert("Username không được để trống");
+      return;
+    }
+
+    if (modalMode === "edit" && editingUser) {
+      // Cập nhật user hiện có
+      const updatedUser = {
+        ...editingUser,
+        username: editForm.username.trim(),
+        week_score: editForm.week_score,
+        score: editForm.score,
+        role: editForm.role,
+        email: editForm.email.trim() || null,
+        phone: editForm.phone.trim() || null,
+      };
+      if (editForm.password.trim()) {
+        updatedUser.password = editForm.password.trim();
+        console.log(`[Demo] Đổi mật khẩu cho user ${updatedUser.username}: ${editForm.password}`);
+      }
+      setUsers((prevUsers) =>
+        prevUsers.map((u) => (u.id === editingUser.id ? updatedUser : u))
+      );
+    } else if (modalMode === "add") {
+      // Tạo user mới
+      const newId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
+      const now = new Date();
+      const createdAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const newUser = {
+        id: newId,
+        username: editForm.username.trim(),
+        week_score: editForm.week_score,
+        score: editForm.score,
+        role: editForm.role,
+        email: editForm.email.trim() || null,
+        phone: editForm.phone.trim() || null,
+        created_at: createdAt,
+      };
+      if (editForm.password.trim()) {
+        newUser.password = editForm.password.trim();
+        console.log(`[Demo] Mật khẩu cho user mới ${newUser.username}: ${editForm.password}`);
+      }
+      setUsers((prevUsers) => [...prevUsers, newUser]);
+    }
+
+    closeModal();
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Escape") closeModal();
+  };
 
   return (
     <div style={styles.root}>
@@ -132,8 +268,8 @@ export default function AdminUsers() {
         <button
           type="button"
           style={styles.btnPrimary}
-          title="Sắp nối API"
-          onClick={() => {}}
+          title="Tạo user mới"
+          onClick={openAddModal}
         >
           <span style={styles.btnIcon} aria-hidden>
             <PlusIcon />
@@ -145,7 +281,7 @@ export default function AdminUsers() {
       <div style={styles.toolbar}>
         <p style={styles.statLine}>
           Tổng số user :{" "}
-          <span style={styles.statNumber}>{MOCK_USERS.length}</span>
+          <span style={styles.statNumber}>{users.length}</span>
         </p>
         <div style={styles.searchWrap}>
           <input
@@ -162,89 +298,272 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      <div style={styles.tableWrap}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ ...styles.th, whiteSpace: "nowrap" }}>User ID</th>
-              <th style={styles.th}>Username</th>
-              <th style={{ ...styles.th, textAlign: "right" }}>Điểm tuần</th>
-              <th style={{ ...styles.th, textAlign: "right" }}>Điểm tất cả</th>
-              <th style={styles.th}>Vai trò</th>
-              <th style={styles.th}>Email</th>
-              <th style={styles.th}>Số điện thoại</th>
-              <th style={{ ...styles.th, whiteSpace: "nowrap" }}>
-                Thời gian tạo nick
-              </th>
-              <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
-                Thao tác
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={9} style={styles.tdEmpty}>
-                  Không có kết quả phù hợp với “{search}”.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((u) => (
-                <tr key={u.id}>
-                  <td style={styles.td}>{u.id}</td>
-                  <td style={{ ...styles.td, fontWeight: 700 }}>{u.username}</td>
-                  <td style={{ ...styles.td, textAlign: "right" }}>
+      {isNarrow ? (
+        <div style={styles.cardList}>
+          {filtered.length === 0 ? (
+            <div style={styles.cardEmpty}>
+              Không có kết quả phù hợp với “{search}”.
+            </div>
+          ) : (
+            filtered.map((u) => (
+              <article key={u.id} style={styles.userCard}>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>User ID</span>
+                  <span style={styles.cardValue}>{u.id}</span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Username</span>
+                  <span style={{ ...styles.cardValue, fontWeight: 700 }}>{u.username}</span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Điểm tuần</span>
+                  <span style={{ ...styles.cardValue, fontWeight: 600 }}>
                     {u.week_score != null ? u.week_score.toLocaleString("vi-VN") : "—"}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: "right" }}>
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Điểm tất cả</span>
+                  <span style={{ ...styles.cardValue, fontWeight: 600 }}>
                     {u.score != null ? u.score.toLocaleString("vi-VN") : "—"}
-                  </td>
-                  <td style={styles.td}>
-                    <span
-                      style={
-                        u.role === 1 ? styles.badgeAdmin : styles.badgeUser
-                      }
-                    >
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Vai trò</span>
+                  <span>
+                    <span style={u.role === 1 ? styles.badgeAdmin : styles.badgeUser}>
                       {roleLabel(u.role)}
                     </span>
-                  </td>
-                  <td style={{ ...styles.td, color: "#57606a" }}>
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Email</span>
+                  <span style={{ ...styles.cardValue, color: "#57606a" }}>
                     {u.email || "—"}
-                  </td>
-                  <td style={{ ...styles.td, color: "#57606a" }}>
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Số điện thoại</span>
+                  <span style={{ ...styles.cardValue, color: "#57606a" }}>
                     {u.phone || "—"}
-                  </td>
-                  <td style={{ ...styles.td, whiteSpace: "nowrap", fontSize: "0.88rem" }}>
+                  </span>
+                </div>
+                <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Thời gian tạo nick</span>
+                  <span style={{ ...styles.cardValue, fontSize: "0.88rem" }}>
                     {formatDateTime(u.created_at)}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: "right" }}>
-                    <button
-                      type="button"
-                      style={styles.iconBtn}
-                      title="Chỉnh sửa (demo)"
-                      onClick={() => {}}
-                    >
-                      <PencilIcon />
-                    </button>
-                    <button
-                      type="button"
-                      style={{ ...styles.iconBtn, marginLeft: 8 }}
-                      title="Xóa (demo)"
-                      onClick={() => {}}
-                    >
-                      <TrashIcon />
-                    </button>
+                  </span>
+                </div>
+                <div style={styles.cardActions}>
+                  <button
+                    type="button"
+                    style={styles.iconBtn}
+                    title="Chỉnh sửa"
+                    onClick={() => openEditModal(u)}
+                  >
+                    <PencilIcon />
+                  </button>
+                  <button type="button" style={styles.iconBtn} title="Xóa (demo)" onClick={() => {}}>
+                    <TrashIcon />
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      ) : (
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={{ ...styles.th, whiteSpace: "nowrap" }}>User ID</th>
+                <th style={styles.th}>Username</th>
+                <th style={{ ...styles.th, textAlign: "right" }}>Điểm tuần</th>
+                <th style={{ ...styles.th, textAlign: "right" }}>Điểm tất cả</th>
+                <th style={styles.th}>Vai trò</th>
+                <th style={styles.th}>Email</th>
+                <th style={styles.th}>Số điện thoại</th>
+                <th style={{ ...styles.th, whiteSpace: "nowrap" }}>
+                  Thời gian tạo nick
+                </th>
+                <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
+                  Thao tác
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={styles.tdEmpty}>
+                    Không có kết quả phù hợp với “{search}”.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                filtered.map((u) => (
+                  <tr key={u.id}>
+                    <td style={styles.td}>{u.id}</td>
+                    <td style={{ ...styles.td, fontWeight: 700 }}>{u.username}</td>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      {u.week_score != null ? u.week_score.toLocaleString("vi-VN") : "—"}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      {u.score != null ? u.score.toLocaleString("vi-VN") : "—"}
+                    </td>
+                    <td style={styles.td}>
+                      <span
+                        style={
+                          u.role === 1 ? styles.badgeAdmin : styles.badgeUser
+                        }
+                      >
+                        {roleLabel(u.role)}
+                      </span>
+                    </td>
+                    <td style={{ ...styles.td, color: "#57606a" }}>
+                      {u.email || "—"}
+                    </td>
+                    <td style={{ ...styles.td, color: "#57606a" }}>
+                      {u.phone || "—"}
+                    </td>
+                    <td style={{ ...styles.td, whiteSpace: "nowrap", fontSize: "0.88rem" }}>
+                      {formatDateTime(u.created_at)}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      <button
+                        type="button"
+                        style={styles.iconBtn}
+                        title="Chỉnh sửa"
+                        onClick={() => openEditModal(u)}
+                      >
+                        <PencilIcon />
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...styles.iconBtn, marginLeft: 8 }}
+                        title="Xóa (demo)"
+                        onClick={() => {}}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <p style={styles.demoNote}>
         Giao diện demo với dữ liệu mẫu. Kết nối API admin để đồng bộ cơ sở dữ liệu.
       </p>
+
+      {/* MODAL THÊM / SỬA */}
+      {showModal && (
+        <div
+          style={styles.modalOverlay}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
+          onKeyDown={handleKeyDown}
+        >
+          <div style={styles.modalContainer}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>
+                {modalMode === "add" ? "Thêm user mới" : "Chỉnh sửa tài khoản"}
+              </h2>
+              <button onClick={closeModal} style={styles.modalCloseBtn} aria-label="Đóng">
+                ✕
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <div style={styles.formGrid}>
+                <div style={styles.formField}>
+                  <label style={styles.label}>Username *</label>
+                  <input
+                    type="text"
+                    name="username"
+                    value={editForm.username}
+                    onChange={handleFormChange}
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formField}>
+                  <label style={styles.label}>Điểm tuần</label>
+                  <input
+                    type="number"
+                    name="week_score"
+                    value={editForm.week_score}
+                    onChange={handleFormChange}
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formField}>
+                  <label style={styles.label}>Điểm tất cả</label>
+                  <input
+                    type="number"
+                    name="score"
+                    value={editForm.score}
+                    onChange={handleFormChange}
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formField}>
+                  <label style={styles.label}>Vai trò</label>
+                  <select
+                    name="role"
+                    value={editForm.role}
+                    onChange={handleFormChange}
+                    style={styles.select}
+                  >
+                    <option value={0}>Người chơi</option>
+                    <option value={1}>Quản trị viên</option>
+                  </select>
+                </div>
+                <div style={styles.formField}>
+                  <label style={styles.label}>Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={editForm.email}
+                    onChange={handleFormChange}
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formField}>
+                  <label style={styles.label}>Số điện thoại</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={editForm.phone}
+                    onChange={handleFormChange}
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formField}>
+                  <label style={styles.label}>
+                    {modalMode === "add" ? "Mật khẩu" : "Mật khẩu mới"}
+                  </label>
+                  <input
+                    type="password"
+                    name="password"
+                    value={editForm.password}
+                    onChange={handleFormChange}
+                    style={styles.input}
+                    placeholder={modalMode === "add" ? "Nhập mật khẩu" : "Để trống nếu không đổi"}
+                  />
+                </div>
+              </div>
+            </div>
+            <div style={styles.modalFooter}>
+              <button onClick={closeModal} style={styles.btnCancel}>
+                Hủy
+              </button>
+              <button onClick={handleSave} style={styles.btnSave}>
+                {modalMode === "add" ? "Thêm user" : "Lưu thay đổi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -365,6 +684,63 @@ const styles = {
     flexShrink: 0,
     padding: "0 12px 0 4px",
   },
+  cardList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+  },
+  userCard: {
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+    padding: "16px 14px",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  },
+  cardField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginBottom: 14,
+    minWidth: 0,
+  },
+  cardLabel: {
+    fontSize: "0.68rem",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "#57606a",
+  },
+  cardValue: {
+    fontSize: "0.9rem",
+    color: "#24292f",
+    lineHeight: 1.5,
+    wordBreak: "break-word",
+    overflowWrap: "break-word",
+  },
+  cardActions: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingTop: 12,
+    marginTop: 4,
+    borderTop: "1px solid #eaeef2",
+  },
+  cardEmpty: {
+    padding: "28px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
   tableWrap: {
     width: "100%",
     overflowX: "auto",
@@ -379,16 +755,16 @@ const styles = {
     minWidth: 960,
   },
   th: {
-  textAlign: "left",
-  padding: "14px 16px",
-  background: "#2d5a76",  
-  color: "#fff",          
-  fontWeight: 700,
-  fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  borderBottom: "1px solid #d0d7de",
-},
+    textAlign: "left",
+    padding: "14px 16px",
+    background: "#2d5a76",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: "0.75rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    borderBottom: "1px solid #d0d7de",
+  },
   td: {
     padding: "14px 16px",
     borderBottom: "1px solid #eaeef2",
@@ -438,5 +814,111 @@ const styles = {
     fontSize: "0.8rem",
     color: "#6e7781",
     lineHeight: 1.45,
+  },
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+  },
+  modalContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    width: "90%",
+    maxWidth: 700,
+    maxHeight: "90vh",
+    overflowY: "auto",
+    boxShadow: "0 20px 35px -8px rgba(0,0,0,0.2)",
+    fontFamily: "inherit",
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "20px 24px",
+    borderBottom: "1px solid #eaeef2",
+  },
+  modalTitle: {
+    margin: 0,
+    fontSize: "1.35rem",
+    fontWeight: 600,
+    color: "#1f2328",
+  },
+  modalCloseBtn: {
+    background: "none",
+    border: "none",
+    fontSize: 24,
+    cursor: "pointer",
+    color: "#57606a",
+    padding: "0 4px",
+    lineHeight: 1,
+  },
+  modalBody: {
+    padding: "24px",
+  },
+  formGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+    gap: "20px 24px",
+  },
+  formField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  label: {
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    color: "#1f2328",
+  },
+  input: {
+    padding: "10px 12px",
+    fontSize: "0.95rem",
+    border: "1px solid #d0d7de",
+    borderRadius: 8,
+    outline: "none",
+    transition: "0.2s",
+    fontFamily: "inherit",
+  },
+  select: {
+    padding: "10px 12px",
+    fontSize: "0.95rem",
+    border: "1px solid #d0d7de",
+    borderRadius: 8,
+    outline: "none",
+    background: "#fff",
+    fontFamily: "inherit",
+  },
+  modalFooter: {
+    padding: "16px 24px",
+    borderTop: "1px solid #eaeef2",
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  btnCancel: {
+    padding: "8px 16px",
+    borderRadius: 8,
+    border: "1px solid #d0d7de",
+    background: "#f6f8fa",
+    fontSize: "0.9rem",
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  btnSave: {
+    padding: "8px 20px",
+    borderRadius: 8,
+    border: "none",
+    background: "#2d5a76",
+    color: "#fff",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    cursor: "pointer",
   },
 };

@@ -3,6 +3,20 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const initialAnswers = ["", "", "", ""];
 
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const fn = () => setMatches(m.matches);
+    fn();
+    m.addEventListener("change", fn);
+    return () => m.removeEventListener("change", fn);
+  }, [query]);
+  return matches;
+}
+
 /**
  * Demo: nhận dữ liệu từ Quản lý câu hỏi qua navigate(..., { state: { draft } }).
  * Không gọi API — giữ giao diện tương tự AdminQuestionCreate.
@@ -10,6 +24,7 @@ const initialAnswers = ["", "", "", ""];
 export default function AdminQuestionUpdate() {
   const location = useLocation();
   const navigate = useNavigate();
+  const isNarrow = useMediaQuery("(max-width: 768px)");
   const draft = location.state?.draft;
 
   const [questionId, setQuestionId] = useState(null);
@@ -199,10 +214,21 @@ export default function AdminQuestionUpdate() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={styles.formCard}>
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          ...styles.formCard,
+          ...(isNarrow ? styles.formCardNarrow : {}),
+        }}
+      >
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Phân cấp (xem)</h2>
-          <div style={styles.grid3}>
+          <div
+            style={{
+              ...styles.grid3,
+              ...(isNarrow ? styles.grid3Narrow : {}),
+            }}
+          >
             <div style={styles.label}>
               <span style={styles.labelTitle}>Khối lớp</span>
               <div style={styles.readonlyBox}>{gradeLabel || "—"}</div>
@@ -241,26 +267,45 @@ export default function AdminQuestionUpdate() {
           <div style={styles.uploadLabelContainer}>
             <span style={styles.uploadLabelText}>Ảnh câu hỏi (tùy chọn)</span>
             <div
-              style={styles.uploadDropZone}
+              style={{
+                ...styles.uploadDropZone,
+                ...(isNarrow ? styles.uploadDropZoneNarrow : {}),
+              }}
               onPaste={handlePaste}
               onDragOver={(event) => event.preventDefault()}
               onDrop={handleDrop}
               tabIndex={0}
               aria-label="Click để paste ảnh hoặc kéo thả file vào đây"
             >
-              <div style={styles.uploadIcon} aria-hidden>
+              <div
+                style={{
+                  ...styles.uploadIcon,
+                  ...(isNarrow ? styles.uploadIconNarrow : {}),
+                }}
+                aria-hidden
+              >
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="7 10 12 5 17 10" />
                   <path d="M12 5v12" />
                 </svg>
               </div>
-              <div style={styles.uploadTextBlock}>
+              <div
+                style={{
+                  ...styles.uploadTextBlock,
+                  ...(isNarrow ? styles.uploadTextBlockNarrow : {}),
+                }}
+              >
                 <p style={styles.uploadTitle}>Click để paste ảnh (Ctrl+V)</p>
                 <p style={styles.uploadSubtitle}>hoặc kéo thả file vào đây</p>
                 <p style={styles.uploadHint}>Hỗ trợ: JPG, PNG, GIF (tối đa 5MB)</p>
               </div>
-              <label style={styles.uploadButton}>
+              <label
+                style={{
+                  ...styles.uploadButton,
+                  ...(isNarrow ? styles.uploadButtonNarrow : {}),
+                }}
+              >
                 Chọn file từ thiết bị
                 <input type="file" accept="image/*" onChange={handleFileChange} style={styles.fileInput} />
               </label>
@@ -412,6 +457,12 @@ const styles = {
     border: "1px solid #d0d7de",
     borderRadius: 0,
     padding: "20px 24px",
+    boxSizing: "border-box",
+    minWidth: 0,
+    maxWidth: "100%",
+  },
+  formCardNarrow: {
+    padding: "16px 14px",
   },
   section: { marginBottom: 28 },
   sectionTitle: {
@@ -422,18 +473,26 @@ const styles = {
   },
   grid3: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(240px, 1fr))",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 20,
     alignItems: "start",
+    minWidth: 0,
+    width: "100%",
+  },
+  grid3Narrow: {
+    gridTemplateColumns: "1fr",
+    gap: 16,
   },
   label: {
-    marginTop: 12,
+    marginTop: 0,
     display: "flex",
     flexDirection: "column",
     gap: 8,
     fontWeight: 600,
     fontSize: "0.88rem",
     color: "#24292f",
+    minWidth: 0,
+    maxWidth: "100%",
   },
   labelTitle: {
     display: "inline-flex",
@@ -451,6 +510,11 @@ const styles = {
     color: "#24292f",
     fontWeight: 500,
     minHeight: 20,
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
   },
   hierarchyBlock: {
     marginTop: 16,
@@ -461,20 +525,29 @@ const styles = {
     borderRadius: 8,
     background: "#f8fafc",
     border: "1px dashed #c9d3dd",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
   },
   hierarchyLine: {
     fontSize: "0.88rem",
     fontWeight: 600,
     color: "#24292f",
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
   },
   hierarchySub: {
     fontSize: "0.82rem",
     color: "#57606a",
     lineHeight: 1.4,
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
   },
   typeLine: {
     fontSize: "0.82rem",
     color: "#57606a",
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
   },
   uploadLabelContainer: {
     marginTop: 12,
@@ -484,6 +557,8 @@ const styles = {
     fontWeight: 600,
     fontSize: "0.88rem",
     color: "#24292f",
+    minWidth: 0,
+    maxWidth: "100%",
   },
   uploadLabelText: {
     fontWeight: 600,
@@ -491,7 +566,7 @@ const styles = {
   },
   uploadDropZone: {
     display: "grid",
-    gridTemplateColumns: "auto 1fr auto",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "center",
     gap: 16,
     padding: "22px 20px",
@@ -500,6 +575,16 @@ const styles = {
     background: "#f8fafc",
     color: "#24292f",
     minHeight: 132,
+    minWidth: 0,
+    boxSizing: "border-box",
+  },
+  uploadDropZoneNarrow: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 14,
+    minHeight: "auto",
+    padding: "18px 16px",
   },
   uploadIcon: {
     width: 48,
@@ -509,27 +594,46 @@ const styles = {
     justifyContent: "center",
     background: "#eaf4ff",
     borderRadius: 14,
+    flexShrink: 0,
+  },
+  uploadIconNarrow: {
+    alignSelf: "center",
   },
   uploadTextBlock: {
     display: "flex",
     flexDirection: "column",
     gap: 4,
+    minWidth: 0,
+    maxWidth: "100%",
+  },
+  uploadTextBlockNarrow: {
+    textAlign: "center",
+    width: "100%",
   },
   uploadTitle: {
     margin: 0,
     fontSize: "1rem",
     fontWeight: 700,
     color: "#24292f",
+    lineHeight: 1.4,
+    wordBreak: "normal",
+    overflowWrap: "break-word",
   },
   uploadSubtitle: {
     margin: 0,
     fontSize: "0.95rem",
     color: "#57606a",
+    lineHeight: 1.45,
+    wordBreak: "normal",
+    overflowWrap: "break-word",
   },
   uploadHint: {
     margin: 0,
     fontSize: "0.82rem",
     color: "#8b96a5",
+    lineHeight: 1.45,
+    wordBreak: "normal",
+    overflowWrap: "break-word",
   },
   uploadButton: {
     display: "inline-flex",
@@ -544,6 +648,12 @@ const styles = {
     cursor: "pointer",
     position: "relative",
     overflow: "hidden",
+    flexShrink: 0,
+    boxSizing: "border-box",
+  },
+  uploadButtonNarrow: {
+    width: "100%",
+    maxWidth: "100%",
   },
   fileInput: {
     position: "absolute",
@@ -584,6 +694,10 @@ const styles = {
     fontFamily: "inherit",
     lineHeight: 1.5,
     resize: "vertical",
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
   },
   hint: {
     margin: "0 0 12px",
