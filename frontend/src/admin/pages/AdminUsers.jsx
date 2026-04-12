@@ -1,5 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  getAdminUsers,
+  createAdminUser,
+  updateAdminUser,
+  deleteAdminUser,
+} from "../../api";
+
+const USERS_PAGE_SIZE = 10;
 
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() =>
@@ -14,40 +22,6 @@ function useMediaQuery(query) {
   }, [query]);
   return matches;
 }
-
-/** Dữ liệu mẫu ban đầu */
-const INITIAL_USERS = [
-  {
-    id: 1,
-    username: "admin",
-    week_score: 647,
-    score: 635,
-    role: 1,
-    email: "admin@gametoanhoc.local",
-    phone: "0901112233",
-    created_at: "2025-10-13 10:17:24",
-  },
-  {
-    id: 5,
-    username: "username01",
-    week_score: 16,
-    score: 22,
-    role: 0,
-    email: null,
-    phone: null,
-    created_at: "2025-10-14 15:35:27",
-  },
-  {
-    id: 8,
-    username: "hocsinh_demo",
-    week_score: 45,
-    score: 500,
-    role: 0,
-    email: "hoc.sinh@mail.com",
-    phone: "0987654321",
-    created_at: "2025-11-02 08:30:00",
-  },
-];
 
 function roleLabel(role) {
   if (role === 1) return "Quản trị";
@@ -106,8 +80,13 @@ function TrashIcon() {
 
 export default function AdminUsers() {
   const isNarrow = useMediaQuery("(max-width: 768px)");
-  const [users, setUsers] = useState(INITIAL_USERS);
+  const [users, setUsers] = useState([]);
+  const [totalDb, setTotalDb] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  /** Đồng bộ API — lọc toàn bảng users trên server */
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -122,34 +101,68 @@ export default function AdminUsers() {
     phone: "",
     password: "",
   });
+  const [formError, setFormError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [page, setPage] = useState(1);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((u) => {
-      const blob = [
-        u.id,
-        u.username,
-        u.email || "",
-        u.phone || "",
-        roleLabel(u.role),
-        String(u.score),
-        String(u.week_score),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return blob.includes(q);
-    });
-  }, [search, users]);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [search]);
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const offset = (page - 1) * USERS_PAGE_SIZE;
+      const params = { limit: USERS_PAGE_SIZE, offset };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const res = await getAdminUsers(params);
+      const list = Array.isArray(res?.data) ? res.data : [];
+      setUsers(list);
+      setTotalDb(typeof res?.count === "number" ? res.count : list.length);
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message || e?.message || "Không tải được danh sách user.";
+      setError(msg);
+      setUsers([]);
+      setTotalDb(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, debouncedSearch]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const totalPages = Math.max(1, Math.ceil(totalDb / USERS_PAGE_SIZE) || 1);
+
+  useEffect(() => {
+    if (totalDb <= 0) return;
+    const maxPage = Math.max(1, Math.ceil(totalDb / USERS_PAGE_SIZE));
+    if (page > maxPage) setPage(maxPage);
+  }, [totalDb, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  const rangeStart = totalDb === 0 ? 0 : (page - 1) * USERS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * USERS_PAGE_SIZE, totalDb);
 
   const openEditModal = (user) => {
     setModalMode("edit");
     setEditingUser(user);
+    setFormError(null);
     setEditForm({
       username: user.username,
-      week_score: user.week_score,
-      score: user.score,
-      role: user.role,
+      week_score: user.week_score != null ? Number(user.week_score) : 0,
+      score: user.score != null ? Number(user.score) : 0,
+      role: user.role != null ? Number(user.role) : 0,
       email: user.email || "",
       phone: user.phone || "",
       password: "",
@@ -160,6 +173,7 @@ export default function AdminUsers() {
   const openAddModal = () => {
     setModalMode("add");
     setEditingUser(null);
+    setFormError(null);
     setEditForm({
       username: "",
       week_score: 0,
@@ -175,6 +189,7 @@ export default function AdminUsers() {
   const closeModal = () => {
     setShowModal(false);
     setEditingUser(null);
+    setFormError(null);
     setEditForm({
       username: "",
       week_score: 0,
@@ -188,60 +203,86 @@ export default function AdminUsers() {
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    setEditForm((prev) => ({
-      ...prev,
-      [name]: name === "week_score" || name === "score" ? Number(value) : value,
-    }));
+    setEditForm((prev) => {
+      if (name === "week_score" || name === "score") {
+        const n = value === "" ? 0 : Number(value);
+        return { ...prev, [name]: Number.isNaN(n) ? 0 : n };
+      }
+      if (name === "role") {
+        return { ...prev, role: Number(value) };
+      }
+      return { ...prev, [name]: value };
+    });
   };
 
-  const handleSave = () => {
-    // Validate required fields
+  const handleSave = async () => {
     if (!editForm.username.trim()) {
-      alert("Username không được để trống");
+      setFormError("Username không được để trống.");
+      return;
+    }
+    if (modalMode === "add" && !editForm.password.trim()) {
+      setFormError("Mật khẩu là bắt buộc khi tạo user mới.");
       return;
     }
 
-    if (modalMode === "edit" && editingUser) {
-      // Cập nhật user hiện có
-      const updatedUser = {
-        ...editingUser,
-        username: editForm.username.trim(),
-        week_score: editForm.week_score,
-        score: editForm.score,
-        role: editForm.role,
-        email: editForm.email.trim() || null,
-        phone: editForm.phone.trim() || null,
-      };
-      if (editForm.password.trim()) {
-        updatedUser.password = editForm.password.trim();
-        console.log(`[Demo] Đổi mật khẩu cho user ${updatedUser.username}: ${editForm.password}`);
+    setFormError(null);
+    setSaving(true);
+    try {
+      if (modalMode === "add") {
+        await createAdminUser({
+          username: editForm.username.trim(),
+          password: editForm.password.trim(),
+          email: editForm.email.trim() || null,
+          phone: editForm.phone.trim() || null,
+          role: Number(editForm.role),
+          score: Number(editForm.score) || 0,
+          week_score:
+            editForm.week_score === "" || editForm.week_score === null
+              ? null
+              : Number(editForm.week_score),
+        });
+      } else if (editingUser) {
+        const payload = {
+          username: editForm.username.trim(),
+          email: editForm.email.trim(),
+          phone: editForm.phone.trim(),
+          role: Number(editForm.role),
+          score: Number(editForm.score),
+          week_score:
+            editForm.week_score === "" || editForm.week_score === null
+              ? null
+              : Number(editForm.week_score),
+        };
+        if (editForm.password.trim()) {
+          payload.password = editForm.password.trim();
+        }
+        await updateAdminUser(editingUser.id, payload);
       }
-      setUsers((prevUsers) =>
-        prevUsers.map((u) => (u.id === editingUser.id ? updatedUser : u))
+      await loadUsers();
+      closeModal();
+    } catch (e) {
+      setFormError(
+        e?.response?.data?.message || e?.message || "Không lưu được. Vui lòng thử lại."
       );
-    } else if (modalMode === "add") {
-      // Tạo user mới
-      const newId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
-      const now = new Date();
-      const createdAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-      const newUser = {
-        id: newId,
-        username: editForm.username.trim(),
-        week_score: editForm.week_score,
-        score: editForm.score,
-        role: editForm.role,
-        email: editForm.email.trim() || null,
-        phone: editForm.phone.trim() || null,
-        created_at: createdAt,
-      };
-      if (editForm.password.trim()) {
-        newUser.password = editForm.password.trim();
-        console.log(`[Demo] Mật khẩu cho user mới ${newUser.username}: ${editForm.password}`);
-      }
-      setUsers((prevUsers) => [...prevUsers, newUser]);
+    } finally {
+      setSaving(false);
     }
+  };
 
-    closeModal();
+  const handleDeleteUser = async (u) => {
+    if (!window.confirm(`Xóa tài khoản "${u.username}" (ID ${u.id})? Hành động không thể hoàn tác.`)) {
+      return;
+    }
+    setDeletingId(u.id);
+    setError(null);
+    try {
+      await deleteAdminUser(u.id);
+      await loadUsers();
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Không xóa được user.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -262,7 +303,9 @@ export default function AdminUsers() {
         <div>
           <h1 style={styles.title}>Quản lý user</h1>
           <p style={styles.lead}>
-            Danh sách tài khoản, điểm và vai trò trong hệ thống
+            Đồng bộ với bảng <code style={styles.codeInline}>users</code>. Mật khẩu băm bcrypt trên server.{" "}
+            {USERS_PAGE_SIZE} user/trang; ô tìm chỉ lọc theo <strong>username</strong> (toàn bảng, phân trang theo kết
+            quả).
           </p>
         </div>
         <button
@@ -280,13 +323,13 @@ export default function AdminUsers() {
 
       <div style={styles.toolbar}>
         <p style={styles.statLine}>
-          Tổng số user :{" "}
-          <span style={styles.statNumber}>{users.length}</span>
+          Tổng số user (cơ sở dữ liệu):{" "}
+          <span style={styles.statNumber}>{totalDb.toLocaleString("vi-VN")}</span>
         </p>
         <div style={styles.searchWrap}>
           <input
             type="search"
-            placeholder="Tìm theo ID, username, email, điểm, vai trò…"
+            placeholder="Tìm theo username…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={styles.searchInput}
@@ -298,14 +341,34 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {isNarrow ? (
+      {error && (
+        <div style={styles.errorBanner} role="alert">
+          {error}{" "}
+          <button type="button" style={styles.linkBtn} onClick={loadUsers}>
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      {loading && users.length === 0 && !error && (
+        <p style={styles.muted}>Đang tải danh sách user…</p>
+      )}
+
+      {!loading && totalDb === 0 && !error && (
+        <p style={styles.muted}>
+          {debouncedSearch
+            ? `Không có user khớp “${debouncedSearch}”.`
+            : "Chưa có user nào."}
+        </p>
+      )}
+
+      {totalDb > 0 &&
+        (isNarrow ? (
         <div style={styles.cardList}>
-          {filtered.length === 0 ? (
-            <div style={styles.cardEmpty}>
-              Không có kết quả phù hợp với “{search}”.
-            </div>
+          {users.length === 0 ? (
+            <div style={styles.cardEmpty}>Không có dữ liệu trên trang này.</div>
           ) : (
-            filtered.map((u) => (
+            users.map((u) => (
               <article key={u.id} style={styles.userCard}>
                 <div style={styles.cardField}>
                   <span style={styles.cardLabel}>User ID</span>
@@ -362,7 +425,16 @@ export default function AdminUsers() {
                   >
                     <PencilIcon />
                   </button>
-                  <button type="button" style={styles.iconBtn} title="Xóa (demo)" onClick={() => {}}>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.iconBtn,
+                      ...(deletingId === u.id ? { opacity: 0.55, pointerEvents: "none" } : {}),
+                    }}
+                    title="Xóa user"
+                    disabled={deletingId != null}
+                    onClick={() => handleDeleteUser(u)}
+                  >
                     <TrashIcon />
                   </button>
                 </div>
@@ -391,14 +463,14 @@ export default function AdminUsers() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {users.length === 0 ? (
                 <tr>
                   <td colSpan={9} style={styles.tdEmpty}>
-                    Không có kết quả phù hợp với “{search}”.
+                    Không có dữ liệu trên trang này.
                   </td>
                 </tr>
               ) : (
-                filtered.map((u) => (
+                users.map((u) => (
                   <tr key={u.id}>
                     <td style={styles.td}>{u.id}</td>
                     <td style={{ ...styles.td, fontWeight: 700 }}>{u.username}</td>
@@ -437,9 +509,14 @@ export default function AdminUsers() {
                       </button>
                       <button
                         type="button"
-                        style={{ ...styles.iconBtn, marginLeft: 8 }}
-                        title="Xóa (demo)"
-                        onClick={() => {}}
+                        style={{
+                          ...styles.iconBtn,
+                          marginLeft: 8,
+                          ...(deletingId === u.id ? { opacity: 0.55, pointerEvents: "none" } : {}),
+                        }}
+                        title="Xóa user"
+                        disabled={deletingId != null}
+                        onClick={() => handleDeleteUser(u)}
                       >
                         <TrashIcon />
                       </button>
@@ -450,11 +527,43 @@ export default function AdminUsers() {
             </tbody>
           </table>
         </div>
-      )}
+        ))}
 
-      <p style={styles.demoNote}>
-        Giao diện demo với dữ liệu mẫu. Kết nối API admin để đồng bộ cơ sở dữ liệu.
-      </p>
+      {!loading && totalDb > 0 && (
+        <nav style={styles.paginationBar} aria-label="Phân trang danh sách user">
+          <p style={styles.paginationMeta}>
+            Hiển thị {rangeStart.toLocaleString("vi-VN")}–{rangeEnd.toLocaleString("vi-VN")} /{" "}
+            {totalDb.toLocaleString("vi-VN")} user
+          </p>
+          <div style={styles.paginationControls}>
+            <button
+              type="button"
+              style={{
+                ...styles.paginationBtn,
+                ...(page <= 1 ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Trang trước
+            </button>
+            <span style={styles.paginationPage}>
+              Trang {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              style={{
+                ...styles.paginationBtn,
+                ...(page >= totalPages ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Trang sau
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* MODAL THÊM / SỬA */}
       {showModal && (
@@ -540,7 +649,7 @@ export default function AdminUsers() {
                 </div>
                 <div style={styles.formField}>
                   <label style={styles.label}>
-                    {modalMode === "add" ? "Mật khẩu" : "Mật khẩu mới"}
+                    {modalMode === "add" ? "Mật khẩu *" : "Mật khẩu mới"}
                   </label>
                   <input
                     type="password"
@@ -549,16 +658,30 @@ export default function AdminUsers() {
                     onChange={handleFormChange}
                     style={styles.input}
                     placeholder={modalMode === "add" ? "Nhập mật khẩu" : "Để trống nếu không đổi"}
+                    autoComplete="new-password"
                   />
+                  <p style={styles.fieldHint}>
+                    Server lưu bản băm bcrypt (cost 8), không lưu mật khẩu dạng rõ.
+                  </p>
                 </div>
               </div>
+              {formError && (
+                <div style={styles.formError} role="alert">
+                  {formError}
+                </div>
+              )}
             </div>
             <div style={styles.modalFooter}>
-              <button onClick={closeModal} style={styles.btnCancel}>
+              <button type="button" onClick={closeModal} style={styles.btnCancel} disabled={saving}>
                 Hủy
               </button>
-              <button onClick={handleSave} style={styles.btnSave}>
-                {modalMode === "add" ? "Thêm user" : "Lưu thay đổi"}
+              <button
+                type="button"
+                onClick={handleSave}
+                style={{ ...styles.btnSave, ...(saving ? { opacity: 0.75 } : {}) }}
+                disabled={saving}
+              >
+                {saving ? "Đang lưu…" : modalMode === "add" ? "Thêm user" : "Lưu thay đổi"}
               </button>
             </div>
           </div>
@@ -615,6 +738,35 @@ const styles = {
     fontSize: "0.95rem",
     color: "#57606a",
     lineHeight: 1.5,
+  },
+  codeInline: {
+    fontSize: "0.88em",
+    background: "#f6f8fa",
+    padding: "2px 6px",
+    borderRadius: 4,
+  },
+  muted: {
+    color: "#57606a",
+    marginBottom: 16,
+    fontSize: "0.95rem",
+  },
+  errorBanner: {
+    background: "#fff8f8",
+    border: "1px solid #ff818266",
+    color: "#a40e26",
+    padding: "12px 16px",
+    borderRadius: 8,
+    marginBottom: 16,
+    fontSize: "0.9rem",
+  },
+  linkBtn: {
+    background: "none",
+    border: "none",
+    color: "#2d5a76",
+    cursor: "pointer",
+    textDecoration: "underline",
+    marginLeft: 8,
+    fontSize: "inherit",
   },
   btnPrimary: {
     display: "inline-flex",
@@ -809,10 +961,20 @@ const styles = {
     cursor: "pointer",
     verticalAlign: "middle",
   },
-  demoNote: {
-    marginTop: 20,
+  fieldHint: {
+    margin: "6px 0 0",
     fontSize: "0.8rem",
     color: "#6e7781",
+    lineHeight: 1.4,
+  },
+  formError: {
+    marginTop: 12,
+    padding: "10px 12px",
+    fontSize: "0.88rem",
+    color: "#9a3412",
+    background: "#fff8f5",
+    border: "1px solid #f0c4a8",
+    borderRadius: 8,
     lineHeight: 1.45,
   },
   modalOverlay: {
@@ -920,5 +1082,51 @@ const styles = {
     fontSize: "0.9rem",
     fontWeight: 600,
     cursor: "pointer",
+  },
+  paginationBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+    marginTop: 20,
+    padding: "14px 16px",
+    background: "#f6f8fa",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  paginationMeta: {
+    margin: 0,
+    fontSize: "0.9rem",
+    color: "#57606a",
+    lineHeight: 1.45,
+  },
+  paginationControls: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  paginationBtn: {
+    padding: "8px 16px",
+    borderRadius: 8,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    color: "#24292f",
+    fontWeight: 600,
+    fontSize: "0.88rem",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  paginationBtnDisabled: {
+    opacity: 0.45,
+    cursor: "not-allowed",
+  },
+  paginationPage: {
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    color: "#24292f",
+    minWidth: 100,
+    textAlign: "center",
   },
 };

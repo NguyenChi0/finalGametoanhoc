@@ -1,11 +1,16 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { getGrades, getTypes, getLessons } from "../../api";
-
-function normalizeDesc(d) {
-  if (d != null && String(d).trim() !== "") return d;
-  return "Chưa có mô tả.";
-}
+import {
+  getAdminGrades,
+  getAdminTypes,
+  getAdminLessons,
+  createAdminType,
+  updateAdminType,
+  deleteAdminType,
+  createAdminLesson,
+  updateAdminLesson,
+  deleteAdminLesson,
+} from "../../api";
 
 export default function AdminMathTypes() {
   const [grades, setGrades] = useState([]);
@@ -17,7 +22,6 @@ export default function AdminMathTypes() {
   const [search, setSearch] = useState("");
 
   const [expandedTypeId, setExpandedTypeId] = useState(null);
-  /** Theo chủ đề (math_types): bài học con — API /lessons/:type_id, bảng `lessons` */
   const [lessonsByTypeId, setLessonsByTypeId] = useState({});
   const [loadingLessonsTypeId, setLoadingLessonsTypeId] = useState(null);
 
@@ -26,6 +30,9 @@ export default function AdminMathTypes() {
   const [editId, setEditId] = useState(null);
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
+  const [formError, setFormError] = useState(null);
+  const [savingForm, setSavingForm] = useState(false);
+  const [deletingTypeId, setDeletingTypeId] = useState(null);
 
   const [opModalOpen, setOpModalOpen] = useState(false);
   const [opCreate, setOpCreate] = useState(false);
@@ -33,6 +40,12 @@ export default function AdminMathTypes() {
   const [opForTypeId, setOpForTypeId] = useState(null);
   const [opForTypeName, setOpForTypeName] = useState("");
   const [opName, setOpName] = useState("");
+  const [opFormError, setOpFormError] = useState(null);
+  const [savingOp, setSavingOp] = useState(false);
+  const [deletingLessonId, setDeletingLessonId] = useState(null);
+
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [blockModalText, setBlockModalText] = useState("");
 
   const selectedGrade = useMemo(
     () => grades.find((g) => String(g.id) === filterGradeId),
@@ -43,10 +56,12 @@ export default function AdminMathTypes() {
     setLoadingGrades(true);
     setError(null);
     try {
-      const gradeData = await getGrades();
+      const gradeData = await getAdminGrades();
       setGrades(Array.isArray(gradeData) ? gradeData : []);
     } catch (e) {
-      setError(e?.message || "Không tải được danh sách khối lớp.");
+      const msg =
+        e?.response?.data?.message || e?.message || "Không tải được danh sách khối lớp.";
+      setError(msg);
       setGrades([]);
     } finally {
       setLoadingGrades(false);
@@ -57,48 +72,48 @@ export default function AdminMathTypes() {
     loadGrades();
   }, [loadGrades]);
 
-  useEffect(() => {
+  const reloadTypes = useCallback(async () => {
     if (!filterGradeId) {
       setTypes([]);
       setLoadingTypes(false);
       return;
     }
-
     const gid = Number(filterGradeId);
     if (!Number.isFinite(gid)) return;
 
-    let cancelled = false;
-    (async () => {
-      setLoadingTypes(true);
-      setError(null);
-      try {
-        const raw = await getTypes(gid);
-        const list = Array.isArray(raw) ? raw : [];
-        const g = grades.find((x) => x.id === gid);
-        const gradeName = g?.name || `Lớp #${gid}`;
-        if (cancelled) return;
-        setTypes(
-          list.map((t) => ({
-            ...t,
-            grade_id: gid,
-            gradeName,
-            description: normalizeDesc(t.description),
-          }))
-        );
-      } catch (e) {
-        if (!cancelled) {
-          setError(e?.message || "Không tải được chủ đề cho khối đã chọn.");
-          setTypes([]);
-        }
-      } finally {
-        if (!cancelled) setLoadingTypes(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    setLoadingTypes(true);
+    setError(null);
+    try {
+      const raw = await getAdminTypes({ grade_id: gid });
+      const list = Array.isArray(raw) ? raw : [];
+      const g = grades.find((x) => Number(x.id) === gid);
+      const gradeName = g?.name || `Lớp #${gid}`;
+      setTypes(
+        list.map((t) => ({
+          ...t,
+          grade_id: t.grade_id != null ? Number(t.grade_id) : gid,
+          gradeName,
+          description:
+            t.description == null || String(t.description).trim() === ""
+              ? ""
+              : String(t.description).trim(),
+        }))
+      );
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        e?.message ||
+        "Không tải được chủ đề cho khối đã chọn.";
+      setError(msg);
+      setTypes([]);
+    } finally {
+      setLoadingTypes(false);
+    }
   }, [filterGradeId, grades]);
+
+  useEffect(() => {
+    reloadTypes();
+  }, [reloadTypes]);
 
   useEffect(() => {
     setEditOpen(false);
@@ -121,13 +136,13 @@ export default function AdminMathTypes() {
     const tid = String(typeRow.id);
     setLoadingLessonsTypeId(tid);
     try {
-      const raw = await getLessons(typeRow.id);
+      const raw = await getAdminLessons({ type_id: typeRow.id });
       const list = Array.isArray(raw) ? raw : [];
       setLessonsByTypeId((prev) => ({
         ...prev,
         [tid]: list.map((o) => ({
           ...o,
-          type_id: typeRow.id,
+          type_id: o.type_id != null ? Number(o.type_id) : typeRow.id,
         })),
       }));
     } catch {
@@ -163,9 +178,8 @@ export default function AdminMathTypes() {
   const openEdit = (row) => {
     setEditId(row.id);
     setFormName(row.name);
-    setFormDesc(
-      row.description && row.description !== "Chưa có mô tả." ? row.description : ""
-    );
+    setFormDesc(row.description || "");
+    setFormError(null);
     setEditOpen(true);
     setCreateOpen(false);
   };
@@ -175,6 +189,7 @@ export default function AdminMathTypes() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormError(null);
     setCreateOpen(true);
     setEditOpen(true);
   };
@@ -185,64 +200,77 @@ export default function AdminMathTypes() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormError(null);
   };
 
-  const saveForm = (e) => {
+  const saveForm = async (e) => {
     e.preventDefault();
     const name = formName.trim();
     const gid = Number(filterGradeId);
     if (!name || !Number.isFinite(gid)) return;
 
     const desc = formDesc.trim();
-    const gradeName =
-      grades.find((g) => g.id === gid)?.name || selectedGrade?.name || `Lớp #${gid}`;
-
-    if (createOpen) {
-      const nextId =
-        types.length === 0 ? 1 : Math.max(...types.map((t) => t.id)) + 1;
-      setTypes((list) => [
-        ...list,
-        {
-          id: nextId,
+    setFormError(null);
+    setSavingForm(true);
+    try {
+      if (createOpen) {
+        await createAdminType({
           grade_id: gid,
           name,
-          description: normalizeDesc(desc),
-          gradeName,
-        },
-      ]);
-    } else if (editId != null) {
-      setTypes((list) =>
-        list.map((x) =>
-          x.id === editId
-            ? {
-                ...x,
-                name,
-                description: normalizeDesc(desc),
-                gradeName,
-              }
-            : x
-        )
+          description: desc || null,
+        });
+      } else if (editId != null) {
+        await updateAdminType(editId, {
+          name,
+          description: desc,
+        });
+      }
+      setExpandedTypeId(null);
+      setLessonsByTypeId({});
+      await reloadTypes();
+      closeModal();
+    } catch (err) {
+      setFormError(
+        err?.response?.data?.message || err?.message || "Không lưu được chủ đề."
       );
+    } finally {
+      setSavingForm(false);
     }
-    closeModal();
   };
 
-  const handleDelete = (row) => {
+  const handleDelete = async (row) => {
     if (
       !window.confirm(
-        `Xóa chủ đề "${row.name}"?\n\n(Demo: chỉ xóa trên giao diện — F5 tải lại từ server.)`
+        `Xóa chủ đề "${row.name}" (ID ${row.id})?\n\nCác bài học thuộc chủ đề sẽ bị xóa theo nếu không còn câu hỏi tham chiếu. Nếu còn câu hỏi gắn chủ đề này, hệ thống sẽ không cho xóa.`
       )
     ) {
       return;
     }
-    const tid = String(row.id);
-    setTypes((list) => list.filter((x) => x.id !== row.id));
-    setLessonsByTypeId((prev) => {
-      const next = { ...prev };
-      delete next[tid];
-      return next;
-    });
-    if (expandedTypeId === tid) setExpandedTypeId(null);
+    setDeletingTypeId(row.id);
+    setError(null);
+    try {
+      await deleteAdminType(row.id);
+      const tid = String(row.id);
+      setLessonsByTypeId((prev) => {
+        const next = { ...prev };
+        delete next[tid];
+        return next;
+      });
+      if (expandedTypeId === tid) setExpandedTypeId(null);
+      await reloadTypes();
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg =
+        err?.response?.data?.message || err?.message || "Không xóa được chủ đề.";
+      if (status === 409) {
+        setBlockModalText(msg);
+        setBlockModalOpen(true);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setDeletingTypeId(null);
+    }
   };
 
   const openOpCreate = (typeRow) => {
@@ -251,6 +279,7 @@ export default function AdminMathTypes() {
     setOpCreate(true);
     setOpEditId(null);
     setOpName("");
+    setOpFormError(null);
     setOpModalOpen(true);
   };
 
@@ -260,6 +289,7 @@ export default function AdminMathTypes() {
     setOpCreate(false);
     setOpEditId(op.id);
     setOpName(op.name);
+    setOpFormError(null);
     setOpModalOpen(true);
   };
 
@@ -270,49 +300,60 @@ export default function AdminMathTypes() {
     setOpForTypeId(null);
     setOpForTypeName("");
     setOpName("");
+    setOpFormError(null);
   };
 
-  const saveOp = (e) => {
+  const saveOp = async (e) => {
     e.preventDefault();
     const name = opName.trim();
     if (!name || opForTypeId == null) return;
-    const tid = String(opForTypeId);
 
-    if (opCreate) {
-      const list = lessonsByTypeId[tid] || [];
-      const nextId =
-        list.length === 0 ? 1 : Math.max(...list.map((o) => o.id)) + 1;
-      setLessonsByTypeId((prev) => ({
-        ...prev,
-        [tid]: [
-          ...(prev[tid] || []),
-          { id: nextId, type_id: opForTypeId, name },
-        ],
-      }));
-    } else if (opEditId != null) {
-      setLessonsByTypeId((prev) => ({
-        ...prev,
-        [tid]: (prev[tid] || []).map((o) =>
-          o.id === opEditId ? { ...o, name } : o
-        ),
-      }));
+    setOpFormError(null);
+    setSavingOp(true);
+    try {
+      const typeRow = types.find((x) => x.id === opForTypeId);
+      if (!typeRow) {
+        setOpFormError("Không tìm thấy chủ đề.");
+        return;
+      }
+      if (opCreate) {
+        await createAdminLesson({ type_id: opForTypeId, name });
+      } else if (opEditId != null) {
+        await updateAdminLesson(opEditId, { name });
+      }
+      await loadLessonsForType(typeRow);
+      closeOpModal();
+    } catch (err) {
+      setOpFormError(
+        err?.response?.data?.message || err?.message || "Không lưu được bài học."
+      );
+    } finally {
+      setSavingOp(false);
     }
-    closeOpModal();
   };
 
-  const handleDeleteOp = (op, typeRow) => {
-    if (
-      !window.confirm(
-        `Xóa bài học "${op.name}"?\n\n(Demo: chỉ xóa trên giao diện — F5 tải lại từ server.)`
-      )
-    ) {
+  const handleDeleteOp = async (op, typeRow) => {
+    if (!window.confirm(`Xóa bài học "${op.name}" (ID ${op.id})?`)) {
       return;
     }
-    const tid = String(typeRow.id);
-    setLessonsByTypeId((prev) => ({
-      ...prev,
-      [tid]: (prev[tid] || []).filter((o) => o.id !== op.id),
-    }));
+    setDeletingLessonId(op.id);
+    setError(null);
+    try {
+      await deleteAdminLesson(op.id);
+      await loadLessonsForType(typeRow);
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg =
+        err?.response?.data?.message || err?.message || "Không xóa được bài học.";
+      if (status === 409) {
+        setBlockModalText(msg);
+        setBlockModalOpen(true);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setDeletingLessonId(null);
+    }
   };
 
   const showList = Boolean(filterGradeId) && !loadingTypes;
@@ -388,7 +429,14 @@ export default function AdminMathTypes() {
       {error && (
         <div style={styles.errorBanner}>
           {error}{" "}
-          <button type="button" style={styles.linkBtn} onClick={loadGrades}>
+          <button
+            type="button"
+            style={styles.linkBtn}
+            onClick={() => {
+              loadGrades();
+              if (filterGradeId) reloadTypes();
+            }}
+          >
             Thử lại
           </button>
         </div>
@@ -473,7 +521,7 @@ export default function AdminMathTypes() {
                               </div>
                             </td>
                             <td style={{ ...styles.td, color: "#57606a" }}>
-                              {t.description}
+                              {t.description ? t.description : "—"}
                             </td>
                             <td
                               style={{ ...styles.td, textAlign: "right" }}
@@ -489,8 +537,15 @@ export default function AdminMathTypes() {
                               </button>
                               <button
                                 type="button"
-                                style={{ ...styles.iconBtn, marginLeft: 8 }}
+                                style={{
+                                  ...styles.iconBtn,
+                                  marginLeft: 8,
+                                  ...(deletingTypeId === t.id
+                                    ? { opacity: 0.55, pointerEvents: "none" }
+                                    : {}),
+                                }}
                                 title="Xóa chủ đề"
+                                disabled={deletingTypeId != null}
                                 onClick={() => handleDelete(t)}
                               >
                                 <TrashIcon />
@@ -564,8 +619,12 @@ export default function AdminMathTypes() {
                                                 style={{
                                                   ...styles.iconBtnSm,
                                                   marginLeft: 6,
+                                                  ...(deletingLessonId === op.id
+                                                    ? { opacity: 0.55, pointerEvents: "none" }
+                                                    : {}),
                                                 }}
                                                 title="Xóa bài học"
+                                                disabled={deletingLessonId != null}
                                                 onClick={() => handleDeleteOp(op, t)}
                                               >
                                                 <TrashIcon />
@@ -596,12 +655,6 @@ export default function AdminMathTypes() {
           Chọn một khối lớp ở ô phía trên để hiển thị danh sách chủ đề.
         </p>
       )}
-
-      <p style={styles.demoNote}>
-        Demo: Sửa / Xóa / Tạo (chủ đề và bài học) chỉ lưu trên trình duyệt. Bài học
-        tải lần đầu qua API /lessons theo chủ đề. Kết nối API admin để đồng bộ cơ
-        sở dữ liệu.
-      </p>
 
       {editOpen && (
         <div style={styles.modalOverlay} role="dialog" aria-modal="true">
@@ -635,16 +688,29 @@ export default function AdminMathTypes() {
                   rows={4}
                 />
               </label>
+              {formError && (
+                <div style={styles.formError} role="alert">
+                  {formError}
+                </div>
+              )}
               <div style={styles.modalActions}>
                 <button
                   type="button"
                   style={styles.btnSecondary}
                   onClick={closeModal}
+                  disabled={savingForm}
                 >
                   Hủy
                 </button>
-                <button type="submit" style={styles.btnPrimaryModal}>
-                  {createOpen ? "Tạo" : "Lưu"}
+                <button
+                  type="submit"
+                  style={{
+                    ...styles.btnPrimaryModal,
+                    ...(savingForm ? { opacity: 0.75, pointerEvents: "none" } : {}),
+                  }}
+                  disabled={savingForm}
+                >
+                  {savingForm ? "Đang lưu…" : createOpen ? "Tạo" : "Lưu"}
                 </button>
               </div>
             </form>
@@ -673,19 +739,55 @@ export default function AdminMathTypes() {
                   autoFocus
                 />
               </label>
+              {opFormError && (
+                <div style={styles.formError} role="alert">
+                  {opFormError}
+                </div>
+              )}
               <div style={styles.modalActions}>
                 <button
                   type="button"
                   style={styles.btnSecondary}
                   onClick={closeOpModal}
+                  disabled={savingOp}
                 >
                   Hủy
                 </button>
-                <button type="submit" style={styles.btnPrimaryModal}>
-                  {opCreate ? "Thêm" : "Lưu"}
+                <button
+                  type="submit"
+                  style={{
+                    ...styles.btnPrimaryModal,
+                    ...(savingOp ? { opacity: 0.75, pointerEvents: "none" } : {}),
+                  }}
+                  disabled={savingOp}
+                >
+                  {savingOp ? "Đang lưu…" : opCreate ? "Thêm" : "Lưu"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {blockModalOpen && (
+        <div style={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="block-del-title">
+          <div style={styles.modal}>
+            <h3 id="block-del-title" style={styles.modalTitleWarn}>
+              Không thể xóa
+            </h3>
+            <p style={styles.blockModalBody}>{blockModalText}</p>
+            <div style={styles.modalActions}>
+              <button
+                type="button"
+                style={styles.btnPrimaryModal}
+                onClick={() => {
+                  setBlockModalOpen(false);
+                  setBlockModalText("");
+                }}
+              >
+                Đã hiểu
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1051,11 +1153,27 @@ const styles = {
     cursor: "pointer",
     verticalAlign: "middle",
   },
-  demoNote: {
-    marginTop: 20,
-    fontSize: "0.8rem",
-    color: "#6e7781",
+  formError: {
+    marginBottom: 12,
+    padding: "10px 12px",
+    fontSize: "0.88rem",
+    color: "#9a3412",
+    background: "#fff8f5",
+    border: "1px solid #f0c4a8",
+    borderRadius: 8,
     lineHeight: 1.45,
+  },
+  modalTitleWarn: {
+    margin: "0 0 12px",
+    fontSize: "1.1rem",
+    color: "#9a3412",
+    fontWeight: 700,
+  },
+  blockModalBody: {
+    margin: "0 0 18px",
+    fontSize: "0.95rem",
+    color: "#24292f",
+    lineHeight: 1.55,
   },
   modalOverlay: {
     position: "fixed",

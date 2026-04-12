@@ -39,11 +39,28 @@ module.exports = function mountAdminCrud(app, pool) {
     try {
       const limit = Math.min(Number(req.query.limit) || 200, 500);
       const offset = Number(req.query.offset) || 0;
-      const [rows] = await pool.query(
-        'SELECT * FROM users ORDER BY id ASC LIMIT ? OFFSET ?',
-        [limit, offset]
+      const rawSearch =
+        req.query.search != null && String(req.query.search).trim() !== ''
+          ? String(req.query.search).trim()
+          : '';
+
+      const params = [];
+      let whereSql = '';
+      if (rawSearch) {
+        whereSql = 'WHERE username LIKE ?';
+        params.push(`%${rawSearch}%`);
+      }
+
+      const [[{ cnt }]] = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM users ${whereSql}`,
+        [...params]
       );
-      const [[{ cnt }]] = await pool.query('SELECT COUNT(*) AS cnt FROM users');
+
+      const [rows] = await pool.query(
+        `SELECT * FROM users ${whereSql} ORDER BY id ASC LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      );
+
       res.json({
         count: Number(cnt),
         data: rows.map(stripPassword),
@@ -388,6 +405,12 @@ module.exports = function mountAdminCrud(app, pool) {
       if (!r.affectedRows) return res.status(404).json({ message: 'Không tìm thấy type' });
       res.json({ message: 'Đã xóa type', id });
     } catch (err) {
+      if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451) {
+        return res.status(409).json({
+          message:
+            'Không xóa được: chủ đề này đang được dùng bởi câu hỏi. Hãy xóa hoặc chuyển câu hỏi trước.',
+        });
+      }
       const fk = fkError(err);
       if (fk) return res.status(fk.statusCode).json({ message: fk.message });
       sendErr(res, err, 'Lỗi khi xóa type');
@@ -490,6 +513,12 @@ module.exports = function mountAdminCrud(app, pool) {
       if (!r.affectedRows) return res.status(404).json({ message: 'Không tìm thấy lesson' });
       res.json({ message: 'Đã xóa lesson', id });
     } catch (err) {
+      if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451) {
+        return res.status(409).json({
+          message:
+            'Không xóa được: bài học này đang được dùng bởi câu hỏi. Hãy xóa hoặc chuyển câu hỏi trước.',
+        });
+      }
       const fk = fkError(err);
       if (fk) return res.status(fk.statusCode).json({ message: fk.message });
       sendErr(res, err, 'Lỗi khi xóa lesson');

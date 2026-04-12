@@ -83,6 +83,96 @@ export const deleteAdminGrade = async (id) => {
 };
 
 // ==========================
+// Admin — Types & Lessons (chủ đề / bài học)
+// ==========================
+export const getAdminTypes = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await api.get("/admin/types", { params });
+  return res.data;
+};
+
+export const getAdminType = async (id) => {
+  const res = await api.get(`/admin/types/${id}`);
+  return res.data;
+};
+
+export const createAdminType = async ({ grade_id, name, description }) => {
+  const res = await api.post("/admin/types", { grade_id, name, description });
+  return res.data;
+};
+
+export const updateAdminType = async (id, payload) => {
+  const res = await api.put(`/admin/types/${id}`, payload);
+  return res.data;
+};
+
+export const deleteAdminType = async (id) => {
+  const res = await api.delete(`/admin/types/${id}`);
+  return res.data;
+};
+
+export const getAdminLessons = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await api.get("/admin/lessons", { params });
+  return res.data;
+};
+
+export const getAdminLesson = async (id) => {
+  const res = await api.get(`/admin/lessons/${id}`);
+  return res.data;
+};
+
+export const createAdminLesson = async ({ type_id, name }) => {
+  const res = await api.post("/admin/lessons", { type_id, name });
+  return res.data;
+};
+
+export const updateAdminLesson = async (id, payload) => {
+  const res = await api.put(`/admin/lessons/${id}`, payload);
+  return res.data;
+};
+
+export const deleteAdminLesson = async (id) => {
+  const res = await api.delete(`/admin/lessons/${id}`);
+  return res.data;
+};
+
+// ==========================
+// Admin — Users (CRUD /api/admin/users; mật khẩu băm bcrypt ở server)
+// ==========================
+export const getAdminUsers = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await api.get("/admin/users", { params });
+  return res.data;
+};
+
+export const getAdminUser = async (id) => {
+  const res = await api.get(`/admin/users/${id}`);
+  return res.data;
+};
+
+export const createAdminUser = async (payload) => {
+  const res = await api.post("/admin/users", payload);
+  return res.data;
+};
+
+export const updateAdminUser = async (id, payload) => {
+  const res = await api.put(`/admin/users/${id}`, payload);
+  return res.data;
+};
+
+export const deleteAdminUser = async (id) => {
+  const res = await api.delete(`/admin/users/${id}`);
+  return res.data;
+};
+
+// ==========================
 // Questions
 // ==========================
 export const getQuestions = async (opts = {}) => {
