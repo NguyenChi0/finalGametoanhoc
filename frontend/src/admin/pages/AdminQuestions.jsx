@@ -309,8 +309,7 @@ export default function AdminQuestions() {
         <div>
           <h1 style={styles.title}>Quản lý câu hỏi</h1>
           <p style={styles.lead}>
-            Dữ liệu từ cơ sở dữ liệu — lọc theo khối, chủ đề, bài học; tìm theo nội dung hoặc ID (server). Mỗi trang tối đa{" "}
-            {QUESTIONS_PAGE_SIZE} câu.
+            Chào mừng bạn đến với trang quản lý câu hỏi.
           </p>
         </div>
         <Link to="new" style={styles.btnPrimary}>
@@ -332,11 +331,8 @@ export default function AdminQuestions() {
           <DocumentIcon />
         </div>
         <div>
-          <p style={styles.statLabel}>Tổng số câu khớp bộ lọc (database)</p>
+          <p style={styles.statLabel}>Tổng số câu hỏi</p>
           <p style={styles.statNumber}>{totalFormatted}</p>
-          <p style={styles.statHint}>
-            Danh sách được phân trang: {QUESTIONS_PAGE_SIZE} câu mỗi trang — dùng bộ lọc để thu hẹp trước khi lật trang.
-          </p>
         </div>
       </section>
 
@@ -693,6 +689,7 @@ const styles = {
     fontSize: "0.95rem",
     color: "#57606a",
     lineHeight: 1.5,
+    fontFamily: "inherit",
   },
   btnPrimary: {
     display: "inline-flex",
@@ -828,6 +825,7 @@ const styles = {
     fontSize: "0.85rem",
     fontWeight: 600,
     color: "#57606a",
+    fontFamily: "inherit",
   },
   filterSelect: {
     width: "100%",
@@ -842,6 +840,7 @@ const styles = {
     color: "#24292f",
     background: "#fff",
     appearance: "none",
+    fontFamily: "inherit",
   },
   filterInput: {
     width: "100%",
@@ -855,6 +854,7 @@ const styles = {
     lineHeight: "1.4",
     color: "#24292f",
     background: "#fff",
+    fontFamily: "inherit",
   },
   emptyState: {
     padding: "24px 16px",

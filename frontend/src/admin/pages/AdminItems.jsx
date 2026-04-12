@@ -327,9 +327,7 @@ export default function AdminItems() {
         <div>
           <h1 style={styles.title}>Quản lý vật phẩm</h1>
           <p style={styles.lead}>
-            Ảnh lưu <code style={styles.codeInline}>backend/items-images</code>; cột <strong>link</strong> trong DB
-            là đường dẫn dạng <code style={styles.codeInline}>/items-images/…</code> (file tên ngẫu nhiên khi lưu). Kéo
-            thả / paste / chọn file trong popup — giống tạo câu hỏi. Giá mua = <strong>require_score</strong> điểm.
+            Chào mừng bạn đến với trang quản lý vật phẩm.
           </p>
         </div>
         <button type="button" style={styles.btnPrimary} onClick={openCreate}>
@@ -574,7 +572,7 @@ export default function AdminItems() {
                   >
                     <p style={styles.uploadTitle}>Click để paste ảnh (Ctrl+V)</p>
                     <p style={styles.uploadSubtitle}>hoặc kéo thả file vào đây</p>
-                    <p style={styles.uploadHint}>JPG, PNG, GIF, WebP — tối đa 5MB. Có thể dán đường dẫn /items-images/...</p>
+                    <p style={styles.uploadHint}>JPG, PNG, GIF, WebP — tối đa 5MB.</p>
                   </div>
                   <label
                     style={{
@@ -860,6 +858,7 @@ const styles = {
     borderRadius: 10,
     background: "#fff",
     overflow: "hidden",
+    fontFamily: "inherit",
   },
   searchInput: {
     flex: 1,
@@ -872,6 +871,7 @@ const styles = {
     background: "transparent",
     color: "#24292f",
     outline: "none",
+    fontFamily: "inherit",
   },
   searchIconSlot: {
     display: "flex",
@@ -1089,6 +1089,7 @@ const styles = {
     color: "#24292f",
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   btnPrimaryModal: {
     padding: "8px 18px",
@@ -1098,6 +1099,7 @@ const styles = {
     color: "#fff",
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   req: { color: "#cf222e" },
   optionalHint: {
@@ -1237,5 +1239,6 @@ const styles = {
     color: "#24292f",
     cursor: "pointer",
     fontWeight: 600,
+    fontFamily: "inherit",
   },
 };

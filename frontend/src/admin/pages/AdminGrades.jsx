@@ -180,8 +180,7 @@ export default function AdminGrades() {
         <div>
           <h1 style={styles.title}>Quản lý khối lớp</h1>
           <p style={styles.lead}>
-            Thêm, sửa, xóa khối lớp — đồng bộ với cơ sở dữ liệu. Không thể xóa khối đã có chủ đề hoặc câu
-            hỏi.
+            Chào mừng bạn đến với trang quản lý khối lớp.
           </p>
         </div>
         <button type="button" style={styles.btnPrimary} onClick={openCreate}>
@@ -536,6 +535,7 @@ const styles = {
     background: "transparent",
     color: "#24292f",
     outline: "none",
+    fontFamily: "inherit",
   },
   searchIconSlot: {
     display: "flex",
@@ -691,6 +691,7 @@ const styles = {
     color: "#24292f",
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   btnPrimaryModal: {
     padding: "8px 18px",
@@ -700,5 +701,6 @@ const styles = {
     color: "#fff",
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
 };

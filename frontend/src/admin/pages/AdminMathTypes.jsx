@@ -373,8 +373,7 @@ export default function AdminMathTypes() {
         <div>
           <h1 style={styles.title}>Quản lý chủ đề</h1>
           <p style={styles.lead}>
-            Chọn khối lớp để xem chủ đề; bấm vào một dòng để mở và quản lý bài học
-            bên dưới
+            Chào mừng bạn đến với trang quản lý chủ đề.
           </p>
         </div>
         <button
@@ -973,6 +972,7 @@ const styles = {
     borderRadius: 10,
     background: "#fff",
     overflow: "hidden",
+    fontFamily: "inherit",
   },
   searchInput: {
     flex: 1,
@@ -984,7 +984,8 @@ const styles = {
     border: "none",
     background: "transparent",
     color: "#24292f",
-    outline: "none",
+    outline: "none",  
+    fontFamily: "inherit",
   },
   searchIconSlot: {
     display: "flex",
@@ -1095,6 +1096,7 @@ const styles = {
     fontWeight: 600,
     fontSize: "0.85rem",
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   nestedTable: {
     width: "100%",
@@ -1247,6 +1249,7 @@ const styles = {
     color: "#24292f",
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   btnPrimaryModal: {
     padding: "8px 18px",
@@ -1256,5 +1259,6 @@ const styles = {
     color: "#fff",
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
 };

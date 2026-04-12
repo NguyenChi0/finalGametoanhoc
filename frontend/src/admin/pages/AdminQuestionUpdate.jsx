@@ -697,6 +697,7 @@ const styles = {
     fontSize: "1.05rem",
     fontWeight: 700,
     color: "#1f2328",
+    fontFamily: "inherit",
   },
   grid3: {
     display: "grid",
@@ -738,6 +739,7 @@ const styles = {
     minWidth: 0,
     maxWidth: "100%",
     boxSizing: "border-box",
+    fontFamily: "inherit",
   },
   warnInline: {
     fontSize: "0.82rem",
@@ -901,6 +903,7 @@ const styles = {
     color: "#24292f",
     cursor: "pointer",
     fontWeight: 600,
+    fontFamily: "inherit",
   },
   textarea: {
     padding: "12px 14px",
@@ -954,6 +957,7 @@ const styles = {
     borderRadius: 8,
     border: "1px solid #d0d7de",
     fontSize: "0.95rem",
+    fontFamily: "inherit",
   },
   actions: {
     display: "flex",

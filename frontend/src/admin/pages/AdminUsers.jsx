@@ -270,7 +270,7 @@ export default function AdminUsers() {
   };
 
   const handleDeleteUser = async (u) => {
-    if (!window.confirm(`Xóa tài khoản "${u.username}" (ID ${u.id})? Hành động không thể hoàn tác.`)) {
+    if (!window.confirm(`Bạn chắc chắn muốn xóa tài khoản "${u.username}" (ID ${u.id})? Hành động không thể hoàn tác.`)) {
       return;
     }
     setDeletingId(u.id);
@@ -303,9 +303,7 @@ export default function AdminUsers() {
         <div>
           <h1 style={styles.title}>Quản lý user</h1>
           <p style={styles.lead}>
-            Đồng bộ với bảng <code style={styles.codeInline}>users</code>. Mật khẩu băm bcrypt trên server.{" "}
-            {USERS_PAGE_SIZE} user/trang; ô tìm chỉ lọc theo <strong>username</strong> (toàn bảng, phân trang theo kết
-            quả).
+          Chào mừng bạn đến với trang quản lý tài khoản.
           </p>
         </div>
         <button
@@ -411,7 +409,7 @@ export default function AdminUsers() {
                   </span>
                 </div>
                 <div style={styles.cardField}>
-                  <span style={styles.cardLabel}>Thời gian tạo nick</span>
+                  <span style={styles.cardLabel}>Thời gian tạo</span>
                   <span style={{ ...styles.cardValue, fontSize: "0.88rem" }}>
                     {formatDateTime(u.created_at)}
                   </span>
@@ -455,7 +453,7 @@ export default function AdminUsers() {
                 <th style={styles.th}>Email</th>
                 <th style={styles.th}>Số điện thoại</th>
                 <th style={{ ...styles.th, whiteSpace: "nowrap" }}>
-                  Thời gian tạo nick
+                  Thời gian tạo
                 </th>
                 <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
                   Thao tác
@@ -660,9 +658,6 @@ export default function AdminUsers() {
                     placeholder={modalMode === "add" ? "Nhập mật khẩu" : "Để trống nếu không đổi"}
                     autoComplete="new-password"
                   />
-                  <p style={styles.fieldHint}>
-                    Server lưu bản băm bcrypt (cost 8), không lưu mật khẩu dạng rõ.
-                  </p>
                 </div>
               </div>
               {formError && (
@@ -816,6 +811,7 @@ const styles = {
     borderRadius: 10,
     background: "#fff",
     overflow: "hidden",
+    fontFamily: "inherit",
   },
   searchInput: {
     flex: 1,
@@ -961,12 +957,6 @@ const styles = {
     cursor: "pointer",
     verticalAlign: "middle",
   },
-  fieldHint: {
-    margin: "6px 0 0",
-    fontSize: "0.8rem",
-    color: "#6e7781",
-    lineHeight: 1.4,
-  },
   formError: {
     marginTop: 12,
     padding: "10px 12px",
@@ -1072,6 +1062,7 @@ const styles = {
     fontSize: "0.9rem",
     fontWeight: 500,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   btnSave: {
     padding: "8px 20px",
@@ -1082,6 +1073,7 @@ const styles = {
     fontSize: "0.9rem",
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   paginationBar: {
     display: "flex",

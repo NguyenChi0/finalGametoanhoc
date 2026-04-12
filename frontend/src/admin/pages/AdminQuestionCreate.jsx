@@ -308,7 +308,7 @@ export default function AdminQuestionCreate() {
                 required
                 disabled={!canPickHierarchy}
               >
-                <option value="">— Chọn khối —</option>
+                <option value="">Chọn khối</option>
                 {grades.map((g) => (
                   <option key={g.id} value={String(g.id)}>
                     {g.name}
@@ -604,6 +604,7 @@ const styles = {
     color: "#24292f",
     minWidth: 0,
     maxWidth: "100%",
+    fontFamily: "inherit",
   },
   uploadLabelContainer: {
     marginTop: 12,
@@ -626,7 +627,7 @@ const styles = {
     gap: 4,
     whiteSpace: "nowrap",
   },
-  req: { color: "#cf222e" },
+  req: { color: "#cf222e", fontFamily: "inherit" },
   select: {
     padding: "10px 12px",
     borderRadius: 8,
@@ -637,6 +638,7 @@ const styles = {
     minWidth: 0,
     maxWidth: "100%",
     boxSizing: "border-box",
+    fontFamily: "inherit",
   },
   input: {
     padding: "10px 12px",
@@ -767,6 +769,7 @@ const styles = {
     color: "#24292f",
     cursor: "pointer",
     fontWeight: 600,
+    fontFamily: "inherit",
   },
   textarea: {
     padding: "12px 14px",
@@ -820,6 +823,7 @@ const styles = {
     borderRadius: 8,
     border: "1px solid #d0d7de",
     fontSize: "0.95rem",
+    fontFamily: "inherit",
   },
   actions: {
     display: "flex",
