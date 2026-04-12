@@ -276,6 +276,12 @@ module.exports = function mountAdminCrud(app, pool) {
       if (!r.affectedRows) return res.status(404).json({ message: 'Không tìm thấy grade' });
       res.json({ message: 'Đã xóa grade', id });
     } catch (err) {
+      if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451) {
+        return res.status(409).json({
+          message:
+            'Không xóa được: khối này đã có chủ đề hoặc câu hỏi liên quan. Hãy xóa hoặc chuyển dữ liệu trước.',
+        });
+      }
       const fk = fkError(err);
       if (fk) return res.status(fk.statusCode).json({ message: fk.message });
       sendErr(res, err, 'Lỗi khi xóa grade');

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { getGrades, getTypes, getLessons, updateQuestion } from "../../api";
 
 const initialAnswers = ["", "", "", ""];
 
@@ -18,8 +19,7 @@ function useMediaQuery(query) {
 }
 
 /**
- * Demo: nhận dữ liệu từ Quản lý câu hỏi qua navigate(..., { state: { draft } }).
- * Không gọi API — giữ giao diện tương tự AdminQuestionCreate.
+ * Nhận draft từ Quản lý câu hỏi: navigate(..., { state: { draft } }) — phân cấp + nội dung câu.
  */
 export default function AdminQuestionUpdate() {
   const location = useLocation();
@@ -27,50 +27,83 @@ export default function AdminQuestionUpdate() {
   const isNarrow = useMediaQuery("(max-width: 768px)");
   const draft = location.state?.draft;
 
-  const [questionId, setQuestionId] = useState(null);
-  const [gradeLabel, setGradeLabel] = useState("");
-  const [subjectLabel, setSubjectLabel] = useState("");
-  const [lessonLabel, setLessonLabel] = useState("");
-  const [gradeLine, setGradeLine] = useState("");
-  const [topicLine, setTopicLine] = useState("");
-  const [typeLabel, setTypeLabel] = useState("");
+  const [questionId, setQuestionId] = useState(() => draft?.id ?? null);
+
+  const [grades, setGrades] = useState([]);
+  const [types, setTypes] = useState([]);
+  const [lessons, setLessons] = useState([]);
+  /** Lazy init từ draft để effect phân cấp lần đầu không xóa type/lesson (thứ tự effect). */
+  const [gradeId, setGradeId] = useState(() =>
+    draft?.grade_id != null && draft.grade_id !== "" ? String(draft.grade_id) : ""
+  );
+  const [typeId, setTypeId] = useState(() =>
+    draft?.type_id != null && draft.type_id !== "" ? String(draft.type_id) : ""
+  );
+  const [lessonId, setLessonId] = useState(() =>
+    draft?.lesson_id != null && draft.lesson_id !== "" ? String(draft.lesson_id) : ""
+  );
 
   const [questionText, setQuestionText] = useState("");
   const [questionImage, setQuestionImage] = useState("");
   const [questionImagePreview, setQuestionImagePreview] = useState("");
+  const [questionImageFile, setQuestionImageFile] = useState(null);
+  /** Người dùng xóa ảnh (để gửi clear_question_image khi lưu). */
+  const [imageCleared, setImageCleared] = useState(false);
   const [answers, setAnswers] = useState(initialAnswers);
   const [correctIndex, setCorrectIndex] = useState(0);
 
+  const [loadingGrades, setLoadingGrades] = useState(true);
+  const [loadingTypes, setLoadingTypes] = useState(false);
+  const [loadingLessons, setLoadingLessons] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  const loadGrades = useCallback(async () => {
+    setLoadingGrades(true);
+    setError(null);
+    try {
+      const data = await getGrades();
+      setGrades(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e?.message || "Không tải được danh sách khối lớp.");
+      setGrades([]);
+    } finally {
+      setLoadingGrades(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGrades();
+  }, [loadGrades]);
 
   useEffect(() => {
     setError(null);
     if (!draft) {
       setQuestionId(null);
-      setGradeLabel("");
-      setSubjectLabel("");
-      setLessonLabel("");
-      setGradeLine("");
-      setTopicLine("");
-      setTypeLabel("");
+      setGradeId("");
+      setTypeId("");
+      setLessonId("");
+      setTypes([]);
+      setLessons([]);
       setQuestionText("");
       setQuestionImage("");
       setQuestionImagePreview("");
+      setQuestionImageFile(null);
+      setImageCleared(false);
       setAnswers(initialAnswers);
       setCorrectIndex(0);
       return;
     }
     setQuestionId(draft.id);
-    setGradeLabel(draft.gradeLabel || "");
-    setSubjectLabel(draft.subjectLabel || "");
-    setLessonLabel(draft.lessonLabel || "");
-    setGradeLine(draft.gradeLine || "");
-    setTopicLine(draft.topicLine || "");
-    setTypeLabel(draft.typeLabel || "");
+    setGradeId(draft.grade_id != null && draft.grade_id !== "" ? String(draft.grade_id) : "");
+    setTypeId(draft.type_id != null && draft.type_id !== "" ? String(draft.type_id) : "");
+    setLessonId(draft.lesson_id != null && draft.lesson_id !== "" ? String(draft.lesson_id) : "");
     setQuestionText(draft.questionText || "");
-    setQuestionImage(draft.questionImage || "");
-    setQuestionImagePreview(draft.questionImagePreview || "");
+    const img = draft.questionImage ? String(draft.questionImage).trim() : "";
+    setQuestionImage(img);
+    setQuestionImagePreview(draft.questionImagePreview != null ? String(draft.questionImagePreview).trim() : img);
+    setQuestionImageFile(null);
+    setImageCleared(false);
     setAnswers(
       Array.isArray(draft.answers) && draft.answers.length === 4
         ? [...draft.answers]
@@ -83,6 +116,86 @@ export default function AdminQuestionUpdate() {
     );
   }, [draft, location.key]);
 
+  useEffect(() => {
+    if (!gradeId) {
+      setTypes([]);
+      setTypeId("");
+      setLessons([]);
+      setLessonId("");
+      return;
+    }
+    const gid = Number(gradeId);
+    let cancelled = false;
+    (async () => {
+      setLoadingTypes(true);
+      setError(null);
+      try {
+        const raw = await getTypes(gid);
+        if (cancelled) return;
+        const list = Array.isArray(raw) ? raw : [];
+        setTypes(list);
+        setTypeId((prev) =>
+          prev && list.some((x) => String(x.id) === String(prev)) ? prev : ""
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setError(e?.message || "Không tải được chủ đề.");
+          setTypes([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingTypes(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gradeId]);
+
+  useEffect(() => {
+    if (!typeId) {
+      setLessons([]);
+      setLessonId("");
+      return;
+    }
+    const tid = Number(typeId);
+    let cancelled = false;
+    (async () => {
+      setLoadingLessons(true);
+      setError(null);
+      try {
+        const raw = await getLessons(tid);
+        if (cancelled) return;
+        const list = Array.isArray(raw) ? raw : [];
+        setLessons(list);
+        setLessonId((prev) =>
+          prev && list.some((x) => String(x.id) === String(prev)) ? prev : ""
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setError(e?.message || "Không tải được bài học.");
+          setLessons([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingLessons(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [typeId]);
+
+  const hierarchyPreview = useMemo(() => {
+    const g = grades.find((x) => String(x.id) === String(gradeId));
+    const t = types.find((x) => String(x.id) === String(typeId));
+    const l = lessons.find((x) => String(x.id) === String(lessonId));
+    const parts = [g?.name, t?.name, l?.name].filter(Boolean);
+    return parts.length ? parts.join(" > ") : "—";
+  }, [grades, types, lessons, gradeId, typeId, lessonId]);
+
+  const refGradeId = gradeId ? Number(gradeId) : null;
+  const refTypeId = typeId ? Number(typeId) : null;
+  const refLessonId = lessonId ? Number(lessonId) : null;
+
   const setAnswerAt = (idx, value) => {
     setAnswers((prev) => {
       const next = [...prev];
@@ -92,6 +205,8 @@ export default function AdminQuestionUpdate() {
   };
 
   const readImageFile = (file) => {
+    setQuestionImageFile(file);
+    setImageCleared(false);
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
@@ -106,8 +221,10 @@ export default function AdminQuestionUpdate() {
     if (file) {
       readImageFile(file);
     } else {
+      setQuestionImageFile(null);
       setQuestionImage("");
       setQuestionImagePreview("");
+      setImageCleared(true);
     }
   };
 
@@ -127,6 +244,8 @@ export default function AdminQuestionUpdate() {
     }
     const text = event.clipboardData?.getData("text");
     if (text) {
+      setQuestionImageFile(null);
+      setImageCleared(false);
       setQuestionImage(text.trim());
       setQuestionImagePreview(text.trim());
     }
@@ -140,19 +259,62 @@ export default function AdminQuestionUpdate() {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    if (!draft) {
+    if (!draft || !questionId) {
       setError("Không có dữ liệu câu hỏi.");
       return;
     }
+    if (!gradeId || !typeId || !lessonId) {
+      setError("Vui lòng chọn khối lớp, chủ đề và bài học.");
+      return;
+    }
     setSaving(true);
-    window.setTimeout(() => {
-      setSaving(false);
+    try {
+      let fileToSend = questionImageFile;
+      if (!fileToSend && questionImage.trim().startsWith("data:image")) {
+        try {
+          const r = await fetch(questionImage.trim());
+          const blob = await r.blob();
+          fileToSend = new File([blob], "question.png", {
+            type: blob.type || "image/png",
+          });
+        } catch (_) {
+          /* bỏ qua */
+        }
+      }
+      const pathOnly =
+        !fileToSend &&
+        !imageCleared &&
+        questionImage.trim() &&
+        !questionImage.trim().startsWith("data:")
+          ? questionImage.trim()
+          : undefined;
+
+      await updateQuestion(questionId, {
+        grade_id: Number(gradeId),
+        type_id: Number(typeId),
+        lesson_id: Number(lessonId),
+        question_text: questionText,
+        answers,
+        correct_index: correctIndex,
+        ...(fileToSend ? { imageFile: fileToSend } : {}),
+        ...(pathOnly ? { question_image_path: pathOnly } : {}),
+        ...(imageCleared && !fileToSend ? { clear_question_image: true } : {}),
+      });
+
       navigate("/admin/questions", { replace: true });
-    }, 400);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message || err?.message || "Không lưu được thay đổi.";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const canPickHierarchy = !loadingGrades && grades.length > 0;
 
   if (!draft) {
     return (
@@ -197,15 +359,15 @@ export default function AdminQuestionUpdate() {
         <div>
           <h1 style={styles.title}>Cập nhật câu hỏi #{questionId}</h1>
           <p style={styles.lead}>
-            Cập nhật phân cấp (khối → chủ đề → bài học), nhập nội dung và bốn đáp án trắc nghiệm, đánh dấu
-            đáp án đúng.
+            Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và bốn đáp án trắc nghiệm, đánh dấu đáp
+            án đúng.
           </p>
         </div>
       </header>
 
-      <p style={styles.demoBanner}>
-        Demo: <strong>Phân cấp</strong> đọc từ dòng bảng (mock). Sau này có thể thay bằng select gắn API
-        giống màn tạo mới.
+      <p style={styles.infoBanner}>
+        Bạn có thể đổi <strong>khối</strong>, <strong>chủ đề</strong> và <strong>bài học</strong> trực tiếp tại
+        đây; sau khi lưu, thay đổi được ghi vào cơ sở dữ liệu.
       </p>
 
       {error && (
@@ -213,6 +375,8 @@ export default function AdminQuestionUpdate() {
           {error}
         </div>
       )}
+
+      {loadingGrades && <p style={styles.muted}>Đang tải danh sách khối lớp…</p>}
 
       <form
         onSubmit={handleSubmit}
@@ -222,30 +386,85 @@ export default function AdminQuestionUpdate() {
         }}
       >
         <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Phân cấp (xem)</h2>
+          <h2 style={styles.sectionTitle}>Phân cấp</h2>
+          <p style={styles.hierarchyIds} aria-label="Mã tham chiếu phân cấp trong cơ sở dữ liệu">
+            Khối #{refGradeId ?? "—"} · Chủ đề #{refTypeId ?? "—"} · Bài học #{refLessonId ?? "—"}
+          </p>
           <div
             style={{
               ...styles.grid3,
               ...(isNarrow ? styles.grid3Narrow : {}),
             }}
           >
-            <div style={styles.label}>
-              <span style={styles.labelTitle}>Khối lớp</span>
-              <div style={styles.readonlyBox}>{gradeLabel || "—"}</div>
-            </div>
-            <div style={styles.label}>
-              <span style={styles.labelTitle}>Dạng / môn</span>
-              <div style={styles.readonlyBox}>{subjectLabel || "—"}</div>
-            </div>
-            <div style={styles.label}>
-              <span style={styles.labelTitle}>Bài học</span>
-              <div style={styles.readonlyBox}>{lessonLabel || "—"}</div>
-            </div>
+            <label style={styles.label}>
+              <span style={styles.labelTitle}>
+                Khối lớp <span style={styles.req}>*</span>
+              </span>
+              <select
+                value={gradeId}
+                onChange={(e) => setGradeId(e.target.value)}
+                style={styles.select}
+                required
+                disabled={!canPickHierarchy}
+              >
+                <option value="">— Chọn khối —</option>
+                {grades.map((g) => (
+                  <option key={g.id} value={String(g.id)}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={styles.label}>
+              <span style={styles.labelTitle}>
+                Chủ đề <span style={styles.req}>*</span>
+              </span>
+              <select
+                value={typeId}
+                onChange={(e) => setTypeId(e.target.value)}
+                style={styles.select}
+                required
+                disabled={!gradeId || loadingTypes}
+              >
+                <option value="">
+                  {gradeId ? "— Chọn chủ đề —" : "Chọn khối trước"}
+                </option>
+                {types.map((t) => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={styles.label}>
+              <span style={styles.labelTitle}>
+                Bài học <span style={styles.req}>*</span>
+              </span>
+              <select
+                value={lessonId}
+                onChange={(e) => setLessonId(e.target.value)}
+                style={styles.select}
+                required
+                disabled={!typeId || loadingLessons}
+              >
+                <option value="">
+                  {typeId ? "— Chọn bài học —" : "Chọn chủ đề trước"}
+                </option>
+                {lessons.map((l) => (
+                  <option key={l.id} value={String(l.id)}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+              {typeId && !loadingLessons && lessons.length === 0 && (
+                <span style={styles.warnInline}>
+                  Chưa có bài học cho chủ đề này — thêm bài học ở Quản lý chủ đề trước.
+                </span>
+              )}
+            </label>
           </div>
           <div style={styles.hierarchyBlock}>
-            <span style={styles.hierarchyLine}>{gradeLine}</span>
-            <span style={styles.hierarchySub}>{topicLine}</span>
-            <span style={styles.typeLine}>Loại: {typeLabel}</span>
+            <span style={styles.hierarchyLine}>{hierarchyPreview}</span>
           </div>
         </section>
 
@@ -318,8 +537,10 @@ export default function AdminQuestionUpdate() {
                 type="button"
                 style={styles.removeImageButton}
                 onClick={() => {
+                  setQuestionImageFile(null);
                   setQuestionImage("");
                   setQuestionImagePreview("");
+                  setImageCleared(true);
                 }}
               >
                 Xóa ảnh
@@ -364,7 +585,7 @@ export default function AdminQuestionUpdate() {
             }}
             disabled={saving}
           >
-            {saving ? "Đang lưu…" : "Lưu thay đổi (demo)"}
+            {saving ? "Đang lưu…" : "Lưu thay đổi"}
           </button>
         </div>
       </form>
@@ -414,7 +635,7 @@ const styles = {
     color: "#57606a",
     lineHeight: 1.5,
   },
-  demoBanner: {
+  infoBanner: {
     margin: "0 0 16px",
     padding: "10px 14px",
     fontSize: "0.88rem",
@@ -422,6 +643,12 @@ const styles = {
     background: "#eaf4ff",
     border: "1px solid #c9d8e8",
     borderRadius: 8,
+    lineHeight: 1.45,
+  },
+  hierarchyIds: {
+    margin: "0 0 12px",
+    fontSize: "0.8rem",
+    color: "#57606a",
     lineHeight: 1.45,
   },
   emptyWrap: {
@@ -501,20 +728,22 @@ const styles = {
     whiteSpace: "nowrap",
   },
   req: { color: "#cf222e" },
-  readonlyBox: {
+  select: {
     padding: "10px 12px",
     borderRadius: 8,
-    border: "1px solid #e1e4e8",
-    background: "#f6f8fa",
+    border: "1px solid #d0d7de",
     fontSize: "0.95rem",
-    color: "#24292f",
-    fontWeight: 500,
-    minHeight: 20,
+    background: "#fff",
+    width: "100%",
     minWidth: 0,
     maxWidth: "100%",
     boxSizing: "border-box",
-    overflowWrap: "break-word",
-    wordBreak: "break-word",
+  },
+  warnInline: {
+    fontSize: "0.82rem",
+    color: "#9a3412",
+    fontWeight: 500,
+    marginTop: 4,
   },
   hierarchyBlock: {
     marginTop: 16,
@@ -533,19 +762,6 @@ const styles = {
     fontSize: "0.88rem",
     fontWeight: 600,
     color: "#24292f",
-    overflowWrap: "break-word",
-    wordBreak: "break-word",
-  },
-  hierarchySub: {
-    fontSize: "0.82rem",
-    color: "#57606a",
-    lineHeight: 1.4,
-    overflowWrap: "break-word",
-    wordBreak: "break-word",
-  },
-  typeLine: {
-    fontSize: "0.82rem",
-    color: "#57606a",
     overflowWrap: "break-word",
     wordBreak: "break-word",
   },

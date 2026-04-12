@@ -1,28 +1,18 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { getGrades } from "../../api";
+import {
+  getAdminGrades,
+  createAdminGrade,
+  updateAdminGrade,
+  deleteAdminGrade,
+} from "../../api";
 
-/** Mô tả demo theo khối (DB grades hiện chỉ có id + name) */
-const DEFAULT_DESCRIPTIONS = {
-  1:
-    "Làm quen với số và phép cộng, trừ trong phạm vi 100; hình học cơ bản.",
-  2:
-    "Phép nhân, chia; đơn vị đo độ dài, khối lượng; bài toán có lời văn.",
-  3:
-    "Số đến 10.000; phân số cơ bản; chu vi, diện tích đơn giản.",
-  4:
-    "Số thập phân; phép tính với số thập phân; hình học phẳng.",
-  5:
-    "Phần trăm; tỉ số; hình học không gian và các bài toán tổng hợp.",
-};
-
-function enrich(row) {
+/** Chuẩn hóa dòng từ API — không chèn mô tả giả; NULL/empty giữ đúng như DB. */
+function normalizeGradeRow(row) {
+  const d = row.description;
   return {
     ...row,
-    description:
-      row.description ||
-      DEFAULT_DESCRIPTIONS[row.id] ||
-      "Chưa có mô tả chi tiết.",
+    description: d == null || String(d).trim() === "" ? "" : String(d).trim(),
   };
 }
 
@@ -37,16 +27,25 @@ export default function AdminGrades() {
   const [editId, setEditId] = useState(null);
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
+  /** ID khối khi tạo mới (bắt buộc trên server) */
+  const [formId, setFormId] = useState("1");
+  const [formError, setFormError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [blockModalText, setBlockModalText] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getGrades();
+      const data = await getAdminGrades();
       const list = Array.isArray(data) ? data : [];
-      setGrades(list.map(enrich));
+      setGrades(list.map(normalizeGradeRow));
     } catch (e) {
-      setError(e?.message || "Không tải được danh sách lớp.");
+      const msg =
+        e?.response?.data?.message || e?.message || "Không tải được danh sách lớp.";
+      setError(msg);
       setGrades([]);
     } finally {
       setLoading(false);
@@ -71,6 +70,7 @@ export default function AdminGrades() {
     setEditId(g.id);
     setFormName(g.name);
     setFormDesc(g.description || "");
+    setFormError(null);
     setEditOpen(true);
     setCreateOpen(false);
   };
@@ -79,6 +79,10 @@ export default function AdminGrades() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormError(null);
+    const nextId =
+      grades.length === 0 ? 1 : Math.max(...grades.map((g) => Number(g.id))) + 1;
+    setFormId(String(nextId));
     setCreateOpen(true);
     setEditOpen(true);
   };
@@ -89,39 +93,77 @@ export default function AdminGrades() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormId("1");
+    setFormError(null);
   };
 
-  const saveForm = (e) => {
+  const saveForm = async (e) => {
     e.preventDefault();
     const name = formName.trim();
     const desc = formDesc.trim();
     if (!name) return;
 
-    if (createOpen) {
-      const nextId =
-        grades.length === 0 ? 1 : Math.max(...grades.map((g) => g.id)) + 1;
-      setGrades((list) => [...list, enrich({ id: nextId, name, description: desc })]);
-    } else if (editId != null) {
-      setGrades((list) =>
-        list.map((x) =>
-          x.id === editId
-            ? { ...x, name, description: desc || DEFAULT_DESCRIPTIONS[x.id] || x.description }
-            : x
-        )
-      );
+    setFormError(null);
+    setSaving(true);
+    try {
+      if (createOpen) {
+        const idNum = Number(formId);
+        if (!Number.isInteger(idNum) || idNum < 1 || idNum > 255) {
+          setFormError("ID khối phải là số nguyên từ 1 đến 255.");
+          return;
+        }
+        await createAdminGrade({
+          id: idNum,
+          name,
+          description: desc || null,
+        });
+      } else if (editId != null) {
+        await updateAdminGrade(editId, {
+          name,
+          description: desc,
+        });
+      }
+      await load();
+      closeModal();
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Không lưu được. Vui lòng thử lại.";
+      setFormError(msg);
+    } finally {
+      setSaving(false);
     }
-    closeModal();
   };
 
-  const handleDelete = (g) => {
+  const handleDelete = async (g) => {
     if (
       !window.confirm(
-        `Xóa "${g.name}"?\n\n(Demo: chỉ xóa trên giao diện — F5 tải lại từ server.)`
+        `Xóa khối "${g.name}" (ID ${g.id})?\n\nHành động này không thể hoàn tác nếu không còn dữ liệu phụ thuộc.`
       )
     ) {
       return;
     }
-    setGrades((list) => list.filter((x) => x.id !== g.id));
+    setDeletingId(g.id);
+    setError(null);
+    try {
+      await deleteAdminGrade(g.id);
+      await load();
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Không xóa được khối lớp.";
+      if (status === 409) {
+        setBlockModalText(msg);
+        setBlockModalOpen(true);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -138,7 +180,8 @@ export default function AdminGrades() {
         <div>
           <h1 style={styles.title}>Quản lý khối lớp</h1>
           <p style={styles.lead}>
-            Quản lý danh sách các khối lớp trong hệ thống
+            Thêm, sửa, xóa khối lớp — đồng bộ với cơ sở dữ liệu. Không thể xóa khối đã có chủ đề hoặc câu
+            hỏi.
           </p>
         </div>
         <button type="button" style={styles.btnPrimary} onClick={openCreate}>
@@ -212,7 +255,7 @@ export default function AdminGrades() {
                     <td style={styles.td}>{g.id}</td>
                     <td style={{ ...styles.td, fontWeight: 700 }}>{g.name}</td>
                     <td style={{ ...styles.td, color: "#57606a" }}>
-                      {g.description}
+                      {g.description ? g.description : "—"}
                     </td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
                       <button
@@ -225,8 +268,13 @@ export default function AdminGrades() {
                       </button>
                       <button
                         type="button"
-                        style={{ ...styles.iconBtn, marginLeft: 8 }}
+                        style={{
+                          ...styles.iconBtn,
+                          marginLeft: 8,
+                          ...(deletingId === g.id ? { opacity: 0.6, pointerEvents: "none" } : {}),
+                        }}
                         title="Xóa"
+                        disabled={deletingId != null}
                         onClick={() => handleDelete(g)}
                       >
                         <TrashIcon />
@@ -240,11 +288,6 @@ export default function AdminGrades() {
         </div>
       )}
 
-      <p style={styles.demoNote}>
-        Demo: Sửa / Xóa / Tạo chỉ lưu trên trình duyệt. Kết nối API admin để đồng bộ
-        cơ sở dữ liệu.
-      </p>
-
       {editOpen && (
         <div style={styles.modalOverlay} role="dialog" aria-modal="true">
           <div style={styles.modal}>
@@ -252,6 +295,21 @@ export default function AdminGrades() {
               {createOpen ? "Tạo khối lớp mới" : "Chỉnh sửa khối lớp"}
             </h3>
             <form onSubmit={saveForm}>
+              {createOpen && (
+                <label style={styles.label}>
+                  ID khối (1–255)
+                  <input
+                    type="number"
+                    min={1}
+                    max={255}
+                    value={formId}
+                    onChange={(e) => setFormId(e.target.value)}
+                    style={styles.inputLight}
+                    required
+                    autoFocus
+                  />
+                </label>
+              )}
               <label style={styles.label}>
                 Tên khối lớp
                 <input
@@ -260,7 +318,7 @@ export default function AdminGrades() {
                   onChange={(e) => setFormName(e.target.value)}
                   style={styles.inputLight}
                   required
-                  autoFocus
+                  autoFocus={!createOpen}
                 />
               </label>
               <label style={styles.label}>
@@ -272,19 +330,55 @@ export default function AdminGrades() {
                   rows={4}
                 />
               </label>
+              {formError && (
+                <div style={styles.formError} role="alert">
+                  {formError}
+                </div>
+              )}
               <div style={styles.modalActions}>
                 <button
                   type="button"
                   style={styles.btnSecondary}
                   onClick={closeModal}
+                  disabled={saving}
                 >
                   Hủy
                 </button>
-                <button type="submit" style={styles.btnPrimaryModal}>
-                  {createOpen ? "Tạo" : "Lưu"}
+                <button
+                  type="submit"
+                  style={{
+                    ...styles.btnPrimaryModal,
+                    ...(saving ? { opacity: 0.75, pointerEvents: "none" } : {}),
+                  }}
+                  disabled={saving}
+                >
+                  {saving ? "Đang lưu…" : createOpen ? "Tạo" : "Lưu"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {blockModalOpen && (
+        <div style={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="block-delete-title">
+          <div style={styles.modal}>
+            <h3 id="block-delete-title" style={styles.modalTitleWarn}>
+              Không thể xóa khối lớp
+            </h3>
+            <p style={styles.blockModalBody}>{blockModalText}</p>
+            <div style={styles.modalActions}>
+              <button
+                type="button"
+                style={styles.btnPrimaryModal}
+                onClick={() => {
+                  setBlockModalOpen(false);
+                  setBlockModalText("");
+                }}
+              >
+                Đã hiểu
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -518,11 +612,27 @@ const styles = {
     cursor: "pointer",
     verticalAlign: "middle",
   },
-  demoNote: {
-    marginTop: 20,
-    fontSize: "0.8rem",
-    color: "#6e7781",
+  formError: {
+    marginBottom: 12,
+    padding: "10px 12px",
+    fontSize: "0.88rem",
+    color: "#9a3412",
+    background: "#fff8f5",
+    border: "1px solid #f0c4a8",
+    borderRadius: 8,
     lineHeight: 1.45,
+  },
+  modalTitleWarn: {
+    margin: "0 0 12px",
+    fontSize: "1.1rem",
+    color: "#9a3412",
+    fontWeight: 700,
+  },
+  blockModalBody: {
+    margin: "0 0 18px",
+    fontSize: "0.95rem",
+    color: "#24292f",
+    lineHeight: 1.55,
   },
   modalOverlay: {
     position: "fixed",

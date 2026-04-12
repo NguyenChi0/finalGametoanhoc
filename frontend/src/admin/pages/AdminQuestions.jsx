@@ -1,5 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  getGrades,
+  getTypes,
+  getLessons,
+  getQuestions,
+  getHierarchyLabels,
+} from "../../api";
+
+/** Số câu hỏi tối đa mỗi trang (đồng bộ với API limit). */
+const QUESTIONS_PAGE_SIZE = 20;
 
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() =>
@@ -15,159 +25,275 @@ function useMediaQuery(query) {
   return matches;
 }
 
-/** Một dòng bảng mock → payload đưa sang trang sửa (demo, không gọi API). */
-function buildQuestionEditDraft(row) {
-  const correctText = row.answer.replace(/^[A-D]\.\s*/i, "").trim() || row.answer;
+function pickNameFromRowOrMap(apiName, fkId, idToName) {
+  const fromApi = apiName != null && String(apiName).trim() !== "" ? String(apiName).trim() : "";
+  if (fromApi) return fromApi;
+  if (fkId == null || fkId === "") return "";
+  const n = idToName?.get(Number(fkId));
+  return n != null && String(n).trim() !== "" ? String(n).trim() : "";
+}
+
+/**
+ * Payload từ dòng API → AdminQuestionUpdate (navigate state.draft).
+ * `lookup`: map id→tên từ dropdown bộ lọc (bổ sung khi API thiếu tên sau JOIN).
+ */
+function buildQuestionEditDraft(row, lookup) {
+  const parts = row.answers || [];
+  const correct = parts.find((a) => a.correct);
+  const wrong = parts.filter((a) => !a.correct);
+  const fourTexts = [
+    correct?.text ?? "",
+    wrong[0]?.text ?? "",
+    wrong[1]?.text ?? "",
+    wrong[2]?.text ?? "",
+  ];
+  const img = row.question_image ? String(row.question_image).trim() : "";
+  const g = pickNameFromRowOrMap(row.grade_name, row.grade_id, lookup?.gradeById);
+  const t = pickNameFromRowOrMap(row.type_name, row.type_id, lookup?.typeById);
+  const l = pickNameFromRowOrMap(row.lesson_name, row.lesson_id, lookup?.lessonById);
+  const chain = [g, t, l].filter(Boolean);
+  const pathFromApi =
+    row.hierarchy_path != null && String(row.hierarchy_path).trim() !== ""
+      ? String(row.hierarchy_path).trim()
+      : "";
   return {
     id: row.id,
-    gradeLabel: row.grade,
-    subjectLabel: row.subject,
-    lessonLabel: row.lesson,
-    gradeLine: row.gradeLine,
-    topicLine: row.topicLine,
-    typeLabel: row.typeLabel,
-    questionText: row.content,
-    answers: [
-      correctText,
-      `${correctText} (nhiễu 1)`,
-      `${correctText} (nhiễu 2)`,
-      "Phương án D — demo",
-    ],
+    grade_id: row.grade_id != null && row.grade_id !== "" ? Number(row.grade_id) : null,
+    type_id: row.type_id != null && row.type_id !== "" ? Number(row.type_id) : null,
+    lesson_id: row.lesson_id != null && row.lesson_id !== "" ? Number(row.lesson_id) : null,
+    gradeLabel: g,
+    subjectLabel: t,
+    lessonLabel: l,
+    gradeLine: pathFromApi || (chain.length ? chain.join(" > ") : ""),
+    topicLine: "",
+    typeLabel: t || "Trắc nghiệm",
+    questionText: row.question_text || "",
+    answers: fourTexts,
     correctIndex: 0,
-    questionImage: "",
-    questionImagePreview: "",
+    questionImage: img,
+    questionImagePreview: img,
   };
 }
 
-/** Giao diện tĩnh (mock) — chưa nối API */
-const TOTAL_QUESTIONS = 4939;
+function formatAnswerLabel(row) {
+  const t = row.answers?.find((a) => a.correct)?.text;
+  return t ? `A. ${t}` : "—";
+}
 
-const MOCK_ROWS = [
-  {
-    id: 1,
-    typeLabel: "Trắc nghiệm 1",
-    content:
-      "Giá trị của chữ số 7 trong số 67 là bao nhiêu đơn vị?",
-    answer: "A. 7",
-    grade: "Lớp 2",
-    subject: "Toán",
-    lesson: "Các số trong phạm vi 1000",
-    gradeLine: "Lớp 2 > Toán 2",
-    topicLine: "Các số trong phạm vi 1000 > Giá trị của chữ số -...",
-    createdAt: "14:55 06/04/2026", // vẫn giữ trong mock nếu cần, nhưng không hiển thị
-  },
-  {
-    id: 2,
-    typeLabel: "Trắc nghiệm 1",
-    content:
-      "Số gồm 3 trăm, 0 chục và 7 đơn vị được viết là số nào?",
-    answer: "A. 307",
-    grade: "Lớp 2",
-    subject: "Toán",
-    lesson: "Các số trong phạm vi 1000",
-    gradeLine: "Lớp 2 > Toán 2",
-    topicLine: "Các số trong phạm vi 1000 > Viết số có ba chữ số -...",
-    createdAt: "14:55 06/04/2026",
-  },
-  {
-    id: 3,
-    typeLabel: "Trắc nghiệm 1",
-    content:
-      "Số 0 là số có bao nhiêu chữ số?",
-    answer: "A. 1",
-    grade: "Lớp 2",
-    subject: "Toán",
-    lesson: "Các số trong phạm vi 1000",
-    gradeLine: "Lớp 2 > Toán 2",
-    topicLine: "Các số trong phạm vi 1000 > Các số có ba chữ số -...",
-    createdAt: "14:55 06/04/2026",
-  },
-  {
-    id: 4,
-    typeLabel: "Trắc nghiệm 1",
-    content:
-      "Số liền trước của 999 là số nào?",
-    answer: "A. 998",
-    grade: "Lớp 2",
-    subject: "Toán",
-    lesson: "Các số trong phạm vi 1000",
-    gradeLine: "Lớp 2 > Toán 2",
-    topicLine: "Các số trong phạm vi 1000 > Số liền trước, số liền sau -...",
-    createdAt: "14:55 06/04/2026",
-  },
-  {
-    id: 5,
-    typeLabel: "Trắc nghiệm 1",
-    content:
-      "Số 1000 là số có bao nhiêu chữ số?",
-    answer: "A. 4",
-    grade: "Lớp 2",
-    subject: "Toán",
-    lesson: "Các số trong phạm vi 1000",
-    gradeLine: "Lớp 2 > Toán 2",
-    topicLine: "Các số trong phạm vi 1000 > Các số có bốn chữ số -...",
-    createdAt: "14:55 06/04/2026",
-  },
-  {
-    id: 6,
-    typeLabel: "Trắc nghiệm 2",
-    content: "Một cửa hàng buổi sáng bán được 120 kg gạo, buổi chiều bán được nhiều hơn buổi sáng 35 kg gạo. Hỏi cả hai buổi cửa hàng đó bán được bao nhiêu ki-lô-gam gạo?",
-    answer: "A. 275",
-    grade: "Lớp 2",
-    subject: "Toán",
-    lesson: "Ôn tập các số trong phạm vi 1000",
-    gradeLine: "Lớp 2 > Toán 2",
-    topicLine: "Ôn tập các số trong phạm vi 1000 > Giải bài toán có lời văn -...",
-    createdAt: "09:12 05/04/2026",
-  },
-];
+/** Chuẩn hóa phản hồi GET /questions (một số proxy/client có thể khác shape). */
+function listFromQuestionsApiResponse(res) {
+  if (res == null) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.data)) return res.data;
+  if (Array.isArray(res.items)) return res.items;
+  return [];
+}
 
-const GRADE_OPTIONS = [
-  { id: "", label: "Tất cả lớp" },
-  { id: "Lớp 2", label: "Lớp 2" },
-  { id: "Lớp 3", label: "Lớp 3" },
-];
+function totalFromQuestionsApiResponse(res, listLength) {
+  if (res == null) return listLength;
+  if (typeof res.total === "number") return res.total;
+  if (typeof res.count === "number") return res.count;
+  return listLength;
+}
 
-const SUBJECT_OPTIONS = [
-  { id: "", label: "Tất cả dạng toán" },
-  { id: "Toán", label: "Toán" },
-  { id: "Luyện tập", label: "Luyện tập" },
-];
-
-const LESSON_OPTIONS = [
-  { id: "", label: "Tất cả bài học" },
-  { id: "Các số trong phạm vi 1000", label: "Các số trong phạm vi 1000" },
-  { id: "Ôn tập các số trong phạm vi 1000", label: "Ôn tập các số trong phạm vi 1000" },
-];
+/** Khối > Chủ đề > Bài — ưu tiên `hierarchy_path` từ API (JOIN DB), sau đó map hierarchy-labels. */
+function formatHierarchyLine(row, lookup) {
+  const path = row.hierarchy_path != null && String(row.hierarchy_path).trim() !== "";
+  if (path) return String(row.hierarchy_path).trim();
+  const g = pickNameFromRowOrMap(row.grade_name, row.grade_id, lookup.gradeById);
+  const t = pickNameFromRowOrMap(row.type_name, row.type_id, lookup.typeById);
+  const l = pickNameFromRowOrMap(row.lesson_name, row.lesson_id, lookup.lessonById);
+  const parts = [g, t, l].filter(Boolean);
+  return parts.length ? parts.join(" > ") : "—";
+}
 
 export default function AdminQuestions() {
   const navigate = useNavigate();
   const isNarrow = useMediaQuery("(max-width: 768px)");
-  const [selectedGrade, setSelectedGrade] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("");
-  const [selectedLesson, setSelectedLesson] = useState("");
+  const [grades, setGrades] = useState([]);
+  const [types, setTypes] = useState([]);
+  const [lessons, setLessons] = useState([]);
+  const [gradeId, setGradeId] = useState("");
+  const [typeId, setTypeId] = useState("");
+  const [lessonId, setLessonId] = useState("");
+  const [questions, setQuestions] = useState([]);
+  const [totalDb, setTotalDb] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingFilters, setLoadingFilters] = useState(false);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  /** Đồng bộ API sau debounce — tránh gọi server mỗi ký tự. */
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [allTypes, setAllTypes] = useState([]);
+  const [allLessons, setAllLessons] = useState([]);
 
-  const totalFormatted = TOTAL_QUESTIONS.toLocaleString("vi-VN");
+  const loadGrades = useCallback(async () => {
+    setLoadingFilters(true);
+    setError(null);
+    try {
+      const data = await getGrades();
+      setGrades(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e?.message || "Không tải được danh sách khối lớp.");
+      setGrades([]);
+    } finally {
+      setLoadingFilters(false);
+    }
+  }, []);
 
-  const filteredRows = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+  useEffect(() => {
+    loadGrades();
+  }, [loadGrades]);
 
-    return MOCK_ROWS.filter((row) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        row.content.toLowerCase().includes(normalizedSearch) ||
-        row.id.toString().includes(normalizedSearch);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getHierarchyLabels();
+        if (cancelled || !data) return;
+        setAllTypes(Array.isArray(data.types) ? data.types : []);
+        setAllLessons(Array.isArray(data.lessons) ? data.lessons : []);
+      } catch {
+        if (!cancelled) {
+          setAllTypes([]);
+          setAllLessons([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-      return (
-        matchesSearch &&
-        (!selectedGrade || row.grade === selectedGrade) &&
-        (!selectedSubject || row.subject === selectedSubject) &&
-        (!selectedLesson || row.lesson === selectedLesson)
+  useEffect(() => {
+    if (!gradeId) {
+      setTypes([]);
+      setTypeId("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoadingFilters(true);
+      try {
+        const data = await getTypes(Number(gradeId));
+        if (!cancelled) setTypes(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancelled) setTypes([]);
+      } finally {
+        if (!cancelled) setLoadingFilters(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gradeId]);
+
+  useEffect(() => {
+    if (!typeId) {
+      setLessons([]);
+      setLessonId("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoadingFilters(true);
+      try {
+        const data = await getLessons(Number(typeId));
+        if (!cancelled) setLessons(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancelled) setLessons([]);
+      } finally {
+        if (!cancelled) setLoadingFilters(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [typeId]);
+
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [gradeId, typeId, lessonId, debouncedSearch]);
+
+  const fetchQuestions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const offset = (page - 1) * QUESTIONS_PAGE_SIZE;
+      const params = { limit: QUESTIONS_PAGE_SIZE, offset };
+      if (gradeId) params.grade_id = Number(gradeId);
+      if (typeId) params.type_id = Number(typeId);
+      if (lessonId) params.lesson_id = Number(lessonId);
+      if (debouncedSearch) params.search = debouncedSearch;
+      const res = await getQuestions(params);
+      const list = listFromQuestionsApiResponse(res);
+      setQuestions(Array.isArray(list) ? list : []);
+      setTotalDb(totalFromQuestionsApiResponse(res, Array.isArray(list) ? list.length : 0));
+    } catch (e) {
+      setError(
+        e?.response?.data?.message || e?.message || "Không tải được danh sách câu hỏi."
       );
-    });
-  }, [selectedGrade, selectedSubject, selectedLesson, searchTerm]);
+      setQuestions([]);
+      setTotalDb(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [gradeId, typeId, lessonId, debouncedSearch, page]);
+
+  useEffect(() => {
+    fetchQuestions();
+  }, [fetchQuestions]);
+
+  const totalPages = Math.max(1, Math.ceil(totalDb / QUESTIONS_PAGE_SIZE) || 1);
+
+  useEffect(() => {
+    if (totalDb <= 0) return;
+    if (page > totalPages) setPage(totalPages);
+  }, [totalDb, totalPages, page]);
+
+  const rangeStart = totalDb === 0 ? 0 : (page - 1) * QUESTIONS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * QUESTIONS_PAGE_SIZE, totalDb);
+
+  const emptyListMessage =
+    totalDb === 0
+      ? debouncedSearch
+        ? "Không có câu hỏi khớp ô tìm kiếm."
+        : "Không có câu hỏi nào với bộ lọc hiện tại."
+      : "";
+
+  const totalFormatted = totalDb.toLocaleString("vi-VN");
+
+  const gradeById = useMemo(
+    () => new Map(grades.map((g) => [Number(g.id), g.name])),
+    [grades]
+  );
+  /** Toàn DB trước, bộ lọc đang chọn ghi đè (luôn đủ tên khi chưa lọc). */
+  const typeById = useMemo(() => {
+    const m = new Map();
+    for (const t of allTypes) m.set(Number(t.id), t.name);
+    for (const t of types) m.set(Number(t.id), t.name);
+    return m;
+  }, [allTypes, types]);
+  const lessonById = useMemo(() => {
+    const m = new Map();
+    for (const l of allLessons) m.set(Number(l.id), l.name);
+    for (const l of lessons) m.set(Number(l.id), l.name);
+    return m;
+  }, [allLessons, lessons]);
+  const draftLookup = useMemo(
+    () => ({ gradeById, typeById, lessonById }),
+    [gradeById, typeById, lessonById]
+  );
 
   return (
     <div style={styles.root}>
@@ -183,7 +309,8 @@ export default function AdminQuestions() {
         <div>
           <h1 style={styles.title}>Quản lý câu hỏi</h1>
           <p style={styles.lead}>
-            Xem, tìm kiếm và quản lý tất cả câu hỏi đã tạo
+            Dữ liệu từ cơ sở dữ liệu — lọc theo khối, chủ đề, bài học; tìm theo nội dung hoặc ID (server). Mỗi trang tối đa{" "}
+            {QUESTIONS_PAGE_SIZE} câu.
           </p>
         </div>
         <Link to="new" style={styles.btnPrimary}>
@@ -194,13 +321,22 @@ export default function AdminQuestions() {
         </Link>
       </header>
 
+      {error && (
+        <div style={styles.errorBanner} role="alert">
+          {error}
+        </div>
+      )}
+
       <section style={styles.statCard} aria-label="Thống kê">
         <div style={styles.statIconWrap}>
           <DocumentIcon />
         </div>
         <div>
-          <p style={styles.statLabel}>Tổng số câu hỏi</p>
+          <p style={styles.statLabel}>Tổng số câu khớp bộ lọc (database)</p>
           <p style={styles.statNumber}>{totalFormatted}</p>
+          <p style={styles.statHint}>
+            Danh sách được phân trang: {QUESTIONS_PAGE_SIZE} câu mỗi trang — dùng bộ lọc để thu hẹp trước khi lật trang.
+          </p>
         </div>
       </section>
 
@@ -249,30 +385,40 @@ export default function AdminQuestions() {
             </label>
 
             <label style={styles.filterField}>
-              <span style={styles.filterFieldLabel}>Lớp</span>
+              <span style={styles.filterFieldLabel}>Khối lớp</span>
               <select
-                value={selectedGrade}
-                onChange={(event) => setSelectedGrade(event.target.value)}
+                value={gradeId}
+                onChange={(event) => {
+                  setGradeId(event.target.value);
+                  setTypeId("");
+                  setLessonId("");
+                }}
                 style={styles.filterSelect}
               >
-                {GRADE_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
+                <option value="">Tất cả lớp</option>
+                {grades.map((g) => (
+                  <option key={g.id} value={String(g.id)}>
+                    {g.name}
                   </option>
                 ))}
               </select>
             </label>
 
             <label style={styles.filterField}>
-              <span style={styles.filterFieldLabel}>Dạng toán</span>
+              <span style={styles.filterFieldLabel}>Chủ đề (dạng toán)</span>
               <select
-                value={selectedSubject}
-                onChange={(event) => setSelectedSubject(event.target.value)}
+                value={typeId}
+                onChange={(event) => {
+                  setTypeId(event.target.value);
+                  setLessonId("");
+                }}
                 style={styles.filterSelect}
+                disabled={!gradeId}
               >
-                {SUBJECT_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
+                <option value="">{gradeId ? "Tất cả chủ đề" : "Chọn khối trước"}</option>
+                {types.map((t) => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.name}
                   </option>
                 ))}
               </select>
@@ -281,13 +427,15 @@ export default function AdminQuestions() {
             <label style={styles.filterField}>
               <span style={styles.filterFieldLabel}>Bài học</span>
               <select
-                value={selectedLesson}
-                onChange={(event) => setSelectedLesson(event.target.value)}
+                value={lessonId}
+                onChange={(event) => setLessonId(event.target.value)}
                 style={styles.filterSelect}
+                disabled={!typeId}
               >
-                {LESSON_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
+                <option value="">{typeId ? "Tất cả bài học" : "Chọn chủ đề trước"}</option>
+                {lessons.map((l) => (
+                  <option key={l.id} value={String(l.id)}>
+                    {l.name}
                   </option>
                 ))}
               </select>
@@ -296,31 +444,34 @@ export default function AdminQuestions() {
         </section>
       )}
 
-      {isNarrow ? (
+      {loading ? (
+        <div style={styles.loadingBox}>Đang tải danh sách câu hỏi…</div>
+      ) : isNarrow ? (
         <div style={styles.cardList}>
-          {filteredRows.length > 0 ? (
-            filteredRows.map((row) => (
+          {questions.length > 0 ? (
+            questions.map((row) => (
               <article key={row.id} style={styles.questionCard}>
                 <div style={styles.cardField}>
                   <span style={styles.cardLabel}>ID</span>
                   <span style={styles.cardValue}>{row.id}</span>
                 </div>
                 <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Phân cấp</span>
+                  <div style={styles.hierarchyInCard}>
+                    <span style={styles.hierarchyMain}>{formatHierarchyLine(row, draftLookup)}</span>
+                  </div>
+                </div>
+                <div style={styles.cardField}>
                   <span style={styles.cardLabel}>Nội dung câu hỏi</span>
                   <span style={{ ...styles.cardValue, ...styles.cardValueMultiline }}>
-                    {row.content}
+                    {row.question_text}
                   </span>
                 </div>
                 <div style={styles.cardField}>
-                  <span style={styles.cardLabel}>Đáp án</span>
-                  <span style={{ ...styles.cardValue, fontWeight: 600 }}>{row.answer}</span>
-                </div>
-                <div style={styles.cardField}>
-                  <span style={styles.cardLabel}>Phân cấp</span>
-                  <div style={styles.hierarchyInCard}>
-                    <span style={styles.hierarchyMain}>{row.gradeLine}</span>
-                    <span style={styles.hierarchySub}>{row.topicLine}</span>
-                  </div>
+                  <span style={styles.cardLabel}>Đáp án đúng</span>
+                  <span style={{ ...styles.cardValue, fontWeight: 600 }}>
+                    {formatAnswerLabel(row)}
+                  </span>
                 </div>
                 <div style={styles.cardActions}>
                   <button
@@ -329,7 +480,7 @@ export default function AdminQuestions() {
                     title="Chỉnh sửa câu hỏi"
                     onClick={() =>
                       navigate("/admin/questions/edit", {
-                        state: { draft: buildQuestionEditDraft(row) },
+                        state: { draft: buildQuestionEditDraft(row, draftLookup) },
                       })
                     }
                   >
@@ -342,7 +493,7 @@ export default function AdminQuestions() {
               </article>
             ))
           ) : (
-            <div style={styles.cardEmpty}>Không có câu hỏi nào khớp với bộ lọc.</div>
+            <div style={styles.cardEmpty}>{emptyListMessage}</div>
           )}
         </div>
       ) : (
@@ -351,27 +502,26 @@ export default function AdminQuestions() {
             <thead>
               <tr>
                 <th style={{ ...styles.th, width: 72 }}>ID</th>
+                <th style={{ ...styles.th, width: "26%", minWidth: 200 }}>Phân cấp</th>
                 <th style={styles.th}>Nội dung câu hỏi</th>
-                <th style={{ ...styles.th, width: 100 }}>Đáp án</th>
-                <th style={{ ...styles.th, minWidth: 220 }}>Phân cấp</th>
+                <th style={{ ...styles.th, width: 100 }}>Đáp án đúng</th>
                 <th style={{ ...styles.th, width: 120, textAlign: "right" }}>
                   Thao tác
                 </th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.length > 0 ? (
-                filteredRows.map((row) => (
+              {questions.length > 0 ? (
+                questions.map((row) => (
                   <tr key={row.id}>
                     <td style={styles.td}>{row.id}</td>
-                    <td style={{ ...styles.td, ...styles.tdContent }}>{row.content}</td>
-                    <td style={{ ...styles.td, fontWeight: 600 }}>{row.answer}</td>
-                    <td style={styles.td}>
+                    <td style={{ ...styles.td, ...styles.tdHierarchy }}>
                       <div style={styles.hierarchy}>
-                        <span style={styles.hierarchyMain}>{row.gradeLine}</span>
-                        <span style={styles.hierarchySub}>{row.topicLine}</span>
+                        <span style={styles.hierarchyMain}>{formatHierarchyLine(row, draftLookup)}</span>
                       </div>
                     </td>
+                    <td style={{ ...styles.td, ...styles.tdContent }}>{row.question_text}</td>
+                    <td style={{ ...styles.td, fontWeight: 600 }}>{formatAnswerLabel(row)}</td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
                       <div style={styles.actionGroup}>
                         <button
@@ -380,7 +530,7 @@ export default function AdminQuestions() {
                           title="Chỉnh sửa câu hỏi"
                           onClick={() =>
                             navigate("/admin/questions/edit", {
-                              state: { draft: buildQuestionEditDraft(row) },
+                              state: { draft: buildQuestionEditDraft(row, draftLookup) },
                             })
                           }
                         >
@@ -396,13 +546,50 @@ export default function AdminQuestions() {
               ) : (
                 <tr>
                   <td style={styles.emptyState} colSpan={5}>
-                    Không có câu hỏi nào khớp với bộ lọc.
+                    {emptyListMessage}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+      )}
+
+      {!loading && (
+        <nav style={styles.paginationBar} aria-label="Phân trang danh sách câu hỏi">
+          <p style={styles.paginationMeta}>
+            {totalDb === 0
+              ? "Không có câu hỏi để hiển thị."
+              : `Hiển thị ${rangeStart.toLocaleString("vi-VN")}–${rangeEnd.toLocaleString("vi-VN")} / ${totalDb.toLocaleString("vi-VN")} câu`}
+          </p>
+          <div style={styles.paginationControls}>
+            <button
+              type="button"
+              style={{
+                ...styles.paginationBtn,
+                ...(page <= 1 ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={page <= 1 || totalDb === 0}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Trang trước
+            </button>
+            <span style={styles.paginationPage}>
+              Trang {totalDb === 0 ? 0 : page} / {totalDb === 0 ? 0 : totalPages}
+            </span>
+            <button
+              type="button"
+              style={{
+                ...styles.paginationBtn,
+                ...(page >= totalPages || totalDb === 0 ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={page >= totalPages || totalDb === 0}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Trang sau
+            </button>
+          </div>
+        </nav>
       )}
     </div>
   );
@@ -560,6 +747,30 @@ const styles = {
     color: "#1f2328",
     letterSpacing: "-0.02em",
   },
+  statHint: {
+    margin: "8px 0 0",
+    fontSize: "0.8rem",
+    color: "#6e7781",
+    lineHeight: 1.45,
+    maxWidth: 420,
+  },
+  errorBanner: {
+    padding: "12px 16px",
+    marginBottom: 16,
+    borderRadius: 8,
+    background: "#fff8f5",
+    border: "1px solid #f0c4a8",
+    color: "#9a3412",
+    fontSize: "0.9rem",
+  },
+  loadingBox: {
+    padding: "32px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+  },
   filterBar: {
     display: "flex",
     alignItems: "center",
@@ -693,9 +904,6 @@ const styles = {
     lineHeight: 1.55,
   },
   hierarchyInCard: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
     minWidth: 0,
     maxWidth: "100%",
   },
@@ -752,22 +960,21 @@ const styles = {
     lineHeight: 1.5,
     maxWidth: 360,
   },
+  tdHierarchy: {
+    verticalAlign: "top",
+    minWidth: 180,
+    maxWidth: 320,
+    wordBreak: "break-word",
+    overflowWrap: "break-word",
+  },
   hierarchy: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    maxWidth: 280,
+    maxWidth: "100%",
   },
   hierarchyMain: {
     fontWeight: 600,
     fontSize: "0.85rem",
     color: "#24292f",
     lineHeight: 1.35,
-  },
-  hierarchySub: {
-    fontSize: "0.8rem",
-    color: "#57606a",
-    lineHeight: 1.4,
   },
   actionGroup: {
     display: "inline-flex",
@@ -791,5 +998,51 @@ const styles = {
   actionBtnDanger: {
     background: "#fff8f8",
     borderColor: "#f0c4c8",
+  },
+  paginationBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+    marginTop: 20,
+    padding: "14px 16px",
+    background: "#f6f8fa",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  paginationMeta: {
+    margin: 0,
+    fontSize: "0.9rem",
+    color: "#57606a",
+    lineHeight: 1.45,
+  },
+  paginationControls: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  paginationBtn: {
+    padding: "8px 16px",
+    borderRadius: 8,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    color: "#24292f",
+    fontWeight: 600,
+    fontSize: "0.88rem",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  paginationBtnDisabled: {
+    opacity: 0.45,
+    cursor: "not-allowed",
+  },
+  paginationPage: {
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    color: "#24292f",
+    minWidth: 100,
+    textAlign: "center",
   },
 };

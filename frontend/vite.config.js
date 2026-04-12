@@ -11,6 +11,10 @@ export default defineConfig(({ mode }) => ({
         target: 'http://localhost:5050',
         changeOrigin: true,
       },
+      '/questions-images': {
+        target: 'http://localhost:5050',
+        changeOrigin: true,
+      },
     },
   },
 }))

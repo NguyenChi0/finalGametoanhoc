@@ -32,6 +32,8 @@ export default function AdminQuestionCreate() {
   const [questionText, setQuestionText] = useState("");
   const [questionImage, setQuestionImage] = useState("");
   const [questionImagePreview, setQuestionImagePreview] = useState("");
+  /** File gốc để upload multipart (khác data URL chỉ để xem trước) */
+  const [questionImageFile, setQuestionImageFile] = useState(null);
   const [answers, setAnswers] = useState(initialAnswers);
   const [correctIndex, setCorrectIndex] = useState(0);
 
@@ -133,6 +135,7 @@ export default function AdminQuestionCreate() {
   };
 
   const readImageFile = (file) => {
+    setQuestionImageFile(file);
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
@@ -147,6 +150,7 @@ export default function AdminQuestionCreate() {
     if (file) {
       readImageFile(file);
     } else {
+      setQuestionImageFile(null);
       setQuestionImage("");
       setQuestionImagePreview("");
     }
@@ -169,6 +173,7 @@ export default function AdminQuestionCreate() {
 
     const text = event.clipboardData?.getData("text");
     if (text) {
+      setQuestionImageFile(null);
       setQuestionImage(text.trim());
       setQuestionImagePreview(text.trim());
     }
@@ -192,17 +197,38 @@ export default function AdminQuestionCreate() {
     }
     setSaving(true);
     try {
+      let fileToSend = questionImageFile;
+      if (!fileToSend && questionImage.trim().startsWith("data:image")) {
+        try {
+          const r = await fetch(questionImage.trim());
+          const blob = await r.blob();
+          fileToSend = new File([blob], "question.png", {
+            type: blob.type || "image/png",
+          });
+        } catch (_) {
+          /* bỏ qua, gửi không ảnh */
+        }
+      }
+      const pathOnly =
+        !fileToSend &&
+        questionImage.trim() &&
+        !questionImage.trim().startsWith("data:")
+          ? questionImage.trim()
+          : undefined;
+
       await createQuestion({
         grade_id: Number(gradeId),
         type_id: Number(typeId),
         lesson_id: Number(lessonId),
         question_text: questionText,
-        question_image: questionImage.trim() || null,
         answers,
         correct_index: correctIndex,
+        ...(fileToSend ? { imageFile: fileToSend } : {}),
+        ...(pathOnly ? { question_image_path: pathOnly } : {}),
       });
 
       setQuestionText("");
+      setQuestionImageFile(null);
       setQuestionImage("");
       setQuestionImagePreview("");
       setAnswers(initialAnswers);
@@ -419,6 +445,7 @@ export default function AdminQuestionCreate() {
                 type="button"
                 style={styles.removeImageButton}
                 onClick={() => {
+                  setQuestionImageFile(null);
                   setQuestionImage("");
                   setQuestionImagePreview("");
                 }}

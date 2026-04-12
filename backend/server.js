@@ -6,13 +6,46 @@ const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
 const pool = require('./db'); // Import cấu hình database
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const multer = require('multer');
 const mountAdminCrud = require('./server-admin');
+
+const QUESTIONS_IMAGES_DIR = path.join(__dirname, 'questions-images');
+fs.mkdirSync(QUESTIONS_IMAGES_DIR, { recursive: true });
+
+const questionImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, QUESTIONS_IMAGES_DIR),
+  filename: (req, file, cb) => {
+    const extRaw = path.extname(file.originalname || '').toLowerCase();
+    let suffix = '.png';
+    if (['.jpg', '.jpeg', '.png', '.gif'].includes(extRaw)) {
+      suffix = extRaw === '.jpeg' ? '.jpg' : extRaw;
+    } else if (file.mimetype === 'image/jpeg') suffix = '.jpg';
+    else if (file.mimetype === 'image/png') suffix = '.png';
+    else if (file.mimetype === 'image/gif') suffix = '.gif';
+    cb(null, `${crypto.randomUUID()}${suffix}`);
+  },
+});
+
+const uploadQuestionImage = multer({
+  storage: questionImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^image\/(jpeg|png|gif)$/i.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Chỉ chấp nhận ảnh JPG, PNG hoặc GIF'));
+    }
+  },
+});
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.json());// serve file nhạc tĩnh (ví dụ public/music/nhac1.mp3)
 app.use('/music', express.static(path.join(__dirname, 'public', 'music')));
+app.use('/questions-images', express.static(QUESTIONS_IMAGES_DIR));
 
 /** CRUD admin: /api/admin/users|grades|types|lessons */
 mountAdminCrud(app, pool);
@@ -111,6 +144,23 @@ app.get('/api/grades', async (req, res) => {
   }
 });
 
+/** Toàn bộ grades + types + lessons — admin map id→tên (đủ phân cấp ngay cả khi chưa lọc). */
+app.get('/api/hierarchy-labels', async (req, res) => {
+  try {
+    const [gradeRows] = await pool.query('SELECT id, name FROM grades ORDER BY id');
+    const [typeRows] = await pool.query(
+      'SELECT id, grade_id, name FROM types ORDER BY grade_id, id'
+    );
+    const [lessonRows] = await pool.query(
+      'SELECT id, type_id, name FROM lessons ORDER BY type_id, id'
+    );
+    res.json({ grades: gradeRows, types: typeRows, lessons: lessonRows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Lỗi khi lấy hierarchy-labels', error: err.message });
+  }
+});
+
 // 2) Lấy danh sách types theo grade_id
 app.get('/api/types/:grade_id', async (req, res) => {
   const grade_id = Number(req.params.grade_id);
@@ -160,11 +210,22 @@ app.get('/api/questions', async (req, res) => {
       limit = 200,
       offset = 0,
       random = '0',
+      search: searchRaw,
     } = req.query;
     const lessonFilter = lesson_id ?? operation_id;
+    const search =
+      searchRaw != null && String(searchRaw).trim() !== ''
+        ? String(searchRaw).trim()
+        : '';
 
     const where = [];
     const params = [];
+
+    if (search) {
+      where.push('(q.question_text LIKE ? OR CAST(q.id AS CHAR) LIKE ?)');
+      const like = `%${search}%`;
+      params.push(like, like);
+    }
 
     if (grade_id) {
       where.push('q.grade_id = ?');
@@ -179,14 +240,26 @@ app.get('/api/questions', async (req, res) => {
       params.push(Number(lessonFilter));
     }
 
+    const countSql = `SELECT COUNT(*) AS total FROM questions q${where.length ? ' WHERE ' + where.join(' AND ') : ''}`;
+    const [[countRow]] = await pool.query(countSql, [...params]);
+    const totalMatching = Number(countRow?.total ?? 0);
+
     let sql = `
   SELECT q.id, q.grade_id, q.type_id, q.lesson_id,
          q.question_text, q.question_image,
          q.answercorrect_text, q.answer2_text, q.answer3_text, q.answer4_text,
-         q.answercorrect_image, q.answer2_image, q.answer3_image, q.answer4_image
+         q.answercorrect_image, q.answer2_image, q.answer3_image, q.answer4_image,
+         g.name AS grade_name, t.name AS type_name, l.name AS lesson_name,
+         TRIM(CONCAT_WS(' > ',
+           NULLIF(TRIM(g.name), ''),
+           NULLIF(TRIM(t.name), ''),
+           NULLIF(TRIM(l.name), '')
+         )) AS hierarchy_path
   FROM questions q
+  LEFT JOIN grades g ON g.id = q.grade_id
+  LEFT JOIN types t ON t.id = q.type_id
+  LEFT JOIN lessons l ON l.id = q.lesson_id
 `;
-
     if (where.length) sql += ' WHERE ' + where.join(' AND ');
 
     // random option
@@ -202,18 +275,61 @@ app.get('/api/questions', async (req, res) => {
 
     const [rows] = await pool.query(sql, params);
 
-    // map answers to array for easier frontend use
-    const mapped = rows.map(r => ({
-      id: r.id,
-      grade_id: r.grade_id,
-      type_id: r.type_id,
-      lesson_id: r.lesson_id,
-      question_text: r.question_text,
-      question_image: r.question_image,
-      answers: buildAnswers(r)
-    }));
+    const asStr = (v) => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      return s === '' ? null : s;
+    };
 
-    res.json({ count: mapped.length, data: mapped });
+    /** Tra cứu tên theo id — phòng JOIN không ra tên (MySQL/collation/phiên bản) nhưng FK vẫn đúng. */
+    const [[allGrades], [allTypes], [allLessons]] = await Promise.all([
+      pool.query('SELECT id, name FROM grades'),
+      pool.query('SELECT id, name FROM types'),
+      pool.query('SELECT id, name FROM lessons'),
+    ]);
+    const gradeNameById = new Map(
+      allGrades.map((g) => [Number(g.id), asStr(g.name)])
+    );
+    const typeNameById = new Map(
+      allTypes.map((t) => [Number(t.id), asStr(t.name)])
+    );
+    const lessonNameById = new Map(
+      allLessons.map((l) => [Number(l.id), asStr(l.name)])
+    );
+
+    // map answers to array for easier frontend use
+    const mapped = rows.map((r) => {
+      const grade_name =
+        asStr(r.grade_name) || gradeNameById.get(Number(r.grade_id)) || null;
+      const type_name =
+        asStr(r.type_name) || typeNameById.get(Number(r.type_id)) || null;
+      const lesson_name =
+        asStr(r.lesson_name) || lessonNameById.get(Number(r.lesson_id)) || null;
+      const hierarchyParts = [grade_name, type_name, lesson_name].filter(Boolean);
+      const hierarchy_path =
+        hierarchyParts.length > 0
+          ? hierarchyParts.join(' > ')
+          : asStr(r.hierarchy_path);
+      return {
+        id: r.id,
+        grade_id: r.grade_id,
+        type_id: r.type_id,
+        lesson_id: r.lesson_id,
+        grade_name,
+        type_name,
+        lesson_name,
+        hierarchy_path,
+        question_text: r.question_text,
+        question_image: r.question_image,
+        answers: buildAnswers(r),
+      };
+    });
+
+    res.json({
+      count: mapped.length,
+      total: totalMatching,
+      data: mapped,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Lỗi khi lấy questions', error: err.message });
@@ -249,9 +365,10 @@ app.get('/api/questions/:id', async (req, res) => {
 });
 
 /**
- * POST /api/questions — tạo câu hỏi trắc nghiệm 4 đáp án (chỉ text, ảnh để null)
- * Body: { grade_id, type_id, lesson_id, question_text, question_image?,
- *         answers: [s1,s2,s3,s4], correct_index: 0..3 }
+ * POST /api/questions — tạo câu hỏi trắc nghiệm 4 đáp án
+ * multipart/form-data: grade_id, type_id, lesson_id, question_text, answers (JSON string), correct_index,
+ *   optional file field question_image, optional text question_image_path (khi không gửi file)
+ * Hoặc JSON (application/json) như cũ — question_image là chuỗi path/URL nếu có
  */
 function mapFourAnswersToColumns(answers, correctIndex) {
   const a = (answers || []).map((x) => (x != null ? String(x).trim() : ''));
@@ -274,39 +391,82 @@ function mapFourAnswersToColumns(answers, correctIndex) {
   };
 }
 
-app.post('/api/questions', async (req, res) => {
-  try {
-    const {
-      grade_id,
-      type_id,
-      lesson_id,
-      question_text,
-      question_image,
-      answers,
-      correct_index,
-    } = req.body;
-
-    const gid = Number(grade_id);
-    const tid = Number(type_id);
-    const lid = Number(lesson_id);
-    if (!gid || !tid || !lid) {
-      return res.status(400).json({ message: 'grade_id, type_id, lesson_id là bắt buộc' });
-    }
-    const qtext = question_text != null ? String(question_text).trim() : '';
-    if (!qtext) {
-      return res.status(400).json({ message: 'Nội dung câu hỏi không được để trống' });
-    }
-
-    let cols;
+function parseAnswersBody(rawAnswers) {
+  if (rawAnswers == null) return null;
+  if (Array.isArray(rawAnswers)) return rawAnswers;
+  if (typeof rawAnswers === 'string') {
     try {
-      cols = mapFourAnswersToColumns(answers, correct_index);
-    } catch (e) {
-      return res.status(400).json({ message: e.message || 'Đáp án không hợp lệ' });
+      const parsed = JSON.parse(rawAnswers);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
     }
+  }
+  return null;
+}
 
-    const qimg = question_image != null && String(question_image).trim() !== '' ? String(question_image).trim() : null;
+function resolveQuestionImagePath(req) {
+  if (req.file && req.file.filename) {
+    return `/questions-images/${req.file.filename}`;
+  }
+  const fromPath = req.body && req.body.question_image_path;
+  if (fromPath != null && String(fromPath).trim() !== '') {
+    return String(fromPath).trim();
+  }
+  const legacy = req.body && req.body.question_image;
+  if (legacy != null && String(legacy).trim() !== '') {
+    return String(legacy).trim();
+  }
+  return null;
+}
 
-    const sql = `
+async function insertQuestionRow(req, res) {
+  const {
+    grade_id,
+    type_id,
+    lesson_id,
+    question_text,
+    answers: answersRaw,
+    correct_index,
+  } = req.body;
+
+  const answers = parseAnswersBody(answersRaw);
+  const gid = Number(grade_id);
+  const tid = Number(type_id);
+  const lid = Number(lesson_id);
+  if (!gid || !tid || !lid) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(400).json({ message: 'grade_id, type_id, lesson_id là bắt buộc' });
+  }
+  const qtext = question_text != null ? String(question_text).trim() : '';
+  if (!qtext) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(400).json({ message: 'Nội dung câu hỏi không được để trống' });
+  }
+
+  let cols;
+  try {
+    cols = mapFourAnswersToColumns(answers, correct_index);
+  } catch (e) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(400).json({ message: e.message || 'Đáp án không hợp lệ' });
+  }
+
+  const qimg = resolveQuestionImagePath(req);
+
+  const sql = `
       INSERT INTO questions (
         grade_id, type_id, lesson_id,
         question_text, question_image,
@@ -314,33 +474,225 @@ app.post('/api/questions', async (req, res) => {
         answercorrect_image, answer2_image, answer3_image, answer4_image
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
     `;
-    const params = [
-      gid,
-      tid,
-      lid,
-      qtext,
-      qimg,
-      cols.answercorrect_text,
-      cols.answer2_text,
-      cols.answer3_text,
-      cols.answer4_text,
-    ];
+  const params = [
+    gid,
+    tid,
+    lid,
+    qtext,
+    qimg,
+    cols.answercorrect_text,
+    cols.answer2_text,
+    cols.answer3_text,
+    cols.answer4_text,
+  ];
 
+  try {
     const [result] = await pool.query(sql, params);
     res.status(201).json({
       message: 'Đã tạo câu hỏi',
       id: result.insertId,
+      question_image: qimg,
     });
   } catch (err) {
-    console.error(err);
-    if (err.code === 'ER_NO_REFERENCED_ROW_2' || err.errno === 1452) {
-      return res.status(400).json({
-        message: 'Khối / chủ đề / bài học không khớp hoặc không tồn tại',
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    throw err;
+  }
+}
+
+async function updateQuestionRow(req, res) {
+  const id = Number(req.params.id);
+  if (!id) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(400).json({ message: 'id không hợp lệ' });
+  }
+
+  const [[existing]] = await pool.query(
+    'SELECT id, question_image FROM questions WHERE id = ? LIMIT 1',
+    [id]
+  );
+  if (!existing) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
+  }
+
+  const {
+    grade_id,
+    type_id,
+    lesson_id,
+    question_text,
+    answers: answersRaw,
+    correct_index,
+  } = req.body;
+
+  const answers = parseAnswersBody(answersRaw);
+  const gid = Number(grade_id);
+  const tid = Number(type_id);
+  const lid = Number(lesson_id);
+  if (!gid || !tid || !lid) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(400).json({ message: 'grade_id, type_id, lesson_id là bắt buộc' });
+  }
+  const qtext = question_text != null ? String(question_text).trim() : '';
+  if (!qtext) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(400).json({ message: 'Nội dung câu hỏi không được để trống' });
+  }
+
+  let cols;
+  try {
+    cols = mapFourAnswersToColumns(answers, correct_index);
+  } catch (e) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    return res.status(400).json({ message: e.message || 'Đáp án không hợp lệ' });
+  }
+
+  let qimg;
+  if (req.file && req.file.filename) {
+    qimg = `/questions-images/${req.file.filename}`;
+  } else if (req.body && req.body.question_image_path != null && String(req.body.question_image_path).trim() !== '') {
+    qimg = String(req.body.question_image_path).trim();
+  } else if (req.body && req.body.question_image != null && String(req.body.question_image).trim() !== '') {
+    qimg = String(req.body.question_image).trim();
+  } else if (
+    req.body &&
+    (req.body.clear_question_image === true ||
+      req.body.clear_question_image === '1' ||
+      req.body.clear_question_image === 'true')
+  ) {
+    qimg = null;
+  } else {
+    qimg = existing.question_image;
+  }
+
+  const sql = `
+      UPDATE questions SET
+        grade_id = ?, type_id = ?, lesson_id = ?,
+        question_text = ?, question_image = ?,
+        answercorrect_text = ?, answer2_text = ?, answer3_text = ?, answer4_text = ?
+      WHERE id = ?
+    `;
+  const params = [
+    gid,
+    tid,
+    lid,
+    qtext,
+    qimg,
+    cols.answercorrect_text,
+    cols.answer2_text,
+    cols.answer3_text,
+    cols.answer4_text,
+    id,
+  ];
+
+  try {
+    const [result] = await pool.query(sql, params);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
+    }
+    res.json({
+      message: 'Đã cập nhật câu hỏi',
+      id,
+      question_image: qimg,
+    });
+  } catch (err) {
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    }
+    throw err;
+  }
+}
+
+app.post(
+  '/api/questions',
+  (req, res, next) => {
+    const ct = (req.headers['content-type'] || '').toLowerCase();
+    if (ct.includes('multipart/form-data')) {
+      return uploadQuestionImage.single('question_image')(req, res, (err) => {
+        if (err) {
+          const msg =
+            err.code === 'LIMIT_FILE_SIZE'
+              ? 'Ảnh vượt quá 5MB'
+              : err.message || 'Tải ảnh lên không thành công';
+          return res.status(400).json({ message: msg });
+        }
+        next();
       });
     }
-    res.status(500).json({ message: 'Lỗi khi tạo câu hỏi', error: err.message });
+    next();
+  },
+  async (req, res) => {
+    try {
+      await insertQuestionRow(req, res);
+    } catch (err) {
+      console.error(err);
+      if (err.code === 'ER_NO_REFERENCED_ROW_2' || err.errno === 1452) {
+        return res.status(400).json({
+          message: 'Khối / chủ đề / bài học không khớp hoặc không tồn tại',
+        });
+      }
+      res.status(500).json({ message: 'Lỗi khi tạo câu hỏi', error: err.message });
+    }
   }
-});
+);
+
+app.put(
+  '/api/questions/:id',
+  (req, res, next) => {
+    const ct = (req.headers['content-type'] || '').toLowerCase();
+    if (ct.includes('multipart/form-data')) {
+      return uploadQuestionImage.single('question_image')(req, res, (err) => {
+        if (err) {
+          const msg =
+            err.code === 'LIMIT_FILE_SIZE'
+              ? 'Ảnh vượt quá 5MB'
+              : err.message || 'Tải ảnh lên không thành công';
+          return res.status(400).json({ message: msg });
+        }
+        next();
+      });
+    }
+    next();
+  },
+  async (req, res) => {
+    try {
+      await updateQuestionRow(req, res);
+    } catch (err) {
+      console.error(err);
+      if (err.code === 'ER_NO_REFERENCED_ROW_2' || err.errno === 1452) {
+        return res.status(400).json({
+          message: 'Khối / chủ đề / bài học không khớp hoặc không tồn tại',
+        });
+      }
+      res.status(500).json({ message: 'Lỗi khi cập nhật câu hỏi', error: err.message });
+    }
+  }
+);
 
 //=========Lưu điểm=========================
 app.post('/api/score/increment', async (req, res) => {

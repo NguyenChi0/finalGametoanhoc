@@ -46,14 +46,49 @@ export const getLessons = async (typeId) => {
   return res.data;
 };
 
+export const getHierarchyLabels = async () => {
+  const res = await api.get("/hierarchy-labels");
+  return res.data;
+};
+
 /** @deprecated dùng getLessons */
 export const getOperations = getLessons;
 
 // ==========================
+// Admin — Grades (CRUD /api/admin/grades)
+// ==========================
+export const getAdminGrades = async () => {
+  const res = await api.get("/admin/grades");
+  return res.data;
+};
+
+export const getAdminGrade = async (id) => {
+  const res = await api.get(`/admin/grades/${id}`);
+  return res.data;
+};
+
+export const createAdminGrade = async ({ id, name, description }) => {
+  const res = await api.post("/admin/grades", { id, name, description });
+  return res.data;
+};
+
+export const updateAdminGrade = async (id, payload) => {
+  const res = await api.put(`/admin/grades/${id}`, payload);
+  return res.data;
+};
+
+export const deleteAdminGrade = async (id) => {
+  const res = await api.delete(`/admin/grades/${id}`);
+  return res.data;
+};
+
+// ==========================
 // Questions
 // ==========================
-export const getQuestions = async ({ grade_id, type_id, lesson_id, limit, offset, random }) => {
-  const params = { grade_id, type_id, lesson_id, limit, offset, random };
+export const getQuestions = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
   const res = await api.get("/questions", { params });
   return res.data;
 };
@@ -63,9 +98,103 @@ export const getQuestionById = async (id) => {
   return res.data;
 };
 
-/** Tạo câu hỏi trắc nghiệm 4 đáp án (text) */
+/**
+ * Tạo câu hỏi trắc nghiệm 4 đáp án.
+ * - Nếu có `imageFile` (File/Blob): gửi multipart, ảnh lưu ở backend/questions-images.
+ * - Nếu có `question_image_path` (chuỗi path/URL, không file): gửi kèm trong form.
+ * - Ngược lại: JSON như cũ (tương thích script / không ảnh).
+ */
 export const createQuestion = async (payload) => {
-  const res = await api.post("/questions", payload);
+  const { imageFile, question_image_path, ...rest } = payload;
+
+  if (imageFile instanceof Blob || (question_image_path != null && String(question_image_path).trim() !== "")) {
+    const fd = new FormData();
+    fd.append("grade_id", String(rest.grade_id));
+    fd.append("type_id", String(rest.type_id));
+    fd.append("lesson_id", String(rest.lesson_id));
+    fd.append("question_text", rest.question_text ?? "");
+    fd.append("answers", JSON.stringify(rest.answers ?? []));
+    fd.append("correct_index", String(rest.correct_index ?? 0));
+    if (imageFile instanceof Blob) {
+      const name =
+        imageFile instanceof File && imageFile.name
+          ? imageFile.name
+          : "question.png";
+      fd.append("question_image", imageFile, name);
+    } else if (question_image_path != null && String(question_image_path).trim() !== "") {
+      fd.append("question_image_path", String(question_image_path).trim());
+    }
+
+    const headers = {};
+    const token = localStorage.getItem("token");
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/questions`, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message || res.statusText || "Lỗi tạo câu hỏi");
+      err.response = { data, status: res.status };
+      throw err;
+    }
+    return data;
+  }
+
+  const res = await api.post("/questions", rest);
+  return res.data;
+};
+
+/**
+ * Cập nhật câu hỏi — cùng payload / multipart như createQuestion.
+ */
+export const updateQuestion = async (id, payload) => {
+  const { imageFile, question_image_path, clear_question_image, ...rest } = payload;
+  const qid = Number(id);
+  if (!qid) throw new Error("id không hợp lệ");
+
+  if (imageFile instanceof Blob || (question_image_path != null && String(question_image_path).trim() !== "")) {
+    const fd = new FormData();
+    fd.append("grade_id", String(rest.grade_id));
+    fd.append("type_id", String(rest.type_id));
+    fd.append("lesson_id", String(rest.lesson_id));
+    fd.append("question_text", rest.question_text ?? "");
+    fd.append("answers", JSON.stringify(rest.answers ?? []));
+    fd.append("correct_index", String(rest.correct_index ?? 0));
+    if (imageFile instanceof Blob) {
+      const name =
+        imageFile instanceof File && imageFile.name
+          ? imageFile.name
+          : "question.png";
+      fd.append("question_image", imageFile, name);
+    } else if (question_image_path != null && String(question_image_path).trim() !== "") {
+      fd.append("question_image_path", String(question_image_path).trim());
+    }
+
+    const headers = {};
+    const token = localStorage.getItem("token");
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/questions/${qid}`, {
+      method: "PUT",
+      headers,
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message || res.statusText || "Lỗi cập nhật câu hỏi");
+      err.response = { data, status: res.status };
+      throw err;
+    }
+    return data;
+  }
+
+  const res = await api.put(`/questions/${qid}`, {
+    ...rest,
+    ...(clear_question_image ? { clear_question_image: true } : {}),
+  });
   return res.data;
 };
 
