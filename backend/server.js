@@ -14,6 +14,9 @@ const mountAdminCrud = require('./server-admin');
 const QUESTIONS_IMAGES_DIR = path.join(__dirname, 'questions-images');
 fs.mkdirSync(QUESTIONS_IMAGES_DIR, { recursive: true });
 
+const ITEMS_IMAGES_DIR = path.join(__dirname, 'items-images');
+fs.mkdirSync(ITEMS_IMAGES_DIR, { recursive: true });
+
 const questionImageStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, QUESTIONS_IMAGES_DIR),
   filename: (req, file, cb) => {
@@ -46,6 +49,7 @@ app.use(bodyParser.json());
 app.use(express.json());// serve file nhạc tĩnh (ví dụ public/music/nhac1.mp3)
 app.use('/music', express.static(path.join(__dirname, 'public', 'music')));
 app.use('/questions-images', express.static(QUESTIONS_IMAGES_DIR));
+app.use('/items-images', express.static(ITEMS_IMAGES_DIR));
 
 /** CRUD admin: /api/admin/users|grades|types|lessons */
 mountAdminCrud(app, pool);

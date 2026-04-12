@@ -4,7 +4,71 @@
  *
  * Tiền tố: /api/admin
  */
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const multer = require('multer');
 const bcrypt = require('bcryptjs');
+
+const ITEMS_IMAGES_DIR = path.join(__dirname, 'items-images');
+fs.mkdirSync(ITEMS_IMAGES_DIR, { recursive: true });
+
+const itemImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, ITEMS_IMAGES_DIR),
+  filename: (req, file, cb) => {
+    const extRaw = path.extname(file.originalname || '').toLowerCase();
+    let suffix = '.png';
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(extRaw)) {
+      suffix = extRaw === '.jpeg' ? '.jpg' : extRaw;
+    } else if (file.mimetype === 'image/jpeg') suffix = '.jpg';
+    else if (file.mimetype === 'image/png') suffix = '.png';
+    else if (file.mimetype === 'image/gif') suffix = '.gif';
+    else if (file.mimetype === 'image/webp') suffix = '.webp';
+    cb(null, `${crypto.randomUUID()}${suffix}`);
+  },
+});
+
+const uploadItemImage = multer({
+  storage: itemImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^image\/(jpeg|png|gif|webp)$/i.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Chỉ chấp nhận ảnh JPG, PNG, GIF hoặc WebP'));
+    }
+  },
+});
+
+function resolveItemImagePath(req) {
+  if (req.file && req.file.filename) {
+    return `/items-images/${req.file.filename}`;
+  }
+  const p = req.body && req.body.item_image_path;
+  if (p != null && String(p).trim() !== '') {
+    const s = String(p).trim();
+    if (s.startsWith('/items-images/')) return s;
+    return `/items-images/${s.replace(/^\/+/, '')}`;
+  }
+  const legacy = req.body && req.body.link;
+  if (legacy != null && String(legacy).trim() !== '') {
+    const s = String(legacy).trim();
+    if (s.startsWith('/items-images/')) return s;
+    return `/items-images/${s.replace(/^\/+/, '')}`;
+  }
+  return null;
+}
+
+function unlinkItemImageFile(link) {
+  if (link == null || String(link).trim() === '') return;
+  let base = String(link).trim();
+  if (base.startsWith('/items-images/')) {
+    base = base.slice('/items-images/'.length);
+  }
+  const safe = path.basename(base);
+  if (!safe || safe === '.' || safe === '..') return;
+  fs.unlink(path.join(ITEMS_IMAGES_DIR, safe), () => {});
+}
 
 function sendErr(res, err, fallback) {
   console.error('[admin]', err);
@@ -522,6 +586,282 @@ module.exports = function mountAdminCrud(app, pool) {
       const fk = fkError(err);
       if (fk) return res.status(fk.statusCode).json({ message: fk.message });
       sendErr(res, err, 'Lỗi khi xóa lesson');
+    }
+  });
+
+  // ---------- ITEMS (cửa hàng / vật phẩm; ảnh: backend/items-images; DB link = /items-images/...) ----------
+  app.get('/api/admin/items', async (req, res) => {
+    try {
+      const [rows] = await pool.query('SELECT * FROM items ORDER BY id ASC');
+      res.json(rows);
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy danh sách item');
+    }
+  });
+
+  app.get('/api/admin/items/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [rows] = await pool.query('SELECT * FROM items WHERE id = ?', [id]);
+      if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy item' });
+      res.json(rows[0]);
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy item');
+    }
+  });
+
+  app.post(
+    '/api/admin/items',
+    (req, res, next) => {
+      const ct = (req.headers['content-type'] || '').toLowerCase();
+      if (ct.includes('multipart/form-data')) {
+        return uploadItemImage.single('item_image')(req, res, (err) => {
+          if (err) {
+            const msg =
+              err.code === 'LIMIT_FILE_SIZE'
+                ? 'Ảnh vượt quá 5MB'
+                : err.message || 'Tải ảnh lên không thành công';
+            return res.status(400).json({ message: msg });
+          }
+          next();
+        });
+      }
+      next();
+    },
+    async (req, res) => {
+      try {
+        const { name, description, require_score } = req.body || {};
+        if (!name || String(name).trim() === '') {
+          if (req.file && req.file.path) {
+            try {
+              fs.unlinkSync(req.file.path);
+            } catch (_) {}
+          }
+          return res.status(400).json({ message: 'name là bắt buộc' });
+        }
+        const linkVal = resolveItemImagePath(req);
+        if (!linkVal) {
+          if (req.file && req.file.path) {
+            try {
+              fs.unlinkSync(req.file.path);
+            } catch (_) {}
+          }
+          return res.status(400).json({
+            message:
+              'Cần ảnh: kéo thả / paste / chọn file, hoặc gửi item_image_path (đường dẫn /items-images/...)',
+          });
+        }
+        const score =
+          require_score != null && require_score !== '' ? Number(require_score) : 0;
+        if (Number.isNaN(score) || score < 0) {
+          if (req.file && req.file.path) {
+            try {
+              fs.unlinkSync(req.file.path);
+            } catch (_) {}
+          }
+          return res.status(400).json({ message: 'require_score phải là số ≥ 0' });
+        }
+        /** Một số DB `items.id` không AUTO_INCREMENT — gán id = MAX(id)+1 */
+        const [[{ mx }]] = await pool.query('SELECT COALESCE(MAX(id), 0) AS mx FROM items');
+        const nextId = Number(mx) + 1;
+        await pool.query(
+          'INSERT INTO items (id, name, description, link, require_score) VALUES (?, ?, ?, ?, ?)',
+          [
+            nextId,
+            String(name).trim(),
+            description != null && String(description).trim() !== ''
+              ? String(description).trim()
+              : null,
+            linkVal,
+            score,
+          ]
+        );
+        const [rows] = await pool.query('SELECT * FROM items WHERE id = ?', [nextId]);
+        res.status(201).json(rows[0]);
+      } catch (err) {
+        if (req.file && req.file.path) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (_) {}
+        }
+        sendErr(res, err, 'Lỗi khi tạo item');
+      }
+    }
+  );
+
+  app.put(
+    '/api/admin/items/:id',
+    (req, res, next) => {
+      const ct = (req.headers['content-type'] || '').toLowerCase();
+      if (ct.includes('multipart/form-data')) {
+        return uploadItemImage.single('item_image')(req, res, (err) => {
+          if (err) {
+            const msg =
+              err.code === 'LIMIT_FILE_SIZE'
+                ? 'Ảnh vượt quá 5MB'
+                : err.message || 'Tải ảnh lên không thành công';
+            return res.status(400).json({ message: msg });
+          }
+          next();
+        });
+      }
+      next();
+    },
+    async (req, res) => {
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+      try {
+        const [existingRows] = await pool.query('SELECT * FROM items WHERE id = ?', [id]);
+        if (!existingRows.length) {
+          if (req.file && req.file.path) {
+            try {
+              fs.unlinkSync(req.file.path);
+            } catch (_) {}
+          }
+          return res.status(404).json({ message: 'Không tìm thấy item' });
+        }
+        const existing = existingRows[0];
+        const isMultipart = (req.headers['content-type'] || '')
+          .toLowerCase()
+          .includes('multipart/form-data');
+
+        const updates = [];
+        const params = [];
+
+        if (isMultipart) {
+          const clearRaw =
+            req.body &&
+            (req.body.clear_item_image === true ||
+              req.body.clear_item_image === '1' ||
+              req.body.clear_item_image === 'true');
+          if (clearRaw) {
+            updates.push('link = ?');
+            params.push(null);
+            unlinkItemImageFile(existing.link);
+          } else if (req.file && req.file.filename) {
+            const newLink = `/items-images/${req.file.filename}`;
+            updates.push('link = ?');
+            params.push(newLink);
+            if (existing.link && String(existing.link).trim() !== '' && existing.link !== newLink) {
+              unlinkItemImageFile(existing.link);
+            }
+          } else if (
+            req.body &&
+            req.body.item_image_path != null &&
+            String(req.body.item_image_path).trim() !== ''
+          ) {
+            const s = String(req.body.item_image_path).trim();
+            const newLink = s.startsWith('/items-images/')
+              ? s
+              : `/items-images/${s.replace(/^\/+/, '')}`;
+            updates.push('link = ?');
+            params.push(newLink);
+            if (existing.link && String(existing.link).trim() !== '' && existing.link !== newLink) {
+              unlinkItemImageFile(existing.link);
+            }
+          }
+
+          const { name, description, require_score } = req.body || {};
+          if (name != null && String(name).trim() !== '') {
+            updates.push('name = ?');
+            params.push(String(name).trim());
+          }
+          if (description !== undefined) {
+            updates.push('description = ?');
+            params.push(
+              description === '' || description === null ? null : String(description).trim()
+            );
+          }
+          if (require_score !== undefined && require_score !== '') {
+            const s = Number(require_score);
+            if (Number.isNaN(s) || s < 0) {
+              if (req.file && req.file.path) {
+                try {
+                  fs.unlinkSync(req.file.path);
+                } catch (_) {}
+              }
+              return res.status(400).json({ message: 'require_score phải là số ≥ 0' });
+            }
+            updates.push('require_score = ?');
+            params.push(s);
+          }
+        } else {
+          const { name, description, link, require_score } = req.body || {};
+          if (name != null) {
+            updates.push('name = ?');
+            params.push(String(name).trim());
+          }
+          if (description !== undefined) {
+            updates.push('description = ?');
+            params.push(
+              description === '' || description === null ? null : String(description).trim()
+            );
+          }
+          if (link != null) {
+            const newL = String(link).trim();
+            if (existing.link && existing.link !== newL) {
+              unlinkItemImageFile(existing.link);
+            }
+            updates.push('link = ?');
+            params.push(newL);
+          }
+          if (require_score !== undefined && require_score !== '') {
+            const s = Number(require_score);
+            if (Number.isNaN(s) || s < 0) {
+              return res.status(400).json({ message: 'require_score phải là số ≥ 0' });
+            }
+            updates.push('require_score = ?');
+            params.push(s);
+          }
+        }
+
+        if (!updates.length) {
+          const [rows] = await pool.query('SELECT * FROM items WHERE id = ?', [id]);
+          return res.json(rows[0]);
+        }
+        params.push(id);
+        await pool.query(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`, params);
+        const [rows] = await pool.query('SELECT * FROM items WHERE id = ?', [id]);
+        res.json(rows[0]);
+      } catch (err) {
+        if (req.file && req.file.path) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (_) {}
+        }
+        sendErr(res, err, 'Lỗi khi cập nhật item');
+      }
+    }
+  );
+
+  app.delete('/api/admin/items/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [rows] = await pool.query('SELECT link FROM items WHERE id = ?', [id]);
+      if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy item' });
+      const [[{ refCnt }]] = await pool.query(
+        'SELECT COUNT(*) AS refCnt FROM user_items WHERE item_id = ?',
+        [id]
+      );
+      if (Number(refCnt) > 0) {
+        return res.status(409).json({
+          message:
+            'Không xóa được: đã có người chơi mua hoặc phát sinh giao dịch với vật phẩm này (bảng user_items).',
+        });
+      }
+      const link = rows[0].link;
+      const [r] = await pool.query('DELETE FROM items WHERE id = ?', [id]);
+      if (!r.affectedRows) return res.status(404).json({ message: 'Không tìm thấy item' });
+      if (link) {
+        unlinkItemImageFile(link);
+      }
+      res.json({ message: 'Đã xóa item', id });
+    } catch (err) {
+      const fk = fkError(err);
+      if (fk) return res.status(fk.statusCode).json({ message: fk.message });
+      sendErr(res, err, 'Lỗi khi xóa item');
     }
   });
 };

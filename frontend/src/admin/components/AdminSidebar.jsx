@@ -13,6 +13,7 @@ const navItems = [
   { to: "/admin/contest", end: false, label: "Quản lý contest" },
   { to: "/admin/exams", end: false, label: "Quản lý exams" },
   { to: "/admin/users", end: false, label: "Quản lý user" },
+  { to: "/admin/items", end: false, label: "Quản lý item" },
 ];
 
 function linkStyle({ isActive }) {

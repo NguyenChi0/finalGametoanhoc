@@ -13,6 +13,7 @@ import AdminExams from "./pages/AdminExams";
 import AdminExamCreate from "./pages/AdminExamCreate";
 import AdminExamUpdate from "./pages/AdminExamUpdate";
 import AdminUsers from "./pages/AdminUsers";
+import AdminItems from "./pages/AdminItems";
 
 /** Chunk admin — nested routes dưới /admin/* */
 export default function AdminShell() {
@@ -33,6 +34,7 @@ export default function AdminShell() {
           <Route path="exams/edit" element={<AdminExamUpdate />} />
           <Route path="exams" element={<AdminExams />} />
           <Route path="users" element={<AdminUsers />} />
+          <Route path="items" element={<AdminItems />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
       </Routes>

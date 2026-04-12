@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import api from "../../api";
+import api, { itemImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 const ITEMS_PER_PAGE = 4;
@@ -188,7 +188,7 @@ export default function Shop() {
             {pageItems.map((item) => (
               <div key={item.id} className="shop-item-card">
                 <img
-                  src={`${publicUrl}/images-items/${item.link}`}
+                  src={itemImageUrl(item.link)}
                   alt={item.name}
                   style={{
                     width: "100%",

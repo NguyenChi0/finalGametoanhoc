@@ -1,7 +1,7 @@
 // src/pages/profile.js
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import api from "../../api";
+import api, { itemImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 export default function Profile() {
@@ -95,7 +95,7 @@ export default function Profile() {
                 return (
                   <div key={key} style={styles.itemCard}>
                     <img
-                      src={`${publicUrl}/images-items/${item.link}`}
+                      src={itemImageUrl(item.link)}
                       alt={item.name}
                       style={styles.itemImage}
                       onError={(e) => { e.target.onerror = null; e.target.src = "/placeholder-item.png"; }}

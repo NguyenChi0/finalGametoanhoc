@@ -5,6 +5,25 @@ import axios from "axios";
 const API_BASE =
   import.meta.env.VITE_API_BASE || "http://localhost:5050/api";
 
+/** Origin server API (không có /api) — dùng cho ảnh tĩnh ví dụ /items-images/... */
+export const API_ORIGIN = String(API_BASE).replace(/\/api\/?$/i, "");
+
+/**
+ * URL ảnh vật phẩm — DB lưu `/items-images/...` (hoặc legacy: chỉ tên file).
+ */
+export function itemImageUrl(link) {
+  if (link == null || String(link).trim() === "") return "";
+  const s = String(link).trim();
+  const origin = API_ORIGIN.replace(/\/$/, "");
+  if (s.startsWith("/items-images/")) {
+    return `${origin}${s}`;
+  }
+  const rel = s.replace(/^\/+/, "");
+  if (!rel) return "";
+  const segments = rel.split("/").filter(Boolean).map((seg) => encodeURIComponent(seg));
+  return `${origin}/items-images/${segments.join("/")}`;
+}
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
@@ -138,6 +157,104 @@ export const updateAdminLesson = async (id, payload) => {
 
 export const deleteAdminLesson = async (id) => {
   const res = await api.delete(`/admin/lessons/${id}`);
+  return res.data;
+};
+
+// ==========================
+// Admin — Items (shop /api/admin/items)
+// ==========================
+export const getAdminItems = async () => {
+  const res = await api.get("/admin/items");
+  return res.data;
+};
+
+export const getAdminItem = async (id) => {
+  const res = await api.get(`/admin/items/${id}`);
+  return res.data;
+};
+
+/**
+ * Tạo item — JSON hoặc multipart (`item_image` / `item_image_path`), server lưu `link` = `/items-images/...`.
+ */
+export const createAdminItem = async (payload) => {
+  const { imageFile, item_image_path, ...rest } = payload;
+  if (imageFile instanceof Blob || (item_image_path != null && String(item_image_path).trim() !== "")) {
+    const fd = new FormData();
+    fd.append("name", rest.name ?? "");
+    fd.append("description", rest.description ?? "");
+    fd.append("require_score", String(rest.require_score ?? 0));
+    if (imageFile instanceof Blob) {
+      const name =
+        imageFile instanceof File && imageFile.name ? imageFile.name : "item.png";
+      fd.append("item_image", imageFile, name);
+    } else if (item_image_path != null && String(item_image_path).trim() !== "") {
+      fd.append("item_image_path", String(item_image_path).trim());
+    }
+    const headers = {};
+    const token = localStorage.getItem("token");
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/admin/items`, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message || res.statusText || "Lỗi tạo vật phẩm");
+      err.response = { data, status: res.status };
+      throw err;
+    }
+    return data;
+  }
+  const res = await api.post("/admin/items", rest);
+  return res.data;
+};
+
+export const updateAdminItem = async (id, payload) => {
+  const { imageFile, item_image_path, clear_item_image, ...rest } = payload;
+  const iid = Number(id);
+  if (!iid) throw new Error("id không hợp lệ");
+  const useMultipart =
+    imageFile instanceof Blob ||
+    (item_image_path != null && String(item_image_path).trim() !== "") ||
+    clear_item_image === true;
+  if (useMultipart) {
+    const fd = new FormData();
+    fd.append("name", rest.name ?? "");
+    fd.append("description", rest.description ?? "");
+    fd.append("require_score", String(rest.require_score ?? 0));
+    if (imageFile instanceof Blob) {
+      const name =
+        imageFile instanceof File && imageFile.name ? imageFile.name : "item.png";
+      fd.append("item_image", imageFile, name);
+    } else if (item_image_path != null && String(item_image_path).trim() !== "") {
+      fd.append("item_image_path", String(item_image_path).trim());
+    }
+    if (clear_item_image) {
+      fd.append("clear_item_image", "1");
+    }
+    const headers = {};
+    const token = localStorage.getItem("token");
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/admin/items/${iid}`, {
+      method: "PUT",
+      headers,
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message || res.statusText || "Lỗi cập nhật vật phẩm");
+      err.response = { data, status: res.status };
+      throw err;
+    }
+    return data;
+  }
+  const res = await api.put(`/admin/items/${iid}`, rest);
+  return res.data;
+};
+
+export const deleteAdminItem = async (id) => {
+  const res = await api.delete(`/admin/items/${id}`);
   return res.data;
 };
 
