@@ -57,14 +57,6 @@ export default function Register() {
             minLength={4}
             style={styles.input}
           />
-          <input
-            type="text"
-            placeholder="Họ tên (tùy chọn)"
-            value={fullname}
-            onChange={(e) => setFullname(e.target.value)}
-            autoComplete="name"
-            style={styles.input}
-          />
           <button type="submit" style={styles.button}>
             Đăng ký
           </button>

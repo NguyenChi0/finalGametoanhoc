@@ -1,48 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-
-const GRADE_OPTIONS = [
-  { id: "", label: "Tất cả các lớp" },
-  { id: "4", label: "Lớp 4" },
-  { id: "5", label: "Lớp 5" },
-];
-
-const EXAM_TITLE_OPTIONS = [
-  { id: "4-1", grade: "4", name: "Toán cơ bản" },
-  { id: "4-2", grade: "4", name: "Số học nâng cao" },
-  { id: "5-1", grade: "5", name: "Đại số 5" },
-];
-
-const LESSON_OPTIONS = [
-  { id: "", label: "Tất cả bài học" },
-  { id: "lesson-1", label: "Ôn tập số học" },
-  { id: "lesson-2", label: "Hình học cơ bản" },
-];
-
-/** Một bộ câu hỏi mock nhỏ, nội dung dòng chữ dùng chung (demo — không API). */
-const SHARED_QUESTION_BODY =
-  "Phép cộng, phép trừ trong phạm vi đã học (mẫu dùng chung cho mọi câu trong bài — demo).";
-const SHARED_DETAIL = "Bài: Ôn tập số học · Lớp 4 & 5 (demo).";
-
-const MOCK_QUESTION_POOL = Array.from({ length: 12 }, (_, i) => {
-  const n = i + 1;
-  const grade = n <= 6 ? "4" : "5";
-  const titleId = grade === "4" ? "4-1" : "5-1";
-  const titleName = grade === "4" ? "Toán cơ bản" : "Đại số 5";
-  return {
-    id: n,
-    grade,
-    titleId,
-    titleName,
-    lessonId: "lesson-1",
-    lessonName: "Ôn tập số học",
-    text: `Câu ${n}: ${SHARED_QUESTION_BODY}`,
-    detail: SHARED_DETAIL,
-  };
-});
+import {
+  getAdminExamTemplate,
+  getAdminTypes,
+  getAdminLessons,
+  getQuestions,
+  updateAdminExamTemplate,
+} from "../../api.js";
 
 /**
- * Demo: draft từ Quản lý exams — { id, name, description, selectedQuestionIds: number[] }.
+ * Draft từ Quản lý exams: { id, name, description, grade_id, selectedQuestionIds }.
  */
 export default function AdminExamUpdate() {
   const location = useLocation();
@@ -52,81 +19,188 @@ export default function AdminExamUpdate() {
   const [examId, setExamId] = useState(null);
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
-  const [gradeId, setGradeId] = useState("");
+  const [templateGradeId, setTemplateGradeId] = useState(null);
+  const [gradeName, setGradeName] = useState("");
+  const [types, setTypes] = useState([]);
   const [titleId, setTitleId] = useState("");
+  const [lessons, setLessons] = useState([]);
   const [lessonId, setLessonId] = useState("");
   const [search, setSearch] = useState("");
+  const [questionPool, setQuestionPool] = useState([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionCache, setQuestionCache] = useState({});
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
   const [saving, setSaving] = useState(false);
-
-  const titleOptions = useMemo(() => {
-    const base = !gradeId
-      ? EXAM_TITLE_OPTIONS
-      : EXAM_TITLE_OPTIONS.filter((item) => item.grade === gradeId);
-    return [{ id: "", name: "Tất cả chủ đề" }, ...base];
-  }, [gradeId]);
+  const [initError, setInitError] = useState(null);
 
   useEffect(() => {
-    if (!draft) {
+    if (!draft?.id) {
       setExamId(null);
       setExamTitle("");
       setExamDescription("");
-      setGradeId("");
-      setTitleId("");
-      setLessonId("");
-      setSearch("");
+      setTemplateGradeId(null);
+      setGradeName("");
       setSelectedQuestionIds([]);
+      setQuestionCache({});
+      setInitError(null);
       return;
     }
-    setExamId(draft.id);
-    setExamTitle(draft.name || "");
-    setExamDescription(draft.description || "");
-    setGradeId("");
-    setTitleId("");
-    setLessonId("");
-    setSearch("");
-    const ids = Array.isArray(draft.selectedQuestionIds) ? draft.selectedQuestionIds : [];
-    const valid = ids.filter((id) => MOCK_QUESTION_POOL.some((q) => q.id === id));
-    setSelectedQuestionIds(valid.length > 0 ? valid : [1, 2, 3]);
-  }, [draft, location.key]);
+    let cancelled = false;
+    (async () => {
+      setInitError(null);
+      try {
+        const t = await getAdminExamTemplate(draft.id);
+        if (cancelled) return;
+        setExamId(t.id);
+        setExamTitle(t.name || "");
+        setExamDescription(t.description || "");
+        setTemplateGradeId(Number(t.grade_id));
+        setGradeName(t.grade_name || "");
+        const ids = (t.questions || []).map((q) => Number(q.id));
+        setSelectedQuestionIds(ids);
+        const cache = {};
+        (t.questions || []).forEach((q) => {
+          const qid = Number(q.id);
+          cache[qid] = { id: qid, text: q.text, detail: "" };
+        });
+        setQuestionCache(cache);
+      } catch (e) {
+        if (!cancelled) {
+          setInitError(e?.response?.data?.message || e.message || "Không tải được đề.");
+          setExamId(draft.id);
+          setExamTitle(draft.name || "");
+          setExamDescription(draft.description || "");
+          setTemplateGradeId(Number(draft.grade_id));
+          setGradeName("");
+          const ids = Array.isArray(draft.selectedQuestionIds)
+            ? draft.selectedQuestionIds.map((x) => Number(x))
+            : [];
+          setSelectedQuestionIds(ids);
+          setQuestionCache({});
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [draft?.id, location.key]);
 
-  const filteredQuestions = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return MOCK_QUESTION_POOL.filter((question) => {
-      const matchesGrade = !gradeId || question.grade === gradeId;
-      const matchesTitle = !titleId || question.titleId === titleId;
-      const matchesLesson = !lessonId || question.lessonId === lessonId;
-      const matchesSearch = `${question.id} ${question.text} ${question.detail}`
-        .toLowerCase()
-        .includes(query);
-      return matchesGrade && matchesTitle && matchesLesson && matchesSearch;
-    });
-  }, [gradeId, titleId, lessonId, search]);
+  useEffect(() => {
+    if (templateGradeId == null) {
+      setTypes([]);
+      setTitleId("");
+      return;
+    }
+    (async () => {
+      try {
+        const list = await getAdminTypes({ grade_id: String(templateGradeId) });
+        setTypes(Array.isArray(list) ? list : []);
+        setTitleId("");
+        setLessonId("");
+      } catch {
+        setTypes([]);
+      }
+    })();
+  }, [templateGradeId]);
 
-  const selectedQuestions = MOCK_QUESTION_POOL.filter((question) =>
-    selectedQuestionIds.includes(question.id)
-  );
+  useEffect(() => {
+    if (!titleId) {
+      setLessons([]);
+      setLessonId("");
+      return;
+    }
+    (async () => {
+      try {
+        const list = await getAdminLessons({ type_id: titleId });
+        setLessons(Array.isArray(list) ? list : []);
+        setLessonId("");
+      } catch {
+        setLessons([]);
+      }
+    })();
+  }, [titleId]);
 
-  const handleGradeChange = (value) => {
-    setGradeId(value);
-    setTitleId("");
-  };
+  useEffect(() => {
+    if (templateGradeId == null) {
+      setQuestionPool([]);
+      return;
+    }
+    let cancelled = false;
+    setQuestionsLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getQuestions({
+          grade_id: String(templateGradeId),
+          type_id: titleId || undefined,
+          lesson_id: lessonId || undefined,
+          search: search.trim() || undefined,
+          limit: 500,
+        });
+        if (cancelled) return;
+        const raw = Array.isArray(res?.data) ? res.data : [];
+        setQuestionPool(
+          raw.map((q) => ({
+            id: Number(q.id),
+            text: q.question_text || "",
+            detail:
+              q.hierarchy_path ||
+              [q.type_name, q.lesson_name].filter(Boolean).join(" · ") ||
+              "",
+          }))
+        );
+      } catch {
+        if (!cancelled) setQuestionPool([]);
+      } finally {
+        if (!cancelled) setQuestionsLoading(false);
+      }
+    }, 320);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [templateGradeId, titleId, lessonId, search]);
+
+  const titleOptions = useMemo(() => {
+    return [{ id: "", name: "Tất cả chủ đề" }, ...types.map((t) => ({ id: String(t.id), name: t.name }))];
+  }, [types]);
+
+  const lessonOptionsForSelect = useMemo(() => {
+    return [{ id: "", label: "Tất cả bài học" }, ...lessons.map((l) => ({ id: String(l.id), label: l.name }))];
+  }, [lessons]);
+
+  const filteredQuestions = questionPool;
+
+  const selectedQuestions = selectedQuestionIds.map((id) => {
+    const fromPool = questionPool.find((q) => q.id === id);
+    if (fromPool) return fromPool;
+    return questionCache[id] || { id, text: `Câu #${id}`, detail: "" };
+  });
 
   const toggleQuestion = (questionId) => {
+    const q = questionPool.find((x) => x.id === questionId);
+    if (q) setQuestionCache((c) => ({ ...c, [questionId]: q }));
     setSelectedQuestionIds((prev) =>
       prev.includes(questionId) ? prev.filter((id) => id !== questionId) : [...prev, questionId]
     );
   };
 
-  const handleSaveExam = () => {
-    if (!draft) return;
+  const handleSaveExam = async () => {
+    if (!draft?.id) return;
     if (!examTitle.trim()) return;
     if (selectedQuestionIds.length === 0) return;
     setSaving(true);
-    window.setTimeout(() => {
-      setSaving(false);
+    try {
+      await updateAdminExamTemplate(draft.id, {
+        name: examTitle.trim(),
+        description: examDescription.trim(),
+        question_ids: selectedQuestionIds,
+      });
       navigate("/admin/exams", { replace: true });
-    }, 400);
+    } catch (e) {
+      setInitError(e?.response?.data?.message || e.message || "Không lưu được đề.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!draft) {
@@ -175,11 +249,17 @@ export default function AdminExamUpdate() {
         <div style={styles.headerText}>
           <h1 style={styles.title}>Cập nhật exam #{examId}</h1>
           <p style={styles.lead}>
-            Cập nhật tiêu đề, mô tả và danh sách câu hỏi. Ngân hàng câu hỏi demo gồm {MOCK_QUESTION_POOL.length}{" "}
-            câu (nội dung mẫu dùng chung). Lưu sẽ quay về danh sách (chưa gọi API).
+            Cập nhật tiêu đề, mô tả và danh sách câu hỏi. Khối lớp của đề cố định; chỉ chọn câu cùng khối. Lưu gọi{" "}
+            <code style={styles.inlineCode}>PUT /api/admin/exam-templates/:id</code>.
           </p>
         </div>
       </header>
+
+      {initError && (
+        <div style={styles.errorBanner} role="alert">
+          {initError}
+        </div>
+      )}
 
       <section style={styles.examInfo}>
         <div style={styles.fieldGroup}>
@@ -213,27 +293,16 @@ export default function AdminExamUpdate() {
         <div style={styles.filterHeader}>
           <h2 style={styles.sectionTitle}>Bộ lọc câu hỏi</h2>
           <p style={styles.sectionSubtitle}>
-            Chọn lớp, chủ đề, bài học và tìm kiếm để lọc danh sách câu hỏi (pool demo).
+            Lọc câu hỏi theo chủ đề / bài học (cùng khối với đề). Dùng tìm kiếm để thu hẹp danh sách.
           </p>
         </div>
 
         <div style={styles.filterRow}>
           <div style={styles.filterField}>
-            <label htmlFor="grade-filter" style={styles.filterLabel}>
-              Lớp
-            </label>
-            <select
-              id="grade-filter"
-              value={gradeId}
-              onChange={(e) => handleGradeChange(e.target.value)}
-              style={styles.select}
-            >
-              {GRADE_OPTIONS.map((grade) => (
-                <option key={grade.id || "all-grades"} value={grade.id}>
-                  {grade.label}
-                </option>
-              ))}
-            </select>
+            <span style={styles.filterLabel}>Khối của đề</span>
+            <div style={styles.lockedGrade}>
+              {gradeName || (templateGradeId != null ? `Lớp (ID ${templateGradeId})` : "—")}
+            </div>
           </div>
 
           <div style={styles.filterField}>
@@ -263,8 +332,9 @@ export default function AdminExamUpdate() {
               value={lessonId}
               onChange={(e) => setLessonId(e.target.value)}
               style={styles.select}
+              disabled={!titleId}
             >
-              {LESSON_OPTIONS.map((lesson) => (
+              {lessonOptionsForSelect.map((lesson) => (
                 <option key={lesson.id || "all-lessons"} value={lesson.id}>
                   {lesson.label}
                 </option>
@@ -291,10 +361,14 @@ export default function AdminExamUpdate() {
           <div style={styles.questionPanel}>
             <div style={styles.panelHeader}>
               <h3 style={styles.panelTitle}>Danh sách câu hỏi</h3>
-              <span style={styles.panelMeta}>{filteredQuestions.length} câu hỏi</span>
+              <span style={styles.panelMeta}>
+                {questionsLoading ? "Đang tải…" : `${filteredQuestions.length} câu hỏi`}
+              </span>
             </div>
             <div style={styles.panelScroll}>
-              {filteredQuestions.length === 0 ? (
+              {questionsLoading ? (
+                <div style={styles.emptyState}>Đang tải danh sách câu hỏi…</div>
+              ) : filteredQuestions.length === 0 ? (
                 <div style={styles.emptyState}>Không tìm thấy câu hỏi phù hợp với bộ lọc.</div>
               ) : (
                 filteredQuestions.map((question) => (
@@ -329,7 +403,7 @@ export default function AdminExamUpdate() {
                   <div key={question.id} style={styles.questionCard}>
                     <div style={styles.cardBody}>
                       <p style={styles.questionText}>{question.text}</p>
-                      <p style={styles.questionDetail}>{question.titleName}</p>
+                      <p style={styles.questionDetail}>{question.detail}</p>
                     </div>
                     <button
                       type="button"
@@ -547,11 +621,13 @@ const styles = {
     display: "grid",
     gap: 10,
     minWidth: 0,
+    fontFamily: "inherit",
   },
   filterLabel: {
     fontSize: "0.9rem",
     color: "#24292f",
     fontWeight: 600,
+    fontFamily: "inherit",
   },
   select: {
     width: "100%",
@@ -562,6 +638,7 @@ const styles = {
     color: "#24292f",
     background: "#fff",
     outline: "none",
+    fontFamily: "inherit",
   },
   searchInput: {
     width: "100%",
@@ -761,5 +838,30 @@ const styles = {
     background: "#f6f8fa",
     color: "#57606a",
     textAlign: "center",
+  },
+  errorBanner: {
+    marginBottom: 16,
+    padding: "12px 14px",
+    borderRadius: 10,
+    background: "#fff8f8",
+    border: "1px solid #ff818266",
+    color: "#a40e26",
+    fontSize: "0.9rem",
+    lineHeight: 1.45,
+  },
+  inlineCode: {
+    fontSize: "0.88em",
+    background: "#f6f8fa",
+    padding: "1px 6px",
+    borderRadius: 4,
+  },
+  lockedGrade: {
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid #d0d7de",
+    background: "#f6f8fa",
+    fontSize: "0.95rem",
+    color: "#24292f",
+    fontWeight: 600,
   },
 };

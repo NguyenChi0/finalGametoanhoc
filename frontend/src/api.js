@@ -161,6 +161,45 @@ export const deleteAdminLesson = async (id) => {
 };
 
 // ==========================
+// Admin — Exam templates (mẫu đề / exam_templates)
+// ==========================
+export const getAdminExamTemplates = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await api.get("/admin/exam-templates", { params });
+  return res.data;
+};
+
+export const getAdminExamTemplate = async (id) => {
+  const res = await api.get(`/admin/exam-templates/${id}`);
+  return res.data;
+};
+
+export const createAdminExamTemplate = async (payload) => {
+  const res = await api.post("/admin/exam-templates", payload);
+  return res.data;
+};
+
+export const updateAdminExamTemplate = async (id, payload) => {
+  const res = await api.put(`/admin/exam-templates/${id}`, payload);
+  return res.data;
+};
+
+export const deleteAdminExamTemplate = async (id) => {
+  const res = await api.delete(`/admin/exam-templates/${id}`);
+  return res.data;
+};
+
+/** Gỡ một câu hỏi khỏi đề (không xóa bản ghi questions). */
+export const removeQuestionFromExamTemplate = async (templateId, questionId) => {
+  const res = await api.delete(
+    `/admin/exam-templates/${templateId}/questions/${questionId}`
+  );
+  return res.data;
+};
+
+// ==========================
 // Admin — Items (shop /api/admin/items)
 // ==========================
 export const getAdminItems = async () => {

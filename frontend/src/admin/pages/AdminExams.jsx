@@ -1,99 +1,201 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  getAdminGrades,
+  getAdminExamTemplates,
+  getAdminExamTemplate,
+  deleteAdminExamTemplate,
+  removeQuestionFromExamTemplate,
+} from "../../api.js";
 
-/** Draft gửi sang trang cập nhật exam (demo — pool câu hỏi 1–12 ở AdminExamUpdate). */
+/** Draft gửi sang AdminExamUpdate — `selectedQuestionIds` khớp bảng `questions`. */
 function buildExamEditDraft(row, questionsInExam) {
-  const n = (questionsInExam || []).length;
-  const k = n > 0 ? Math.min(n, 12) : 3;
-  const selectedQuestionIds = Array.from({ length: k }, (_, i) => i + 1);
+  const selectedQuestionIds = (questionsInExam || []).map((q) => Number(q.id));
   return {
     id: row.id,
     name: row.name,
     description: row.description || "",
+    grade_id: row.grade_id,
     selectedQuestionIds,
   };
 }
 
-/** Khối lớp demo — chưa nối API */
-const GRADE_OPTIONS = [
-  { id: "1", name: "Lớp 1" },
-  { id: "2", name: "Lớp 2" },
-  { id: "3", name: "Lớp 3" },
-  { id: "4", name: "Lớp 4" },
-  { id: "5", name: "Lớp 5" },
-];
-
-/** Mẫu đề demo — mỗi đề 3 câu hỏi (giao diện — chưa nối API) */
-const MOCK_EXAMS = [
-  {
-    id: 1,
-    name: "Đề kiểm tra giữa kỳ",
-    description: "Kiểm tra nội dung tuần 1–5.",
-    questions: [
-      { id: "1-q1", text: "Tính giá trị biểu thức: 25 + 17 − 8." },
-      { id: "1-q2", text: "Hình chữ nhật có chiều dài 12 cm, chiều rộng 5 cm. Tính chu vi." },
-      { id: "1-q3", text: "Viết số 3047 thành tổng các hàng: nghìn, trăm, chục, đơn vị." },
-    ],
-  },
-  {
-    id: 2,
-    name: "Đề ôn tuần 1",
-    description: "Ôn tập phép cộng, trừ trong phạm vi 100.",
-    questions: [
-      { id: "2-q1", text: "Điền dấu thích hợp: 45 + 12 ○ 50 + 8." },
-      { id: "2-q2", text: "Lan có 24 viên bi, Hà cho thêm 15 viên. Hỏi Lan có tất cả bao nhiêu viên bi?" },
-      { id: "2-q3", text: "Tìm số liền trước và liền sau của số 89." },
-    ],
-  },
-  {
-    id: 3,
-    name: "Đề kiểm tra cuối kỳ",
-    description: "Tổng hợp kiến thức học kỳ I.",
-    questions: [
-      { id: "3-q1", text: "Một tuần lễ có bao nhiêu ngày? Một ngày có bao nhiêu giờ?" },
-      { id: "3-q2", text: "Xếp các số 431, 413, 341, 143 theo thứ tự từ bé đến lớn." },
-      { id: "3-q3", text: "Một hình vuông có cạnh 6 cm. Tính diện tích hình vuông đó." },
-    ],
-  },
-];
-
-function initialQuestionsByExam() {
-  const m = {};
-  for (const e of MOCK_EXAMS) {
-    m[e.id] = (e.questions || []).map((q) => ({ ...q }));
-  }
-  return m;
-}
-
 export default function AdminExams() {
   const navigate = useNavigate();
-  const [gradeId, setGradeId] = useState("1");
+  const [grades, setGrades] = useState([]);
+  const [gradeId, setGradeId] = useState("");
+  const [exams, setExams] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingGrades, setLoadingGrades] = useState(true);
+  const [detailLoadingId, setDetailLoadingId] = useState(null);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
-  const [expandedExamId, setExpandedExamId] = useState("1");
-  const [questionsByExamId, setQuestionsByExamId] = useState(initialQuestionsByExam);
+  const [expandedExamId, setExpandedExamId] = useState(null);
+  const [questionsByExamId, setQuestionsByExamId] = useState({});
 
-  const selectedGrade = GRADE_OPTIONS.find((g) => g.id === gradeId);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingGrades(true);
+      try {
+        const list = await getAdminGrades();
+        if (cancelled) return;
+        const arr = Array.isArray(list) ? list : [];
+        setGrades(arr);
+        setGradeId((prev) => {
+          if (prev !== "") return prev;
+          return arr.length ? String(arr[0].id) : "";
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setError(err?.response?.data?.message || err.message || "Không tải được danh sách khối.");
+        }
+      } finally {
+        if (!cancelled) setLoadingGrades(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (gradeId === "") {
+      setLoading(false);
+      setExams([]);
+      setQuestionsByExamId({});
+      setExpandedExamId(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const rows = await getAdminExamTemplates({ grade_id: gradeId });
+        if (cancelled) return;
+        setExams(Array.isArray(rows) ? rows : []);
+        setQuestionsByExamId({});
+        setExpandedExamId(null);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err?.response?.data?.message || err.message || "Không tải được danh sách đề.");
+          setExams([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gradeId]);
+
+  const selectedGrade = grades.find((g) => String(g.id) === gradeId);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return MOCK_EXAMS;
-    return MOCK_EXAMS.filter((row) => {
-      const blob = `${row.id} ${row.name} ${row.description || ""}`.toLowerCase();
+    if (!q) return exams;
+    return exams.filter((row) => {
+      const blob = `${row.id} ${row.name} ${row.description || ""} ${row.grade_name || ""}`.toLowerCase();
       return blob.includes(q);
     });
-  }, [search]);
+  }, [search, exams]);
 
-  const toggleExpand = (row) => {
+  const totalFormatted = useMemo(() => {
+    if (!gradeId || (loading && exams.length === 0)) return "—";
+    return filtered.length.toLocaleString("vi-VN");
+  }, [gradeId, loading, exams.length, filtered.length]);
+
+  const statLabelText = useMemo(() => {
+    if (selectedGrade) return `Số mẫu đề ${selectedGrade.name}`;
+    return "Số mẫu đề";
+  }, [selectedGrade]);
+
+  const toggleExpand = async (row) => {
     const id = String(row.id);
-    setExpandedExamId((prev) => (prev === id ? null : id));
+    if (expandedExamId === id) {
+      setExpandedExamId(null);
+      return;
+    }
+    setExpandedExamId(id);
+    if (questionsByExamId[row.id]) return;
+    setDetailLoadingId(row.id);
+    setError(null);
+    try {
+      const t = await getAdminExamTemplate(row.id);
+      const mapped = (t.questions || []).map((q) => ({
+        id: Number(q.id),
+        text: q.text,
+      }));
+      setQuestionsByExamId((prev) => ({ ...prev, [row.id]: mapped }));
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Không tải chi tiết đề.");
+    } finally {
+      setDetailLoadingId(null);
+    }
   };
 
-  const removeQuestion = (examId, questionId, e) => {
+  const removeQuestion = async (examId, questionId, e) => {
     e.stopPropagation();
-    setQuestionsByExamId((prev) => ({
-      ...prev,
-      [examId]: (prev[examId] || []).filter((q) => q.id !== questionId),
-    }));
+    setError(null);
+    try {
+      await removeQuestionFromExamTemplate(examId, questionId);
+      setQuestionsByExamId((prev) => ({
+        ...prev,
+        [examId]: (prev[examId] || []).filter((q) => q.id !== questionId),
+      }));
+      setExams((prev) =>
+        prev.map((x) =>
+          x.id === examId
+            ? { ...x, question_count: Math.max(0, Number(x.question_count || 0) - 1) }
+            : x
+        )
+      );
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Không gỡ được câu hỏi.");
+    }
+  };
+
+  const handleDeleteExam = async (row, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Xóa mẫu đề "${row.name}" (ID ${row.id})?`)) return;
+    setError(null);
+    try {
+      await deleteAdminExamTemplate(row.id);
+      setExams((prev) => prev.filter((x) => x.id !== row.id));
+      setQuestionsByExamId((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+      if (expandedExamId === String(row.id)) setExpandedExamId(null);
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Không xóa được đề.");
+    }
+  };
+
+  const handleEditExam = async (row, e) => {
+    e.stopPropagation();
+    setError(null);
+    try {
+      let qs = questionsByExamId[row.id];
+      if (!qs) {
+        const t = await getAdminExamTemplate(row.id);
+        qs = (t.questions || []).map((q) => ({
+          id: Number(q.id),
+          text: q.text,
+        }));
+        setQuestionsByExamId((prev) => ({ ...prev, [row.id]: qs }));
+      }
+      navigate("/admin/exams/edit", {
+        state: {
+          draft: buildExamEditDraft(row, qs),
+        },
+      });
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Không mở được trang sửa đề.");
+    }
   };
 
   return (
@@ -110,7 +212,7 @@ export default function AdminExams() {
         <div>
           <h1 style={styles.title}>Quản lý exams</h1>
           <p style={styles.lead}>
-            Chọn khối lớp để xem và quản lý đề kiểm tra, kỳ thi theo từng khối.
+            Chọn 1 khối để xem danh sách mẫu đề tương ứng
           </p>
         </div>
         <Link to="new" style={styles.btnPrimary}>
@@ -129,68 +231,98 @@ export default function AdminExams() {
         <select
           id="admin-exams-grade"
           value={gradeId}
-          onChange={(e) => setGradeId(e.target.value)}
+          onChange={(e) => {
+            setGradeId(e.target.value);
+            setSearch("");
+          }}
           style={styles.filterSelect}
+          disabled={loadingGrades || !grades.length}
         >
-          {GRADE_OPTIONS.map((g) => (
-            <option key={g.id} value={g.id}>
+          <option value="">— Chọn khối lớp —</option>
+          {grades.map((g) => (
+            <option key={g.id} value={String(g.id)}>
               {g.name}
             </option>
           ))}
         </select>
       </section>
 
-      {/* Session 2 — thống kê + tìm kiếm + bảng + panel mở rộng */}
-      <div style={styles.toolbar}>
-        <p style={styles.statLine}>
-          {selectedGrade ? (
-            <>
-              Tổng số mẫu đề ({selectedGrade.name}) :{" "}
-              <span style={styles.statNumber}>{MOCK_EXAMS.length}</span>
-            </>
-          ) : (
-            <>
-              Tổng số mẫu đề :{" "}
-              <span style={styles.statNumber}>{MOCK_EXAMS.length}</span>
-            </>
-          )}
-        </p>
-        <div style={styles.searchWrap}>
-          <input
-            type="search"
-            placeholder="Tìm theo tên đề, mô tả hoặc ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={styles.searchInput}
-            aria-label="Tìm kiếm mẫu đề"
-          />
-          <span style={styles.searchIconSlot} aria-hidden>
-            <SearchIcon />
-          </span>
-        </div>
-      </div>
+      {loadingGrades && (
+        <p style={styles.muted}>Đang tải danh sách khối lớp…</p>
+      )}
 
-      <div style={styles.tableWrap}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>Tên đề</th>
-              <th style={styles.th}>Mô tả</th>
-              <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
-                Thao tác
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={4} style={styles.tdEmpty}>
-                  Không có kết quả phù hợp với “{search}”.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => {
+      {!loadingGrades && !grades.length && !error && (
+        <p style={styles.muted}>Chưa có khối lớp trong hệ thống.</p>
+      )}
+
+      {error && (
+        <div style={styles.errorBanner} role="alert">
+          {error}
+        </div>
+      )}
+
+      {!gradeId && !loadingGrades && grades.length > 0 && !error && (
+        <p style={styles.muted}>Chọn khối lớp để xem danh sách mẫu đề.</p>
+      )}
+
+      {gradeId && (
+        <>
+          <section style={styles.statCard} aria-label="Thống kê">
+            <div style={styles.statIconWrap}>
+              <DocumentIcon />
+            </div>
+            <div>
+              <p style={styles.statLabel}>{statLabelText}</p>
+              <p style={styles.statNumber}>{totalFormatted}</p>
+            </div>
+          </section>
+
+          <div style={styles.toolbar}>
+            <div style={styles.searchWrap}>
+              <input
+                type="search"
+                placeholder="Tìm theo tên đề, mô tả hoặc ID..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={styles.searchInput}
+                aria-label="Tìm kiếm mẫu đề"
+              />
+              <span style={styles.searchIconSlot} aria-hidden>
+                <SearchIcon />
+              </span>
+            </div>
+          </div>
+
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>ID</th>
+                  <th style={styles.th}>Tên đề</th>
+                  <th style={styles.th}>Khối</th>
+                  <th style={styles.th}>Mô tả</th>
+                  <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
+                    Thao tác
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} style={styles.tdEmpty}>
+                      Đang tải danh sách đề…
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={styles.tdEmpty}>
+                      {search.trim()
+                        ? `Không có kết quả phù hợp với “${search}”.`
+                        : "Chưa có mẫu đề cho khối này — tạo đề mới từ nút trên."}
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((row) => {
                 const eid = String(row.id);
                 const isOpen = expandedExamId === eid;
                 return (
@@ -203,9 +335,15 @@ export default function AdminExams() {
                       <td style={styles.td}>{row.id}</td>
                       <td style={styles.td}>
                         <div style={styles.examName}>{row.name}</div>
+                        {row.question_count != null && (
+                          <div style={styles.mutedSmall}>
+                            {Number(row.question_count)} câu trong đề
+                          </div>
+                        )}
                       </td>
+                      <td style={styles.td}>{row.grade_name || `ID ${row.grade_id}`}</td>
                       <td style={{ ...styles.td, color: "#57606a" }}>
-                        {row.description}
+                        {row.description || "—"}
                       </td>
                       <td
                         style={{ ...styles.td, textAlign: "right" }}
@@ -215,21 +353,15 @@ export default function AdminExams() {
                           type="button"
                           style={styles.iconBtn}
                           title="Chỉnh sửa đề"
-                          onClick={() =>
-                            navigate("/admin/exams/edit", {
-                              state: {
-                                draft: buildExamEditDraft(row, questionsByExamId[row.id]),
-                              },
-                            })
-                          }
+                          onClick={(e) => handleEditExam(row, e)}
                         >
                           <PencilIcon />
                         </button>
                         <button
                           type="button"
                           style={{ ...styles.iconBtn, marginLeft: 8 }}
-                          title="Xóa"
-                          onClick={() => {}}
+                          title="Xóa đề"
+                          onClick={(e) => handleDeleteExam(row, e)}
                         >
                           <TrashIcon />
                         </button>
@@ -237,12 +369,14 @@ export default function AdminExams() {
                     </tr>
                     {isOpen && (
                       <tr>
-                        <td colSpan={4} style={styles.nestedCell}>
+                        <td colSpan={5} style={styles.nestedCell}>
                           <div style={styles.nestedPanel}>
                             <div style={styles.nestedHeader}>
                               <span style={styles.nestedTitle}>Câu hỏi trong đề</span>
                             </div>
-                            {(questionsByExamId[row.id] || []).length === 0 ? (
+                            {detailLoadingId === row.id ? (
+                              <p style={styles.mutedSmall}>Đang tải câu hỏi…</p>
+                            ) : (questionsByExamId[row.id] || []).length === 0 ? (
                               <p style={styles.mutedSmall}>Chưa có câu hỏi trong đề này.</p>
                             ) : (
                               <ul style={styles.questionList}>
@@ -251,14 +385,6 @@ export default function AdminExams() {
                                     <p style={styles.questionText}>
                                       Câu {index + 1}: {q.text}
                                     </p>
-                                    <button
-                                      type="button"
-                                      style={styles.questionDeleteBtn}
-                                      title="Xóa câu hỏi"
-                                      onClick={(e) => removeQuestion(row.id, q.id, e)}
-                                    >
-                                      Xóa
-                                    </button>
                                   </li>
                                 ))}
                               </ul>
@@ -274,10 +400,8 @@ export default function AdminExams() {
           </tbody>
         </table>
       </div>
-
-      <p style={styles.demoNote}>
-        Giao diện demo — chưa nối API. Bấm dòng để mở/đóng phần câu hỏi.
-      </p>
+        </>
+      )}
     </div>
   );
 }
@@ -303,6 +427,15 @@ function SearchIcon() {
     >
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-4-4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function DocumentIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="1.8">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" strokeLinejoin="round" />
+      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" strokeLinecap="round" />
     </svg>
   );
 }
@@ -393,6 +526,12 @@ const styles = {
     lineHeight: 1.5,
     maxWidth: 640,
   },
+  muted: {
+    margin: "0 0 16px",
+    fontSize: "0.95rem",
+    color: "#57606a",
+    lineHeight: 1.5,
+  },
   filterCard: {
     display: "flex",
     flexWrap: "wrap",
@@ -431,17 +570,38 @@ const styles = {
     marginBottom: 24,
     flexWrap: "wrap",
   },
-  statLine: {
-    margin: 0,
-    fontSize: "0.95rem",
-    color: "#24292f",
-    fontWeight: 600,
-    lineHeight: 1.4,
-    whiteSpace: "nowrap",
+  statCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    padding: "16px 20px",
+    marginBottom: 16,
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  statIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    background: "#ddf4ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  statLabel: {
+    margin: "0 0 4px",
+    fontSize: "0.9rem",
+    color: "#57606a",
+    fontWeight: 500,
   },
   statNumber: {
-    color: "#cf222e",
+    margin: 0,
+    fontSize: "1.65rem",
     fontWeight: 700,
+    color: "#1f2328",
+    letterSpacing: "-0.02em",
   },
   searchWrap: {
     flex: 1,
@@ -464,6 +624,7 @@ const styles = {
     background: "transparent",
     color: "#24292f",
     outline: "none",
+    fontFamily: "inherit",
   },
   searchIconSlot: {
     display: "flex",
@@ -574,28 +735,27 @@ const styles = {
     color: "#24292f",
     overflowWrap: "anywhere",
   },
-  questionDeleteBtn: {
-    flexShrink: 0,
-    padding: "8px 14px",
-    borderRadius: 8,
-    border: "1px solid #cf222e",
-    background: "#fff",
-    color: "#cf222e",
-    fontWeight: 600,
-    fontSize: "0.82rem",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  },
+  
   mutedSmall: {
     margin: 0,
     fontSize: "0.88rem",
     color: "#57606a",
     lineHeight: 1.45,
   },
-  demoNote: {
-    marginTop: 20,
-    fontSize: "0.8rem",
-    color: "#6e7781",
+  errorBanner: {
+    marginBottom: 16,
+    padding: "12px 14px",
+    borderRadius: 10,
+    background: "#fff8f8",
+    border: "1px solid #ff818266",
+    color: "#a40e26",
+    fontSize: "0.9rem",
     lineHeight: 1.45,
+  },
+  inlineCode: {
+    fontSize: "0.85em",
+    background: "#f6f8fa",
+    padding: "1px 6px",
+    borderRadius: 4,
   },
 };

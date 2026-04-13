@@ -95,6 +95,11 @@ export default function AdminItems() {
     });
   }, [items, search]);
 
+  const totalFormatted = useMemo(() => {
+    if (loading && items.length === 0 && !error) return "—";
+    return items.length.toLocaleString("vi-VN");
+  }, [loading, items.length, error]);
+
   const readImageFile = (file) => {
     setItemImageFile(file);
     setImageCleared(false);
@@ -338,10 +343,26 @@ export default function AdminItems() {
         </button>
       </header>
 
+      {error && (
+        <div style={styles.errorBanner}>
+          {error}{" "}
+          <button type="button" style={styles.linkBtn} onClick={load}>
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      <section style={styles.statCard} aria-label="Thống kê">
+        <div style={styles.statIconWrap}>
+          <DocumentIcon />
+        </div>
+        <div>
+          <p style={styles.statLabel}>Tổng số vật phẩm</p>
+          <p style={styles.statNumber}>{totalFormatted}</p>
+        </div>
+      </section>
+
       <div style={styles.toolbar}>
-        <p style={styles.statLine}>
-          Tổng số: <span style={styles.statNumber}>{items.length}</span>
-        </p>
         <div style={styles.searchWrap}>
           <input
             type="search"
@@ -357,14 +378,6 @@ export default function AdminItems() {
         </div>
       </div>
 
-      {error && (
-        <div style={styles.errorBanner}>
-          {error}{" "}
-          <button type="button" style={styles.linkBtn} onClick={load}>
-            Thử lại
-          </button>
-        </div>
-      )}
 
       {loading && items.length === 0 && !error && <p style={styles.muted}>Đang tải danh sách…</p>}
 
@@ -726,6 +739,15 @@ function SearchIcon() {
   );
 }
 
+function DocumentIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="1.8">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" strokeLinejoin="round" />
+      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function PlusIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -837,17 +859,38 @@ const styles = {
     marginBottom: 24,
     flexWrap: "wrap",
   },
-  statLine: {
-    margin: 0,
-    fontSize: "0.95rem",
-    color: "#24292f",
-    fontWeight: 600,
-    lineHeight: 1.4,
-    whiteSpace: "nowrap",
+  statCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    padding: "16px 20px",
+    marginBottom: 16,
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  statIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    background: "#ddf4ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  statLabel: {
+    margin: "0 0 4px",
+    fontSize: "0.9rem",
+    color: "#57606a",
+    fontWeight: 500,
   },
   statNumber: {
-    color: "#cf222e",
+    margin: 0,
+    fontSize: "1.65rem",
     fontWeight: 700,
+    color: "#1f2328",
+    letterSpacing: "-0.02em",
   },
   searchWrap: {
     flex: 1,

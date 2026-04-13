@@ -329,6 +329,7 @@ export default function Navbar() {
                     borderRadius: 8,
                     cursor: "pointer",
                     fontWeight: 600,
+                    fontFamily: "inherit",
                   }}
                 >
                   Đăng xuất

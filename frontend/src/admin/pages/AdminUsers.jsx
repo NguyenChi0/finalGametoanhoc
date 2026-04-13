@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   getAdminUsers,
@@ -49,6 +49,15 @@ function SearchIcon() {
     >
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-4-4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function DocumentIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="1.8">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" strokeLinejoin="round" />
+      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" strokeLinecap="round" />
     </svg>
   );
 }
@@ -150,6 +159,11 @@ export default function AdminUsers() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch]);
+
+  const totalFormatted = useMemo(() => {
+    if (loading && users.length === 0 && !error) return "—";
+    return totalDb.toLocaleString("vi-VN");
+  }, [loading, users.length, error, totalDb]);
 
   const rangeStart = totalDb === 0 ? 0 : (page - 1) * USERS_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * USERS_PAGE_SIZE, totalDb);
@@ -319,11 +333,26 @@ export default function AdminUsers() {
         </button>
       </header>
 
+      {error && (
+        <div style={styles.errorBanner} role="alert">
+          {error}{" "}
+          <button type="button" style={styles.linkBtn} onClick={loadUsers}>
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      <section style={styles.statCard} aria-label="Thống kê">
+        <div style={styles.statIconWrap}>
+          <DocumentIcon />
+        </div>
+        <div>
+          <p style={styles.statLabel}>Tổng số user</p>
+          <p style={styles.statNumber}>{totalFormatted}</p>
+        </div>
+      </section>
+
       <div style={styles.toolbar}>
-        <p style={styles.statLine}>
-          Tổng số user (cơ sở dữ liệu):{" "}
-          <span style={styles.statNumber}>{totalDb.toLocaleString("vi-VN")}</span>
-        </p>
         <div style={styles.searchWrap}>
           <input
             type="search"
@@ -339,14 +368,6 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {error && (
-        <div style={styles.errorBanner} role="alert">
-          {error}{" "}
-          <button type="button" style={styles.linkBtn} onClick={loadUsers}>
-            Thử lại
-          </button>
-        </div>
-      )}
 
       {loading && users.length === 0 && !error && (
         <p style={styles.muted}>Đang tải danh sách user…</p>
@@ -790,17 +811,38 @@ const styles = {
     marginBottom: 24,
     flexWrap: "wrap",
   },
-  statLine: {
-    margin: 0,
-    fontSize: "0.95rem",
-    color: "#24292f",
-    fontWeight: 600,
-    lineHeight: 1.4,
-    whiteSpace: "nowrap",
+  statCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    padding: "16px 20px",
+    marginBottom: 16,
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  statIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    background: "#ddf4ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  statLabel: {
+    margin: "0 0 4px",
+    fontSize: "0.9rem",
+    color: "#57606a",
+    fontWeight: 500,
   },
   statNumber: {
-    color: "#cf222e",
+    margin: 0,
+    fontSize: "1.65rem",
     fontWeight: 700,
+    color: "#1f2328",
+    letterSpacing: "-0.02em",
   },
   searchWrap: {
     flex: 1,

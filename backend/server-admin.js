@@ -1,5 +1,5 @@
 /**
- * CRUD API dành cho admin: users, grades, types, lessons.
+ * CRUD API dành cho admin: users, grades, types, lessons, exam_templates, items.
  * Gắn vào app Express: mountAdminCrud(app, pool);
  *
  * Tiền tố: /api/admin
@@ -586,6 +586,296 @@ module.exports = function mountAdminCrud(app, pool) {
       const fk = fkError(err);
       if (fk) return res.status(fk.statusCode).json({ message: fk.message });
       sendErr(res, err, 'Lỗi khi xóa lesson');
+    }
+  });
+
+  // ---------- EXAM TEMPLATES (exam_templates + exam_template_questions) ----------
+  app.get('/api/admin/exam-templates', async (req, res) => {
+    try {
+      const rawG = req.query.grade_id;
+      const gradeId =
+        rawG != null && String(rawG).trim() !== '' ? Number(rawG) : null;
+      let sql = `
+        SELECT t.*, g.name AS grade_name,
+          (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = t.id) AS question_count
+        FROM exam_templates t
+        LEFT JOIN grades g ON g.id = t.grade_id
+      `;
+      const params = [];
+      if (gradeId != null && !Number.isNaN(gradeId) && gradeId > 0) {
+        sql += ' WHERE t.grade_id = ?';
+        params.push(gradeId);
+      }
+      sql += ' ORDER BY t.id DESC';
+      const [rows] = await pool.query(sql, params);
+      res.json(rows);
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy exam templates');
+    }
+  });
+
+  app.get('/api/admin/exam-templates/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [templates] = await pool.query(
+        `SELECT t.*, g.name AS grade_name FROM exam_templates t
+         LEFT JOIN grades g ON g.id = t.grade_id WHERE t.id = ?`,
+        [id]
+      );
+      if (!templates.length) {
+        return res.status(404).json({ message: 'Không tìm thấy exam template' });
+      }
+      const t = templates[0];
+      const [qrows] = await pool.query(
+        `SELECT q.id, q.question_text, q.grade_id
+         FROM exam_template_questions etq
+         JOIN questions q ON q.id = etq.question_id
+         WHERE etq.template_id = ?
+         ORDER BY etq.id ASC`,
+        [id]
+      );
+      const questions = qrows.map((q) => ({
+        id: q.id,
+        text: q.question_text,
+        grade_id: q.grade_id,
+      }));
+      res.json({ ...t, questions });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy exam template');
+    }
+  });
+
+  app.post('/api/admin/exam-templates', async (req, res) => {
+    const { name, grade_id, description, question_ids } = req.body || {};
+    const gid = Number(grade_id);
+    if (!name || !String(name).trim() || !gid || Number.isNaN(gid)) {
+      return res.status(400).json({ message: 'name và grade_id là bắt buộc' });
+    }
+    const rawIds = Array.isArray(question_ids) ? question_ids : [];
+    const qids = [
+      ...new Set(
+        rawIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+      ),
+    ];
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [result] = await conn.query(
+        'INSERT INTO exam_templates (name, grade_id, description) VALUES (?, ?, ?)',
+        [String(name).trim(), gid, description != null ? description : null]
+      );
+      const tid = result.insertId;
+      if (qids.length) {
+        const ph = qids.map(() => '?').join(',');
+        const [found] = await conn.query(
+          `SELECT id FROM questions WHERE id IN (${ph}) AND grade_id = ?`,
+          [...qids, gid]
+        );
+        if (found.length !== qids.length) {
+          await conn.rollback();
+          return res.status(400).json({
+            message:
+              'Một hoặc nhiều câu hỏi không tồn tại hoặc không cùng khối (grade_id) với đề.',
+          });
+        }
+        const values = qids.map((qid) => [tid, qid]);
+        await conn.query(
+          'INSERT INTO exam_template_questions (template_id, question_id) VALUES ?',
+          [values]
+        );
+      }
+      await conn.commit();
+      const [rows] = await pool.query(
+        `SELECT t.*, g.name AS grade_name FROM exam_templates t
+         LEFT JOIN grades g ON g.id = t.grade_id WHERE t.id = ?`,
+        [tid]
+      );
+      const [qrows] = await pool.query(
+        `SELECT q.id, q.question_text, q.grade_id FROM exam_template_questions etq
+         JOIN questions q ON q.id = etq.question_id WHERE etq.template_id = ? ORDER BY etq.id ASC`,
+        [tid]
+      );
+      res.status(201).json({
+        ...rows[0],
+        questions: qrows.map((q) => ({
+          id: q.id,
+          text: q.question_text,
+          grade_id: q.grade_id,
+        })),
+      });
+    } catch (err) {
+      await conn.rollback();
+      const fk = fkError(err);
+      if (fk) return res.status(fk.statusCode).json({ message: fk.message });
+      sendErr(res, err, 'Lỗi khi tạo exam template');
+    } finally {
+      conn.release();
+    }
+  });
+
+  app.put('/api/admin/exam-templates/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    const { name, grade_id, description, question_ids } = req.body || {};
+    const conn = await pool.getConnection();
+    try {
+      const [existingRows] = await conn.query(
+        'SELECT * FROM exam_templates WHERE id = ?',
+        [id]
+      );
+      if (!existingRows.length) {
+        return res.status(404).json({ message: 'Không tìm thấy exam template' });
+      }
+      const template = existingRows[0];
+      let effectiveGrade = Number(template.grade_id);
+      if (grade_id !== undefined && grade_id !== null) {
+        const ng = Number(grade_id);
+        if (Number.isNaN(ng) || ng <= 0) {
+          return res.status(400).json({ message: 'grade_id không hợp lệ' });
+        }
+        effectiveGrade = ng;
+      }
+
+      if (grade_id !== undefined && Number(grade_id) !== Number(template.grade_id)) {
+        if (question_ids === undefined) {
+          const [[{ cnt }]] = await conn.query(
+            `SELECT COUNT(*) AS cnt FROM exam_template_questions etq
+             JOIN questions q ON q.id = etq.question_id
+             WHERE etq.template_id = ? AND q.grade_id != ?`,
+            [id, effectiveGrade]
+          );
+          if (Number(cnt) > 0) {
+            return res.status(400).json({
+              message:
+                'Không đổi khối khi đề còn câu hỏi khối khác. Hãy cập nhật danh sách câu (question_ids) trước.',
+            });
+          }
+        }
+      }
+
+      await conn.beginTransaction();
+
+      const updates = [];
+      const params = [];
+      if (name != null) {
+        updates.push('name = ?');
+        params.push(String(name).trim());
+      }
+      if (grade_id !== undefined && grade_id !== null) {
+        updates.push('grade_id = ?');
+        params.push(effectiveGrade);
+      }
+      if (description !== undefined) {
+        updates.push('description = ?');
+        params.push(description);
+      }
+      if (updates.length) {
+        params.push(id);
+        await conn.query(
+          `UPDATE exam_templates SET ${updates.join(', ')} WHERE id = ?`,
+          params
+        );
+      }
+
+      if (question_ids !== undefined) {
+        const rawIds = Array.isArray(question_ids) ? question_ids : [];
+        const qids = [
+          ...new Set(
+            rawIds
+              .map((x) => Number(x))
+              .filter((x) => Number.isFinite(x) && x > 0)
+          ),
+        ];
+        const ph = qids.length ? qids.map(() => '?').join(',') : '';
+        if (qids.length) {
+          const [found] = await conn.query(
+            `SELECT id FROM questions WHERE id IN (${ph}) AND grade_id = ?`,
+            [...qids, effectiveGrade]
+          );
+          if (found.length !== qids.length) {
+            await conn.rollback();
+            return res.status(400).json({
+              message:
+                'Một hoặc nhiều câu hỏi không tồn tại hoặc không cùng khối với đề.',
+            });
+          }
+        }
+        await conn.query('DELETE FROM exam_template_questions WHERE template_id = ?', [
+          id,
+        ]);
+        if (qids.length) {
+          const values = qids.map((qid) => [id, qid]);
+          await conn.query(
+            'INSERT INTO exam_template_questions (template_id, question_id) VALUES ?',
+            [values]
+          );
+        }
+      }
+
+      await conn.commit();
+
+      const [rows] = await pool.query(
+        `SELECT t.*, g.name AS grade_name FROM exam_templates t
+         LEFT JOIN grades g ON g.id = t.grade_id WHERE t.id = ?`,
+        [id]
+      );
+      const [qrows] = await pool.query(
+        `SELECT q.id, q.question_text, q.grade_id FROM exam_template_questions etq
+         JOIN questions q ON q.id = etq.question_id WHERE etq.template_id = ? ORDER BY etq.id ASC`,
+        [id]
+      );
+      res.json({
+        ...rows[0],
+        questions: qrows.map((q) => ({
+          id: q.id,
+          text: q.question_text,
+          grade_id: q.grade_id,
+        })),
+      });
+    } catch (err) {
+      await conn.rollback();
+      const fk = fkError(err);
+      if (fk) return res.status(fk.statusCode).json({ message: fk.message });
+      sendErr(res, err, 'Lỗi khi cập nhật exam template');
+    } finally {
+      conn.release();
+    }
+  });
+
+  app.delete('/api/admin/exam-templates/:id/questions/:questionId', async (req, res) => {
+    const id = Number(req.params.id);
+    const qid = Number(req.params.questionId);
+    if (!id || !qid) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
+    try {
+      const [r] = await pool.query(
+        'DELETE FROM exam_template_questions WHERE template_id = ? AND question_id = ?',
+        [id, qid]
+      );
+      if (!r.affectedRows) {
+        return res.status(404).json({ message: 'Không tìm thấy liên kết câu hỏi trong đề' });
+      }
+      res.json({ message: 'Đã gỡ câu hỏi khỏi đề', template_id: id, question_id: qid });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi gỡ câu hỏi');
+    }
+  });
+
+  app.delete('/api/admin/exam-templates/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [r] = await pool.query('DELETE FROM exam_templates WHERE id = ?', [id]);
+      if (!r.affectedRows) {
+        return res.status(404).json({ message: 'Không tìm thấy exam template' });
+      }
+      res.json({ message: 'Đã xóa exam template', id });
+    } catch (err) {
+      const fk = fkError(err);
+      if (fk) return res.status(fk.statusCode).json({ message: fk.message });
+      sendErr(res, err, 'Lỗi khi xóa exam template');
     }
   });
 

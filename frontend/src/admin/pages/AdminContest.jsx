@@ -34,6 +34,45 @@ const MOCK_EXAMS = [
   { id: 9, name: "Đề đại số", grade: "Lớp 5", description: "Chưa có mô tả." },
 ];
 
+/** Tách ISO / Date → ngày + giờ 24h (địa phương), dùng cho input date + time — không dùng thư viện. */
+function isoToDateTimeParts(iso) {
+  if (iso == null || iso === "") {
+    return { date: "", time: "00:00" };
+  }
+  const date = iso instanceof Date ? iso : new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return { date: "", time: "00:00" };
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  };
+}
+
+/** Ghép YYYY-MM-DD + HH:mm (24h) → ISO — parse theo giờ địa phương của trình duyệt */
+function dateTimePartsToIso(dateStr, timeStr) {
+  if (!dateStr || !String(dateStr).trim()) return null;
+  const t = timeStr && String(timeStr).trim() ? String(timeStr).trim() : "00:00";
+  const d = new Date(`${dateStr.trim()}T${t}`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function localScheduleToMs(dateStr, timeStr) {
+  if (!dateStr || !String(dateStr).trim()) return NaN;
+  const t = timeStr && String(timeStr).trim() ? String(timeStr).trim() : "00:00";
+  const d = new Date(`${dateStr.trim()}T${t}`);
+  return d.getTime();
+}
+
+function formatContestSchedule(startsAt, endsAt) {
+  if (!startsAt && !endsAt) return "—";
+  const opts = { dateStyle: "short", timeStyle: "short" };
+  const s = startsAt ? new Date(startsAt).toLocaleString("vi-VN", opts) : "—";
+  const e = endsAt ? new Date(endsAt).toLocaleString("vi-VN", opts) : "—";
+  return `${s} → ${e}`;
+}
+
 const MOCK_CONTESTS = [
   {
     id: 101,
@@ -42,6 +81,8 @@ const MOCK_CONTESTS = [
     status: "published",
     description: "Bài kiểm tra tuần đầu dành cho lớp 4.",
     examId: 8,
+    startsAt: new Date(Date.now() + 86400000).toISOString(),
+    endsAt: new Date(Date.now() + 86400000 * 8).toISOString(),
   },
   {
     id: 102,
@@ -50,6 +91,8 @@ const MOCK_CONTESTS = [
     status: "scheduled",
     description: "Contest tuần 2 đang được lên lịch.",
     examId: 7,
+    startsAt: null,
+    endsAt: null,
   },
   {
     id: 103,
@@ -58,6 +101,8 @@ const MOCK_CONTESTS = [
     status: "published",
     description: "Contest luyện thi giữa học kỳ.",
     examId: 3,
+    startsAt: new Date().toISOString(),
+    endsAt: new Date(Date.now() + 3600000 * 48).toISOString(),
   },
   {
     id: 104,
@@ -66,6 +111,8 @@ const MOCK_CONTESTS = [
     status: "archived",
     description: "Contest đã lưu trữ từ kỳ trước.",
     examId: 4,
+    startsAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+    endsAt: new Date(Date.now() - 86400000 * 23).toISOString(),
   },
 ];
 
@@ -79,18 +126,53 @@ export default function AdminContest() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editStatus, setEditStatus] = useState("published");
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editStartTime, setEditStartTime] = useState("00:00");
+  const [editEndDate, setEditEndDate] = useState("");
+  const [editEndTime, setEditEndTime] = useState("23:59");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newContestName, setNewContestName] = useState("");
   const [newContestDescription, setNewContestDescription] = useState("");
   const [newContestStatus, setNewContestStatus] = useState("published");
+  const [newStartDate, setNewStartDate] = useState("");
+  const [newStartTime, setNewStartTime] = useState("00:00");
+  const [newEndDate, setNewEndDate] = useState("");
+  const [newEndTime, setNewEndTime] = useState("23:59");
 
   const selectedStatus = STATUS_OPTIONS.find((item) => item.id === statusId);
+
+  const onEditStartDateChange = (e) => {
+    const next = e.target.value;
+    if (next !== editStartDate) setEditStartTime("00:00");
+    setEditStartDate(next);
+  };
+  const onEditEndDateChange = (e) => {
+    const next = e.target.value;
+    if (next !== editEndDate) setEditEndTime("23:59");
+    setEditEndDate(next);
+  };
+  const onNewStartDateChange = (e) => {
+    const next = e.target.value;
+    if (next !== newStartDate) setNewStartTime("00:00");
+    setNewStartDate(next);
+  };
+  const onNewEndDateChange = (e) => {
+    const next = e.target.value;
+    if (next !== newEndDate) setNewEndTime("23:59");
+    setNewEndDate(next);
+  };
 
   const openEditModal = (contest) => {
     setEditingContest(contest);
     setEditName(contest.name);
     setEditDescription(contest.description || "");
     setEditStatus(contest.status);
+    const s = isoToDateTimeParts(contest.startsAt);
+    const e = isoToDateTimeParts(contest.endsAt);
+    setEditStartDate(s.date);
+    setEditStartTime(s.time);
+    setEditEndDate(e.date);
+    setEditEndTime(e.time);
   };
 
   const closeEditModal = () => {
@@ -99,10 +181,27 @@ export default function AdminContest() {
 
   const saveEditModal = () => {
     if (!editingContest) return;
+    if (editStartDate && editEndDate) {
+      const t0 = localScheduleToMs(editStartDate, editStartTime);
+      const t1 = localScheduleToMs(editEndDate, editEndTime);
+      if (!Number.isNaN(t0) && !Number.isNaN(t1) && t1 < t0) {
+        window.alert("Thời gian kết thúc phải sau hoặc bằng thời gian bắt đầu.");
+        return;
+      }
+    }
+    const startsAt = dateTimePartsToIso(editStartDate, editStartTime);
+    const endsAt = dateTimePartsToIso(editEndDate, editEndTime);
     setContests((prev) =>
       prev.map((contest) =>
         contest.id === editingContest.id
-          ? { ...contest, name: editName, description: editDescription.trim(), status: editStatus }
+          ? {
+              ...contest,
+              name: editName,
+              description: editDescription.trim(),
+              status: editStatus,
+              startsAt,
+              endsAt,
+            }
           : contest
       )
     );
@@ -114,6 +213,10 @@ export default function AdminContest() {
     setNewContestName("");
     setNewContestDescription("");
     setNewContestStatus("published");
+    setNewStartDate("");
+    setNewStartTime("00:00");
+    setNewEndDate("");
+    setNewEndTime("23:59");
   };
 
   const closeCreateModal = () => {
@@ -122,6 +225,14 @@ export default function AdminContest() {
 
   const saveCreateModal = () => {
     if (!newContestName.trim()) return;
+    if (newStartDate && newEndDate) {
+      const t0 = localScheduleToMs(newStartDate, newStartTime);
+      const t1 = localScheduleToMs(newEndDate, newEndTime);
+      if (!Number.isNaN(t0) && !Number.isNaN(t1) && t1 < t0) {
+        window.alert("Thời gian kết thúc phải sau hoặc bằng thời gian bắt đầu.");
+        return;
+      }
+    }
     const nextId = Math.max(0, ...contests.map((contest) => contest.id)) + 1;
     const newContest = {
       id: nextId,
@@ -129,6 +240,8 @@ export default function AdminContest() {
       status: newContestStatus,
       description: newContestDescription.trim() || "Chưa có mô tả.",
       examId: null,
+      startsAt: dateTimePartsToIso(newStartDate, newStartTime),
+      endsAt: dateTimePartsToIso(newEndDate, newEndTime),
     };
     setContests((prev) => [...prev, newContest]);
     closeCreateModal();
@@ -138,7 +251,10 @@ export default function AdminContest() {
     const q = search.trim().toLowerCase();
     return contests.filter((contest) => {
       const matchesStatus = statusId === "all" || contest.status === statusId;
-      const matchesSearch = `${contest.id} ${contest.name} ${contest.description} ${contest.week} ${
+      const matchesSearch = `${contest.id} ${contest.name} ${contest.description} ${contest.week} ${formatContestSchedule(
+        contest.startsAt,
+        contest.endsAt
+      )} ${
         contest.examId ? MOCK_EXAMS.find((e) => e.id === contest.examId)?.name : ""
       } ${contest.examId ? MOCK_EXAMS.find((e) => e.id === contest.examId)?.grade : ""}`
         .toLowerCase()
@@ -276,6 +392,12 @@ export default function AdminContest() {
                   </span>
                 </div>
                 <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Thời gian diễn ra</span>
+                  <span style={{ ...styles.cardValue, fontSize: "0.85rem" }}>
+                    {formatContestSchedule(contest.startsAt, contest.endsAt)}
+                  </span>
+                </div>
+                <div style={styles.cardField}>
                   <span style={styles.cardLabel}>Exam được chọn</span>
                   {contest.examId ? (
                     <span>
@@ -324,6 +446,7 @@ export default function AdminContest() {
                 <th style={styles.th}>ID</th>
                 <th style={styles.th}>Tên contest</th>
                 <th style={styles.th}>Mô tả</th>
+                <th style={{ ...styles.th, minWidth: 200 }}>Thời gian</th>
                 <th style={styles.th}>Exam được chọn</th>
                 <th style={styles.th}>Trạng thái</th>
                 <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
@@ -334,7 +457,7 @@ export default function AdminContest() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={styles.tdEmpty}>
+                  <td colSpan={7} style={styles.tdEmpty}>
                     Không có kết quả phù hợp với “{search}”.
                   </td>
                 </tr>
@@ -355,6 +478,9 @@ export default function AdminContest() {
                         </td>
                         <td style={{ ...styles.td, color: "#57606a", fontSize: "0.88rem", maxWidth: 280 }}>
                           <div style={styles.tableDesc}>{contest.description || "—"}</div>
+                        </td>
+                        <td style={{ ...styles.td, fontSize: "0.82rem", color: "#57606a", whiteSpace: "nowrap" }}>
+                          {formatContestSchedule(contest.startsAt, contest.endsAt)}
                         </td>
                         <td style={styles.td}>
                           {contest.examId ? (
@@ -402,7 +528,7 @@ export default function AdminContest() {
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={6} style={styles.nestedCell}>
+                          <td colSpan={7} style={styles.nestedCell}>
                             <div style={styles.nestedPanel}>
                               <div style={styles.nestedHeader} />
                               {renderExamAssignment(contest)}
@@ -462,6 +588,50 @@ export default function AdminContest() {
                   style={styles.modalTextarea}
                 />
               </div>
+
+              <div style={styles.modalField}>
+                <span style={styles.modalLabel}>Thời gian bắt đầu</span>
+                <div style={styles.modalDateTimeRow} lang="en-GB">
+                  <input
+                    type="date"
+                    value={editStartDate}
+                    onChange={onEditStartDateChange}
+                    style={styles.modalDateInput}
+                    aria-label="Ngày bắt đầu"
+                  />
+                  <input
+                    type="time"
+                    step={60}
+                    value={editStartTime}
+                    onChange={(e) => setEditStartTime(e.target.value)}
+                    style={styles.modalTimeInput}
+                    aria-label="Giờ bắt đầu (24h)"
+                  />
+                </div>
+              </div>
+              <div style={styles.modalField}>
+                <span style={styles.modalLabel}>Thời gian kết thúc</span>
+                <div style={styles.modalDateTimeRow} lang="en-GB">
+                  <input
+                    type="date"
+                    value={editEndDate}
+                    onChange={onEditEndDateChange}
+                    style={styles.modalDateInput}
+                    aria-label="Ngày kết thúc"
+                  />
+                  <input
+                    type="time"
+                    step={60}
+                    value={editEndTime}
+                    onChange={(e) => setEditEndTime(e.target.value)}
+                    style={styles.modalTimeInput}
+                    aria-label="Giờ kết thúc (24h)"
+                  />
+                </div>
+              </div>
+              <p style={styles.modalScheduleHint}>
+                Đổi ngày: giờ bắt đầu về 00:00, giờ kết thúc về 23:59 (có thể chỉnh lại). Ô giờ dùng định dạng 24h.
+              </p>
 
               <div style={styles.modalField}>
                 <label style={styles.modalLabel} htmlFor="edit-contest-status">
@@ -532,6 +702,50 @@ export default function AdminContest() {
                   style={styles.modalTextarea}
                 />
               </div>
+
+              <div style={styles.modalField}>
+                <span style={styles.modalLabel}>Thời gian bắt đầu</span>
+                <div style={styles.modalDateTimeRow} lang="en-GB">
+                  <input
+                    type="date"
+                    value={newStartDate}
+                    onChange={onNewStartDateChange}
+                    style={styles.modalDateInput}
+                    aria-label="Ngày bắt đầu"
+                  />
+                  <input
+                    type="time"
+                    step={60}
+                    value={newStartTime}
+                    onChange={(e) => setNewStartTime(e.target.value)}
+                    style={styles.modalTimeInput}
+                    aria-label="Giờ bắt đầu (24h)"
+                  />
+                </div>
+              </div>
+              <div style={styles.modalField}>
+                <span style={styles.modalLabel}>Thời gian kết thúc</span>
+                <div style={styles.modalDateTimeRow} lang="en-GB">
+                  <input
+                    type="date"
+                    value={newEndDate}
+                    onChange={onNewEndDateChange}
+                    style={styles.modalDateInput}
+                    aria-label="Ngày kết thúc"
+                  />
+                  <input
+                    type="time"
+                    step={60}
+                    value={newEndTime}
+                    onChange={(e) => setNewEndTime(e.target.value)}
+                    style={styles.modalTimeInput}
+                    aria-label="Giờ kết thúc (24h)"
+                  />
+                </div>
+              </div>
+              <p style={styles.modalScheduleHint}>
+                Đổi ngày: giờ bắt đầu về 00:00, giờ kết thúc về 23:59 (có thể chỉnh lại). Ô giờ dùng định dạng 24h.
+              </p>
 
               <div style={styles.modalField}>
                 <label style={styles.modalLabel} htmlFor="create-contest-status">
@@ -836,7 +1050,7 @@ const styles = {
     width: "100%",
     borderCollapse: "collapse",
     fontSize: "0.9rem",
-    minWidth: 960,
+    minWidth: 1120,
   },
   th: {
   textAlign: "left",
@@ -1050,7 +1264,7 @@ const styles = {
     padding: 16,
   },
   modal: {
-    width: "min(520px, calc(100vw - 32px))",
+    width: "min(560px, calc(100vw - 32px))",
     maxWidth: "100%",
     background: "#fff",
     borderRadius: 18,
@@ -1119,6 +1333,48 @@ const styles = {
     fontFamily: "inherit",
     lineHeight: 1.45,
     overflowWrap: "anywhere",
+  },
+  modalDateTimeRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    minWidth: 0,
+  },
+  modalDateInput: {
+    boxSizing: "border-box",
+    flex: "1 1 180px",
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    fontSize: "0.95rem",
+    color: "#24292f",
+    background: "#fff",
+    outline: "none",
+    fontFamily: "inherit",
+    lineHeight: 1.45,
+  },
+  modalTimeInput: {
+    boxSizing: "border-box",
+    flex: "0 1 128px",
+    minWidth: 104,
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #d0d7de",
+    fontSize: "0.95rem",
+    color: "#24292f",
+    background: "#fff",
+    outline: "none",
+    fontFamily: "inherit",
+    lineHeight: 1.45,
+  },
+  modalScheduleHint: {
+    margin: "-4px 0 0",
+    fontSize: "0.8rem",
+    color: "#6e7781",
+    lineHeight: 1.45,
   },
   modalTextarea: {
     boxSizing: "border-box",

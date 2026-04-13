@@ -130,6 +130,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
             padding: "6px 10px",
             borderRadius: 6,
             border: "1px solid #f7f7f7ff",
+            fontFamily: "inherit",
           }}
         >
           {gameOptions.map((game) => (
@@ -148,6 +149,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
             fontSize: "0.95rem",
             marginBottom: 12,
             color: "#1a1a1a",
+            fontFamily: "inherit",
           }}
         >
           Chọn khối lớp bạn muốn học nhé 
@@ -161,6 +163,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
             width: "100%",
             maxWidth: "min(100%, 720px)",
             minHeight: 48,
+            fontFamily: "inherit",
           }}
         >
           {grades.map((g, index) => {
@@ -221,6 +224,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
                       : "0 2px 8px rgba(0,0,0,0.1)",
                   transition:
                     "transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease",
+                    fontFamily: "inherit",
                 }}
               >
                 <span

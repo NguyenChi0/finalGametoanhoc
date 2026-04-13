@@ -401,7 +401,7 @@ export default function AdminQuestions() {
             </label>
 
             <label style={styles.filterField}>
-              <span style={styles.filterFieldLabel}>Chủ đề (dạng toán)</span>
+              <span style={styles.filterFieldLabel}>Chủ đề</span>
               <select
                 value={typeId}
                 onChange={(event) => {

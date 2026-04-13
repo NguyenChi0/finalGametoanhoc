@@ -1,110 +1,182 @@
-import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-
-const GRADE_OPTIONS = [
-  { id: "", label: "Tất cả các lớp" },
-  { id: "4", label: "Lớp 4" },
-  { id: "5", label: "Lớp 5" },
-];
-
-const EXAM_TITLE_OPTIONS = [
-  { id: "4-1", grade: "4", name: "Toán cơ bản" },
-  { id: "4-2", grade: "4", name: "Số học nâng cao" },
-  { id: "4-3", grade: "4", name: "Hình học 4" },
-  { id: "4-4", grade: "4", name: "Ôn tập giữa kỳ" },
-  { id: "4-5", grade: "4", name: "Kiểm tra nhanh" },
-  { id: "5-1", grade: "5", name: "Đại số 5" },
-  { id: "5-2", grade: "5", name: "Hình học 5" },
-  { id: "5-3", grade: "5", name: "Luyện đề giữa kỳ" },
-  { id: "5-4", grade: "5", name: "Số học 5" },
-  { id: "5-5", grade: "5", name: "Kiểm tra tổng hợp" },
-];
-
-const LESSON_OPTIONS = [
-  { id: "", label: "Tất cả bài học" },
-  { id: "lesson-1", label: "Ôn tập số học" },
-  { id: "lesson-2", label: "Hình học cơ bản" },
-  { id: "lesson-3", label: "Kiểm tra nhanh" },
-];
-
-const lessonNames = {
-  "lesson-1": "Ôn tập số học",
-  "lesson-2": "Hình học cơ bản",
-  "lesson-3": "Kiểm tra nhanh",
-};
-
-const QUESTION_LIST = Array.from({ length: 45 }, (_, index) => {
-  const grade = index < 30 ? "4" : "5";
-  const groupIndex = Math.floor((index % (grade === "4" ? 30 : 15)) / 3);
-  const titlesByGrade = EXAM_TITLE_OPTIONS.filter((item) => item.grade === grade);
-  const title = titlesByGrade[groupIndex % titlesByGrade.length];
-  const lessonId = `lesson-${(groupIndex % LESSON_OPTIONS.length) + 1}`;
-  return {
-    id: index + 1,
-    grade,
-    titleId: title.id,
-    titleName: title.name,
-    lessonId,
-    lessonName: lessonNames[lessonId],
-    text: `Câu hỏi ${index + 1}: ${title.name}`,
-    detail: `Nội dung câu hỏi ${index + 1} cho ${grade}`,
-  };
-});
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  getAdminGrades,
+  getAdminTypes,
+  getAdminLessons,
+  getQuestions,
+  createAdminExamTemplate,
+} from "../../api.js";
 
 export default function AdminExamCreate() {
+  const navigate = useNavigate();
+  const [grades, setGrades] = useState([]);
+  const [gradeId, setGradeId] = useState("");
+  const [types, setTypes] = useState([]);
+  const [titleId, setTitleId] = useState("");
+  const [lessons, setLessons] = useState([]);
+  const [lessonId, setLessonId] = useState("");
+  const [search, setSearch] = useState("");
+  const [questionPool, setQuestionPool] = useState([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionCache, setQuestionCache] = useState({});
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
-  const [gradeId, setGradeId] = useState("");
-  const [titleId, setTitleId] = useState("");
-  const [search, setSearch] = useState("");
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const titleOptions = useMemo(() => {
-    const base = !gradeId
-      ? EXAM_TITLE_OPTIONS
-      : EXAM_TITLE_OPTIONS.filter((item) => item.grade === gradeId);
-    return [{ id: "", name: "Tất cả chủ đề" }, ...base];
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await getAdminGrades();
+        const arr = Array.isArray(list) ? list : [];
+        setGrades(arr);
+        setGradeId((prev) => (prev || (arr[0] ? String(arr[0].id) : "")));
+      } catch (e) {
+        setMessage(e?.response?.data?.message || e.message || "Không tải được khối lớp.");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!gradeId) {
+      setTypes([]);
+      setTitleId("");
+      return;
+    }
+    (async () => {
+      try {
+        const list = await getAdminTypes({ grade_id: gradeId });
+        setTypes(Array.isArray(list) ? list : []);
+        setTitleId("");
+        setLessonId("");
+      } catch {
+        setTypes([]);
+      }
+    })();
   }, [gradeId]);
 
-  const [lessonId, setLessonId] = useState("");
+  useEffect(() => {
+    if (!titleId) {
+      setLessons([]);
+      setLessonId("");
+      return;
+    }
+    (async () => {
+      try {
+        const list = await getAdminLessons({ type_id: titleId });
+        setLessons(Array.isArray(list) ? list : []);
+        setLessonId("");
+      } catch {
+        setLessons([]);
+      }
+    })();
+  }, [titleId]);
 
-  const filteredQuestions = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return QUESTION_LIST.filter((question) => {
-      const matchesGrade = !gradeId || question.grade === gradeId;
-      const matchesTitle = !titleId || question.titleId === titleId;
-      const matchesLesson = !lessonId || question.lessonId === lessonId;
-      const matchesSearch = `${question.id} ${question.text} ${question.detail}`
-        .toLowerCase()
-        .includes(query);
-      return matchesGrade && matchesTitle && matchesLesson && matchesSearch;
-    });
+  useEffect(() => {
+    if (!gradeId) {
+      setQuestionPool([]);
+      return;
+    }
+    let cancelled = false;
+    setQuestionsLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getQuestions({
+          grade_id: gradeId,
+          type_id: titleId || undefined,
+          lesson_id: lessonId || undefined,
+          search: search.trim() || undefined,
+          limit: 500,
+        });
+        if (cancelled) return;
+        const raw = Array.isArray(res?.data) ? res.data : [];
+        setQuestionPool(
+          raw.map((q) => ({
+            id: Number(q.id),
+            text: q.question_text || "",
+            detail:
+              q.hierarchy_path ||
+              [q.type_name, q.lesson_name].filter(Boolean).join(" · ") ||
+              "",
+          }))
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setQuestionPool([]);
+          setMessage(e?.response?.data?.message || e.message || "Không tải được câu hỏi.");
+        }
+      } finally {
+        if (!cancelled) setQuestionsLoading(false);
+      }
+    }, 320);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [gradeId, titleId, lessonId, search]);
 
-  const selectedQuestions = QUESTION_LIST.filter((question) => selectedQuestionIds.includes(question.id));
+  const titleOptions = useMemo(() => {
+    return [{ id: "", name: "Tất cả chủ đề" }, ...types.map((t) => ({ id: String(t.id), name: t.name }))];
+  }, [types]);
+
+  const lessonOptionsForSelect = useMemo(() => {
+    return [{ id: "", label: "Tất cả bài học" }, ...lessons.map((l) => ({ id: String(l.id), label: l.name }))];
+  }, [lessons]);
+
+  const filteredQuestions = questionPool;
+
+  const selectedQuestions = selectedQuestionIds.map((id) => {
+    const fromPool = questionPool.find((q) => q.id === id);
+    if (fromPool) return fromPool;
+    return questionCache[id] || { id, text: `Câu #${id}`, detail: "" };
+  });
 
   const handleGradeChange = (value) => {
     setGradeId(value);
     setTitleId("");
+    setLessonId("");
+    setSelectedQuestionIds([]);
+    setQuestionCache({});
   };
 
   const toggleQuestion = (questionId) => {
+    const q = questionPool.find((x) => x.id === questionId);
+    if (q) setQuestionCache((c) => ({ ...c, [questionId]: q }));
     setSelectedQuestionIds((prev) =>
       prev.includes(questionId) ? prev.filter((id) => id !== questionId) : [...prev, questionId]
     );
   };
 
-  const handleSaveExam = () => {
+  const handleSaveExam = async () => {
+    setMessage("");
     if (!examTitle.trim()) {
       setMessage("Vui lòng nhập tiêu đề exam.");
+      return;
+    }
+    if (!gradeId) {
+      setMessage("Chọn khối lớp.");
       return;
     }
     if (selectedQuestionIds.length === 0) {
       setMessage("Vui lòng thêm ít nhất 1 câu hỏi vào exam.");
       return;
     }
-    setMessage(`Exam "${examTitle.trim()}" đã được tạo với ${selectedQuestionIds.length} câu hỏi.`);
+    setSaving(true);
+    try {
+      await createAdminExamTemplate({
+        name: examTitle.trim(),
+        grade_id: Number(gradeId),
+        description: examDescription.trim() || null,
+        question_ids: selectedQuestionIds,
+      });
+      navigate("/admin/exams");
+    } catch (e) {
+      setMessage(e?.response?.data?.message || e.message || "Không tạo được đề.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -125,7 +197,8 @@ export default function AdminExamCreate() {
         <div style={styles.headerText}>
           <h1 style={styles.title}>Tạo exam mới</h1>
           <p style={styles.lead}>
-            Nhập tiêu đề và mô tả exam rồi chọn câu hỏi phù hợp từ bộ lọc bên dưới.
+            Nhập tiêu đề và mô tả, chọn khối lọc câu hỏi từ API — lưu sẽ tạo bản ghi{" "}
+            <code style={styles.inlineCode}>exam_templates</code> và liên kết câu trong đề.
           </p>
         </div>
       </header>
@@ -176,10 +249,11 @@ export default function AdminExamCreate() {
               value={gradeId}
               onChange={(e) => handleGradeChange(e.target.value)}
               style={styles.select}
+              disabled={!grades.length}
             >
-              {GRADE_OPTIONS.map((grade) => (
-                <option key={grade.id || "all-grades"} value={grade.id}>
-                  {grade.label}
+              {grades.map((grade) => (
+                <option key={grade.id} value={String(grade.id)}>
+                  {grade.name}
                 </option>
               ))}
             </select>
@@ -212,8 +286,9 @@ export default function AdminExamCreate() {
               value={lessonId}
               onChange={(e) => setLessonId(e.target.value)}
               style={styles.select}
+              disabled={!titleId}
             >
-              {LESSON_OPTIONS.map((lesson) => (
+              {lessonOptionsForSelect.map((lesson) => (
                 <option key={lesson.id || "all-lessons"} value={lesson.id}>
                   {lesson.label}
                 </option>
@@ -240,10 +315,14 @@ export default function AdminExamCreate() {
           <div style={styles.questionPanel}>
             <div style={styles.panelHeader}>
               <h3 style={styles.panelTitle}>Danh sách câu hỏi</h3>
-              <span style={styles.panelMeta}>{filteredQuestions.length} câu hỏi</span>
+              <span style={styles.panelMeta}>
+                {questionsLoading ? "Đang tải…" : `${filteredQuestions.length} câu hỏi`}
+              </span>
             </div>
             <div style={styles.panelScroll}>
-            {filteredQuestions.length === 0 ? (
+            {questionsLoading ? (
+              <div style={styles.emptyState}>Đang tải danh sách câu hỏi…</div>
+            ) : filteredQuestions.length === 0 ? (
               <div style={styles.emptyState}>
                 Không tìm thấy câu hỏi phù hợp với bộ lọc.
               </div>
@@ -280,7 +359,7 @@ export default function AdminExamCreate() {
                   <div key={question.id} style={styles.questionCard}>
                     <div style={styles.cardBody}>
                       <p style={styles.questionText}>{question.text}</p>
-                      <p style={styles.questionDetail}>{question.titleName}</p>
+                      <p style={styles.questionDetail}>{question.detail}</p>
                     </div>
                     <button
                       type="button"
@@ -301,8 +380,16 @@ export default function AdminExamCreate() {
       {message && <div style={styles.messageBox}>{message}</div>}
 
       <footer style={styles.pageFooter}>
-        <button type="button" style={styles.btnSaveFooter} onClick={handleSaveExam}>
-          Lưu exam
+        <button
+          type="button"
+          style={{
+            ...styles.btnSaveFooter,
+            ...(saving ? { opacity: 0.65, pointerEvents: "none" } : {}),
+          }}
+          disabled={saving}
+          onClick={handleSaveExam}
+        >
+          {saving ? "Đang lưu…" : "Lưu exam"}
         </button>
         <Link to="/admin/exams" style={styles.btnCancelFooter}>
           Hủy và quay về trang quản lý exams
@@ -470,6 +557,7 @@ const styles = {
     color: "#24292f",
     background: "#fff",
     outline: "none",
+    fontFamily: "inherit",
   },
   searchInput: {
     width: "100%",
@@ -693,5 +781,11 @@ const styles = {
     background: "#f0f8ff",
     color: "#2d5a76",
     fontWeight: 600,
+  },
+  inlineCode: {
+    fontSize: "0.88em",
+    background: "#f6f8fa",
+    padding: "1px 6px",
+    borderRadius: 4,
   },
 };

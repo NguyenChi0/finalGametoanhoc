@@ -175,6 +175,16 @@ export default function AdminMathTypes() {
     });
   }, [types, search]);
 
+  const totalFormatted = useMemo(() => {
+    if (!filterGradeId || (loadingTypes && types.length === 0)) return "—";
+    return filtered.length.toLocaleString("vi-VN");
+  }, [filterGradeId, loadingTypes, types.length, filtered.length]);
+
+  const statLabelText = useMemo(() => {
+    if (selectedGrade) return `Số chủ đề · ${selectedGrade.name}`;
+    return "Số chủ đề";
+  }, [selectedGrade]);
+
   const openEdit = (row) => {
     setEditId(row.id);
     setFormName(row.name);
@@ -447,20 +457,17 @@ export default function AdminMathTypes() {
 
       {filterGradeId && !loadingTypes && showList && (
         <>
+          <section style={styles.statCard} aria-label="Thống kê">
+            <div style={styles.statIconWrap}>
+              <DocumentIcon />
+            </div>
+            <div>
+              <p style={styles.statLabel}>{statLabelText}</p>
+              <p style={styles.statNumber}>{totalFormatted}</p>
+            </div>
+          </section>
+
           <div style={styles.toolbar}>
-            <p style={styles.statLine}>
-              {selectedGrade ? (
-                <>
-                  Tổng số chủ đề ({selectedGrade.name}) :{" "}
-                  <span style={styles.statNumber}>{types.length}</span>
-                </>
-              ) : (
-                <>
-                  Tổng số chủ đề :{" "}
-                  <span style={styles.statNumber}>{types.length}</span>
-                </>
-              )}
-            </p>
             <div style={styles.searchWrap}>
               <input
                 type="search"
@@ -651,7 +658,7 @@ export default function AdminMathTypes() {
 
       {!filterGradeId && hasGradeOptions && !loadingGrades && (
         <p style={styles.hintBox}>
-          Chọn một khối lớp ở ô phía trên để hiển thị danh sách chủ đề.
+          Chọn một khối lớp để xem và quản lý các chủ đề tương ứng.
         </p>
       )}
 
@@ -811,6 +818,15 @@ function SearchIcon() {
   );
 }
 
+function DocumentIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2d5a76" strokeWidth="1.8">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" strokeLinejoin="round" />
+      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function PlusIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -933,17 +949,7 @@ const styles = {
     fontFamily: "inherit",
     cursor: "pointer",
   },
-  hintBox: {
-    margin: "12px 0 0",
-    padding: "16px 18px",
-    background: "#f6f8fa",
-    border: "1px dashed #d0d7de",
-    borderRadius: 10,
-    color: "#57606a",
-    fontSize: "0.95rem",
-    lineHeight: 1.5,
-    maxWidth: 520,
-  },
+  
   toolbar: {
     display: "flex",
     alignItems: "center",
@@ -951,17 +957,38 @@ const styles = {
     marginBottom: 24,
     flexWrap: "wrap",
   },
-  statLine: {
-    margin: 0,
-    fontSize: "0.95rem",
-    color: "#24292f",
-    fontWeight: 600,
-    lineHeight: 1.4,
-    whiteSpace: "nowrap",
+  statCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    padding: "16px 20px",
+    marginBottom: 16,
+    background: "#ffffff",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  statIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    background: "#ddf4ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  statLabel: {
+    margin: "0 0 4px",
+    fontSize: "0.9rem",
+    color: "#57606a",
+    fontWeight: 500,
   },
   statNumber: {
-    color: "#cf222e",
+    margin: 0,
+    fontSize: "1.65rem",
     fontWeight: 700,
+    color: "#1f2328",
+    letterSpacing: "-0.02em",
   },
   searchWrap: {
     flex: 1,
