@@ -1258,7 +1258,7 @@ const styles = {
     borderRadius: 8,
     border: "1px solid #d0d7de",
     background: "#fff",
-    color: "#24292f",
+    color: "#2d5a76",
     fontSize: "0.95rem",
     fontFamily: "inherit",
   },

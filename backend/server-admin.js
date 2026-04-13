@@ -1,5 +1,5 @@
 /**
- * CRUD API dành cho admin: users, grades, types, lessons, exam_templates, items.
+ * CRUD API dành cho admin: users, grades, types, lessons, exam_templates, contests, items.
  * Gắn vào app Express: mountAdminCrud(app, pool);
  *
  * Tiền tố: /api/admin
@@ -876,6 +876,271 @@ module.exports = function mountAdminCrud(app, pool) {
       const fk = fkError(err);
       if (fk) return res.status(fk.statusCode).json({ message: fk.message });
       sendErr(res, err, 'Lỗi khi xóa exam template');
+    }
+  });
+
+  // ---------- CONTESTS (theo gui.sql: name, prize, template_id; khối = exam_templates.grade_id)
+  // status: 0 đã kết thúc, 1 đã lên lịch, 2 đang kích hoạt ----------
+  app.get('/api/admin/contests', async (req, res) => {
+    try {
+      const [rows] = await pool.query(
+        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+         FROM contests c
+         INNER JOIN exam_templates t ON t.id = c.template_id
+         INNER JOIN grades g ON g.id = t.grade_id
+         ORDER BY c.start_time DESC, c.id DESC`
+      );
+      res.json(rows);
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy danh sách contest');
+    }
+  });
+
+  app.get('/api/admin/contests/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [rows] = await pool.query(
+        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+         FROM contests c
+         INNER JOIN exam_templates t ON t.id = c.template_id
+         INNER JOIN grades g ON g.id = t.grade_id
+         WHERE c.id = ?`,
+        [id]
+      );
+      if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy contest' });
+      res.json(rows[0]);
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy contest');
+    }
+  });
+
+  function parseContestDateTime(v) {
+    if (v == null || v === '') return null;
+    const d = v instanceof Date ? v : new Date(v);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }
+
+  app.post('/api/admin/contests', async (req, res) => {
+    const body = req.body || {};
+    const gradeId = Number(body.grade_id);
+    const templateId = Number(body.template_id);
+    const rawName = body.name != null ? String(body.name).trim() : '';
+    const startD = parseContestDateTime(body.start_time);
+    const endD = parseContestDateTime(body.end_time);
+    let status = Number(body.status);
+    if (!Number.isFinite(status) || status < 0 || status > 2) status = 1;
+    let prize = Number(body.prize);
+    if (!Number.isFinite(prize) || prize < 0) prize = 0;
+    prize = Math.min(Math.floor(prize), 65535);
+    const description =
+      body.description != null && String(body.description).trim() !== ''
+        ? String(body.description).trim().slice(0, 500)
+        : null;
+
+    if (!rawName) {
+      return res.status(400).json({ message: 'name (tên cuộc thi) là bắt buộc' });
+    }
+    const name = rawName.slice(0, 255);
+    if (!gradeId || Number.isNaN(gradeId)) {
+      return res.status(400).json({ message: 'grade_id là bắt buộc (chọn khối trùng với mẫu đề)' });
+    }
+    if (!templateId || Number.isNaN(templateId)) {
+      return res.status(400).json({ message: 'template_id (mẫu đề) là bắt buộc' });
+    }
+    if (!startD || !endD) {
+      return res.status(400).json({ message: 'start_time và end_time là bắt buộc (định dạng ngày giờ hợp lệ)' });
+    }
+    if (endD.getTime() <= startD.getTime()) {
+      return res.status(400).json({ message: 'Thời gian kết thúc phải sau thời gian bắt đầu' });
+    }
+
+    try {
+      const [templates] = await pool.query(
+        'SELECT id, grade_id FROM exam_templates WHERE id = ?',
+        [templateId]
+      );
+      if (!templates.length) {
+        return res.status(400).json({ message: 'Mẫu đề không tồn tại' });
+      }
+      if (Number(templates[0].grade_id) !== gradeId) {
+        return res.status(400).json({
+          message: 'Mẫu đề phải thuộc cùng khối đã chọn (grade_id)',
+        });
+      }
+
+      const [result] = await pool.query(
+        `INSERT INTO contests (name, template_id, start_time, end_time, status, description, prize)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [name, templateId, startD, endD, status, description, prize]
+      );
+      const insertId = result.insertId;
+      const [rows] = await pool.query(
+        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+         FROM contests c
+         INNER JOIN exam_templates t ON t.id = c.template_id
+         INNER JOIN grades g ON g.id = t.grade_id
+         WHERE c.id = ?`,
+        [insertId]
+      );
+      res.status(201).json(rows[0]);
+    } catch (err) {
+      const fk = fkError(err);
+      if (fk) return res.status(fk.statusCode).json({ message: fk.message });
+      sendErr(res, err, 'Lỗi khi tạo contest');
+    }
+  });
+
+  app.patch('/api/admin/contests/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    const body = req.body || {};
+
+    try {
+      const [existing] = await pool.query(
+        `SELECT c.id, c.template_id, t.grade_id AS grade_id
+         FROM contests c
+         INNER JOIN exam_templates t ON t.id = c.template_id
+         WHERE c.id = ?`,
+        [id]
+      );
+      if (!existing.length) return res.status(404).json({ message: 'Không tìm thấy contest' });
+      const row = existing[0];
+      const gradeId = Number(row.grade_id);
+
+      const updates = [];
+      const params = [];
+
+      if (body.name !== undefined && body.name !== null) {
+        const nm = String(body.name).trim();
+        if (!nm) {
+          return res.status(400).json({ message: 'name không được để trống' });
+        }
+        updates.push('name = ?');
+        params.push(nm.slice(0, 255));
+      }
+
+      if (body.prize !== undefined && body.prize !== null) {
+        let pr = Number(body.prize);
+        if (!Number.isFinite(pr) || pr < 0) pr = 0;
+        pr = Math.min(Math.floor(pr), 65535);
+        updates.push('prize = ?');
+        params.push(pr);
+      }
+
+      if (body.template_id !== undefined && body.template_id !== null) {
+        const tid = Number(body.template_id);
+        if (!tid || Number.isNaN(tid)) {
+          return res.status(400).json({ message: 'template_id không hợp lệ' });
+        }
+        const [templates] = await pool.query(
+          'SELECT id, grade_id FROM exam_templates WHERE id = ?',
+          [tid]
+        );
+        if (!templates.length) {
+          return res.status(400).json({ message: 'Mẫu đề không tồn tại' });
+        }
+        if (Number(templates[0].grade_id) !== gradeId) {
+          return res.status(400).json({
+            message: 'Mẫu đề phải thuộc cùng khối với contest',
+          });
+        }
+        updates.push('template_id = ?');
+        params.push(tid);
+      }
+
+      if (body.start_time !== undefined) {
+        const startD = parseContestDateTime(body.start_time);
+        if (!startD) {
+          return res.status(400).json({ message: 'start_time không hợp lệ' });
+        }
+        updates.push('start_time = ?');
+        params.push(startD);
+      }
+
+      if (body.end_time !== undefined) {
+        const endD = parseContestDateTime(body.end_time);
+        if (!endD) {
+          return res.status(400).json({ message: 'end_time không hợp lệ' });
+        }
+        updates.push('end_time = ?');
+        params.push(endD);
+      }
+
+      if (body.description !== undefined) {
+        const desc =
+          body.description != null && String(body.description).trim() !== ''
+            ? String(body.description).trim().slice(0, 500)
+            : null;
+        updates.push('description = ?');
+        params.push(desc);
+      }
+
+      if (body.status !== undefined && body.status !== null) {
+        const st = Number(body.status);
+        if (!Number.isFinite(st) || st < 0 || st > 2) {
+          return res.status(400).json({ message: 'status phải là 0, 1 hoặc 2' });
+        }
+        updates.push('status = ?');
+        params.push(st);
+      }
+
+      if (!updates.length) {
+        return res.status(400).json({ message: 'Không có trường nào để cập nhật' });
+      }
+
+      const [[current]] = await pool.query(
+        'SELECT start_time, end_time FROM contests WHERE id = ?',
+        [id]
+      );
+      let newStart = current.start_time;
+      let newEnd = current.end_time;
+      if (body.start_time !== undefined) newStart = parseContestDateTime(body.start_time);
+      if (body.end_time !== undefined) newEnd = parseContestDateTime(body.end_time);
+      const sTime =
+        newStart instanceof Date ? newStart.getTime() : new Date(newStart).getTime();
+      const eTime = newEnd instanceof Date ? newEnd.getTime() : new Date(newEnd).getTime();
+      if (Number.isNaN(sTime) || Number.isNaN(eTime) || eTime <= sTime) {
+        return res.status(400).json({
+          message: 'Thời gian kết thúc phải sau thời gian bắt đầu (kiểm tra start_time / end_time)',
+        });
+      }
+
+      params.push(id);
+      await pool.query(`UPDATE contests SET ${updates.join(', ')} WHERE id = ?`, params);
+
+      const [rows] = await pool.query(
+        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+         FROM contests c
+         INNER JOIN exam_templates t ON t.id = c.template_id
+         INNER JOIN grades g ON g.id = t.grade_id
+         WHERE c.id = ?`,
+        [id]
+      );
+      res.json(rows[0]);
+    } catch (err) {
+      const fk = fkError(err);
+      if (fk) return res.status(fk.statusCode).json({ message: fk.message });
+      sendErr(res, err, 'Lỗi khi cập nhật contest');
+    }
+  });
+
+  app.delete('/api/admin/contests/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [r] = await pool.query('DELETE FROM contests WHERE id = ?', [id]);
+      if (!r.affectedRows) return res.status(404).json({ message: 'Không tìm thấy contest' });
+      res.json({ message: 'Đã xóa contest', id });
+    } catch (err) {
+      const fk = fkError(err);
+      if (fk) return res.status(fk.statusCode).json({ message: fk.message });
+      sendErr(res, err, 'Lỗi khi xóa contest');
     }
   });
 

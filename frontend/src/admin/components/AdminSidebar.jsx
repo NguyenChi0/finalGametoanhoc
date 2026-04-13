@@ -10,10 +10,10 @@ const navItems = [
   { to: "/admin/questions/new", end: true, label: "Tạo câu hỏi" },
   { to: "/admin/grades", end: false, label: "Quản lý lớp" },
   { to: "/admin/math-types", end: false, label: "Quản lý chủ đề" },
-  { to: "/admin/contest", end: false, label: "Quản lý contest" },
-  { to: "/admin/exams", end: false, label: "Quản lý exams" },
-  { to: "/admin/users", end: false, label: "Quản lý user" },
-  { to: "/admin/items", end: false, label: "Quản lý item" },
+  { to: "/admin/contest", end: false, label: "Quản lý cuộc thi" },
+  { to: "/admin/exams", end: false, label: "Quản lý đề thi" },
+  { to: "/admin/users", end: false, label: "Quản lý người dùng" },
+  { to: "/admin/items", end: false, label: "Quản lý vật phẩm" },
 ];
 
 function linkStyle({ isActive }) {

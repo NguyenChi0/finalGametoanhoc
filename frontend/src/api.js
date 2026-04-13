@@ -200,6 +200,34 @@ export const removeQuestionFromExamTemplate = async (templateId, questionId) => 
 };
 
 // ==========================
+// Admin — Contests (name, prize, template_id; khối qua exam_templates — nhiều cuộc thi / khối)
+// ==========================
+export const getAdminContests = async () => {
+  const res = await api.get("/admin/contests");
+  return res.data;
+};
+
+export const getAdminContest = async (id) => {
+  const res = await api.get(`/admin/contests/${id}`);
+  return res.data;
+};
+
+export const createAdminContest = async (payload) => {
+  const res = await api.post("/admin/contests", payload);
+  return res.data;
+};
+
+export const updateAdminContest = async (id, payload) => {
+  const res = await api.patch(`/admin/contests/${id}`, payload);
+  return res.data;
+};
+
+export const deleteAdminContest = async (id) => {
+  const res = await api.delete(`/admin/contests/${id}`);
+  return res.data;
+};
+
+// ==========================
 // Admin — Items (shop /api/admin/items)
 // ==========================
 export const getAdminItems = async () => {
