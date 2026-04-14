@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const pool = require('./db'); // Import cấu hình database
 const path = require('path');
 const fs = require('fs');
@@ -51,8 +52,72 @@ app.use('/music', express.static(path.join(__dirname, 'public', 'music')));
 app.use('/questions-images', express.static(QUESTIONS_IMAGES_DIR));
 app.use('/items-images', express.static(ITEMS_IMAGES_DIR));
 
-/** CRUD admin: /api/admin/users|grades|types|lessons */
-mountAdminCrud(app, pool);
+const JWT_SECRET = process.env.JWT_SECRET || 'ae123oi34t89ujh9876543210';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d';
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️ JWT_SECRET chưa được cấu hình. Hãy đặt biến môi trường để bảo mật token.');
+}
+
+function signAccessToken(user) {
+  return jwt.sign(
+    {
+      sub: Number(user.id),
+      username: String(user.username || ''),
+      role: Number(user.role || 0),
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+}
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({ message: 'Thiếu token xác thực' });
+  }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.auth = payload;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Token không hợp lệ hoặc đã hết hạn' });
+  }
+}
+
+async function requireAdminRole(req, res, next) {
+  const authUserId = Number(req.auth?.sub);
+  if (!Number.isFinite(authUserId) || authUserId <= 0) {
+    return res.status(401).json({ message: 'Token không hợp lệ' });
+  }
+  try {
+    // Luôn kiểm tra role hiện tại trong DB để tránh dùng token role cũ sau khi đã đổi quyền.
+    const [rows] = await pool.query('SELECT role FROM users WHERE id = ? LIMIT 1', [
+      authUserId,
+    ]);
+    if (!rows.length) {
+      return res.status(401).json({ message: 'Tài khoản không tồn tại' });
+    }
+    if (Number(rows[0].role) !== 1) {
+      return res.status(403).json({ message: 'Không có quyền truy cập' });
+    }
+    next();
+  } catch (err) {
+    console.error('Error checking admin role:', err);
+    return res.status(500).json({ message: 'Lỗi xác thực quyền truy cập' });
+  }
+}
+
+function isSelfOrAdminByUserId(req, targetUserId) {
+  const authId = Number(req.auth?.sub);
+  if (Number(req.auth?.role) === 1) return true;
+  return authId > 0 && authId === Number(targetUserId);
+}
+
+function isSelfOrAdminByUsername(req, targetUsername) {
+  if (Number(req.auth?.role) === 1) return true;
+  return String(req.auth?.username || '') === String(targetUsername || '');
+}
 
 // ==========================
 //  API: ĐĂNG KÝ
@@ -102,10 +167,34 @@ app.post('/api/login', async (req, res) => {
     }
 
     const { password: _pw, ...safeUser } = user;
-    res.json({ message: 'Đăng nhập thành công', user: safeUser });
+    const token = signAccessToken(safeUser);
+    res.json({ message: 'Đăng nhập thành công', user: safeUser, token });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
+// ==========================
+//  API: AUTH ME (xác thực phiên hiện tại theo DB)
+// ==========================
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const userId = Number(req.auth?.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ message: 'Token không hợp lệ' });
+    }
+    const [rows] = await pool.query(
+      'SELECT id, username, ma_tre_em, created_at, score, items, week_score, role, email, phone FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!rows.length) {
+      return res.status(401).json({ message: 'Tài khoản không tồn tại' });
+    }
+    return res.json({ user: rows[0] });
+  } catch (err) {
+    console.error('Error /api/auth/me:', err);
+    return res.status(500).json({ message: 'Lỗi server' });
   }
 });
 
@@ -634,6 +723,7 @@ async function updateQuestionRow(req, res) {
 
 app.post(
   '/api/questions',
+  authenticateToken,
   (req, res, next) => {
     const ct = (req.headers['content-type'] || '').toLowerCase();
     if (ct.includes('multipart/form-data')) {
@@ -667,6 +757,7 @@ app.post(
 
 app.put(
   '/api/questions/:id',
+  authenticateToken,
   (req, res, next) => {
     const ct = (req.headers['content-type'] || '').toLowerCase();
     if (ct.includes('multipart/form-data')) {
@@ -699,22 +790,24 @@ app.put(
 );
 
 //=========Lưu điểm=========================
-app.post('/api/score/increment', async (req, res) => {
+app.post('/api/score/increment', authenticateToken, async (req, res) => {
   try {
     const { userId, delta = 1 } = req.body;
+    const targetUserId =
+      Number(req.auth?.role) === 1 ? Number(userId) : Number(req.auth?.sub);
 
-    if (!userId || typeof userId !== 'number') {
+    if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
       return res.status(400).json({ success: false, message: 'userId (number) required' });
     }
 
     // Tăng cả score và week_score cùng lúc (nếu week_score là NULL thì set về 0 trước khi cộng)
     await pool.query(
       'UPDATE users SET score = score + ?, week_score = COALESCE(week_score, 0) + ? WHERE id = ?',
-      [delta, delta, userId]
+      [delta, delta, targetUserId]
     );
 
     // Lấy lại score & week_score hiện tại
-    const [rows] = await pool.query('SELECT score, week_score FROM users WHERE id = ?', [userId]);
+    const [rows] = await pool.query('SELECT score, week_score FROM users WHERE id = ?', [targetUserId]);
     if (!rows || rows.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -730,8 +823,11 @@ app.post('/api/score/increment', async (req, res) => {
   }
 });
 
-app.get('/api/user/:username', async (req, res) => {
+app.get('/api/user/:username', authenticateToken, async (req, res) => {
   const { username } = req.params;
+  if (!isSelfOrAdminByUsername(req, username)) {
+    return res.status(403).json({ message: 'Bạn không có quyền xem thông tin người dùng này' });
+  }
 
   try {
     // 1) Lấy user
@@ -829,8 +925,11 @@ app.get('/api/items', async (req, res) => {
 });
 
 // POST /api/buy
-app.post('/api/buy', async (req, res) => {
+app.post('/api/buy', authenticateToken, async (req, res) => {
   const { userId, itemId } = req.body;
+  if (!isSelfOrAdminByUserId(req, userId)) {
+    return res.status(403).json({ message: 'Bạn không có quyền mua vật phẩm cho tài khoản này' });
+  }
 
   try {
     // Lấy thông tin vật phẩm
@@ -863,8 +962,11 @@ app.post('/api/buy', async (req, res) => {
 
 
 // GET /api/my-items/:userId
-app.get('/api/my-items/:userId', async (req, res) => {
+app.get('/api/my-items/:userId', authenticateToken, async (req, res) => {
   const { userId } = req.params;
+  if (!isSelfOrAdminByUserId(req, userId)) {
+    return res.status(403).json({ message: 'Bạn không có quyền xem vật phẩm của tài khoản này' });
+  }
   try {
     const [rows] = await pool.query(
       `SELECT items.* FROM items
@@ -922,7 +1024,9 @@ app.post('/api/external-login-child', async (req, res) => {
     // 1. Tìm user theo ma_tre_em
     const [rows] = await pool.execute('SELECT * FROM users WHERE ma_tre_em = ?', [maTreEm]);
     if (rows.length > 0) {
-      return res.json({ user: rows[0], created: false });
+      const { password: _pw, ...safeUser } = rows[0];
+      const token = signAccessToken(safeUser);
+      return res.json({ user: safeUser, token, created: false });
     }
 
     // 2. Nếu chưa có thì tạo user mới
@@ -944,7 +1048,9 @@ app.post('/api/external-login-child', async (req, res) => {
       return res.status(500).json({ message: 'Không lấy được user sau khi tạo' });
     }
 
-    return res.json({ user: createdRows[0], created: true });
+    const { password: _pw, ...safeUser } = createdRows[0];
+    const token = signAccessToken(safeUser);
+    return res.json({ user: safeUser, token, created: true });
   } catch (err) {
     console.error('Error /api/external-login-child:', err);
     if (err.code === 'ER_DUP_ENTRY') {
@@ -952,7 +1058,9 @@ app.post('/api/external-login-child', async (req, res) => {
       try {
         const [rows] = await pool.execute('SELECT * FROM users WHERE ma_tre_em = ?', [maTreEm]);
         if (rows.length > 0) {
-          return res.json({ user: rows[0], created: false });
+          const { password: _pw, ...safeUser } = rows[0];
+          const token = signAccessToken(safeUser);
+          return res.json({ user: safeUser, token, created: false });
         }
       } catch (e2) {
         console.error('Error re-fetching user after ER_DUP_ENTRY:', e2);
@@ -961,6 +1069,10 @@ app.post('/api/external-login-child', async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 });
+
+/** CRUD admin: /api/admin/users|grades|types|lessons */
+app.use('/api/admin', authenticateToken, requireAdminRole);
+mountAdminCrud(app, pool);
 
 
 // ==========================

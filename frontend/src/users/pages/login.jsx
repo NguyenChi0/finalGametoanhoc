@@ -27,13 +27,14 @@ export default function Login() {
     e.preventDefault();
     try {
       const res = await api.post("/login", { username, password });
-      const { user, message: msg } = res.data || {};
+      const { user, token, message: msg } = res.data || {};
 
-      if (!user) {
+      if (!user || !token) {
         setMessage("Đăng nhập thất bại. Kiểm tra backend.");
         return;
       }
 
+      localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
       setMessage(msg || "Đăng nhập thành công");
       if (isAdminUser(user)) {

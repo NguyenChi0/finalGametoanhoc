@@ -36,6 +36,25 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    if (status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      if (typeof window !== "undefined") {
+        const base = (import.meta.env.BASE_URL || "/").replace(/\/+$/, "");
+        const loginPath = `${base}/login` || "/login";
+        if (window.location.pathname !== loginPath) {
+          window.location.assign(loginPath);
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ==========================
 // Auth
 // ==========================
@@ -45,6 +64,11 @@ export const register = async ({ username, password, fullname }) => {
 
 export const login = async ({ username, password }) => {
   return api.post("/login", { username, password });
+};
+
+export const getAuthMe = async () => {
+  const res = await api.get("/auth/me");
+  return res.data;
 };
 
 // ==========================

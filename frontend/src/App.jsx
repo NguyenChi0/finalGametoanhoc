@@ -55,7 +55,7 @@ function AppShell() {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/gametoanhoc">
+    <BrowserRouter>
       <AppShell />
     </BrowserRouter>
   );
