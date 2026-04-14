@@ -12,7 +12,26 @@ import {
   deleteAdminLesson,
 } from "../../api";
 
+const MOBILE_MAX_PX = 767;
+
+/** Bảng trên desktop; thẻ dọc trên mobile. */
+function useIsDesktopLayout() {
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia(`(min-width: ${MOBILE_MAX_PX + 1}px)`).matches;
+  });
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${MOBILE_MAX_PX + 1}px)`);
+    const onChange = () => setIsDesktop(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+}
+
 export default function AdminMathTypes() {
+  const isDesktopLayout = useIsDesktopLayout();
   const [grades, setGrades] = useState([]);
   const [filterGradeId, setFilterGradeId] = useState("");
   const [types, setTypes] = useState([]);
@@ -487,7 +506,7 @@ export default function AdminMathTypes() {
             <p style={styles.muted}>
               Khối này chưa có chủ đề nào. Bạn có thể thêm mới bằng nút phía trên.
             </p>
-          ) : (
+          ) : isDesktopLayout ? (
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
@@ -651,6 +670,155 @@ export default function AdminMathTypes() {
                   )}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            <div style={styles.cardList} aria-label="Danh sách chủ đề dạng thẻ">
+              {filtered.length === 0 ? (
+                <div style={styles.cardEmpty}>
+                  Không có kết quả phù hợp với “{search}”.
+                </div>
+              ) : (
+                filtered.map((t) => {
+                  const tid = String(t.id);
+                  const isOpen = expandedTypeId === tid;
+                  const lessons = lessonsByTypeId[tid];
+                  const loadingLessons = loadingLessonsTypeId === tid;
+                  return (
+                    <article key={t.id} style={styles.typeCard}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        aria-label={`${t.name}, chạm để ${isOpen ? "thu gọn" : "mở"} danh sách bài học`}
+                        onClick={() => toggleExpand(t)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleExpand(t);
+                          }
+                        }}
+                        style={styles.typeCardMain}
+                      >
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>ID</span>
+                          <span style={styles.cardValue}>{t.id}</span>
+                        </div>
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>Tên chủ đề</span>
+                          <span style={styles.typeCardTitle}>{t.name}</span>
+                        </div>
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>Mô tả</span>
+                          <span
+                            style={{
+                              ...styles.cardValue,
+                              color: "#57606a",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {t.description ? t.description : "—"}
+                          </span>
+                        </div>
+                        <p style={styles.cardHint}>
+                          Chạm để {isOpen ? "thu gọn" : "xem"} các bài học
+                        </p>
+                      </div>
+                      <div style={styles.cardActions} onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          style={styles.iconBtn}
+                          title="Chỉnh sửa chủ đề"
+                          onClick={() => openEdit(t)}
+                        >
+                          <PencilIcon />
+                        </button>
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.iconBtn,
+                            ...(deletingTypeId === t.id
+                              ? { opacity: 0.55, pointerEvents: "none" }
+                              : {}),
+                          }}
+                          title="Xóa chủ đề"
+                          disabled={deletingTypeId != null}
+                          onClick={() => handleDelete(t)}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                      {isOpen && (
+                        <div style={styles.typeCardNested}>
+                          <div style={styles.nestedHeader}>
+                            <span style={styles.nestedTitle}>Các bài học</span>
+                            <button
+                              type="button"
+                              style={styles.btnAddOp}
+                              onClick={() => openOpCreate(t)}
+                            >
+                              + Thêm bài học
+                            </button>
+                          </div>
+                          {loadingLessons && (
+                            <p style={{ ...styles.mutedSmall, marginTop: 0 }}>Đang tải bài học…</p>
+                          )}
+                          {!loadingLessons && lessons !== undefined && lessons.length === 0 && (
+                            <p style={{ ...styles.mutedSmall, marginTop: 0 }}>
+                              Chưa có bài học. Thêm mới bằng nút bên trên.
+                            </p>
+                          )}
+                          {!loadingLessons && lessons && lessons.length > 0 && (
+                            <div style={styles.lessonCardList}>
+                              {lessons.map((op) => (
+                                <div key={op.id} style={styles.lessonCard}>
+                                  <div style={styles.cardField}>
+                                    <span style={styles.cardLabel}>ID</span>
+                                    <span style={styles.cardValue}>{op.id}</span>
+                                  </div>
+                                  <div style={styles.cardField}>
+                                    <span style={styles.cardLabel}>Tên bài học</span>
+                                    <span style={{ ...styles.cardValue, fontWeight: 600 }}>
+                                      {op.name}
+                                    </span>
+                                  </div>
+                                  <div
+                                    style={styles.lessonCardActions}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      type="button"
+                                      style={styles.iconBtnSm}
+                                      title="Sửa bài học"
+                                      onClick={() => openOpEdit(op, t)}
+                                    >
+                                      <PencilIcon />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      style={{
+                                        ...styles.iconBtnSm,
+                                        ...(deletingLessonId === op.id
+                                          ? { opacity: 0.55, pointerEvents: "none" }
+                                          : {}),
+                                      }}
+                                      title="Xóa bài học"
+                                      disabled={deletingLessonId != null}
+                                      onClick={() => handleDeleteOp(op, t)}
+                                    >
+                                      <TrashIcon />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
+              )}
             </div>
           )}
         </>
@@ -1091,6 +1259,13 @@ const styles = {
     fontWeight: 700,
     maxWidth: "100%",
   },
+  typeCardTitle: {
+    fontSize: "0.95rem",
+    lineHeight: 1.45,
+    color: "#2d5a76",
+    fontWeight: 700,
+    wordBreak: "break-word",
+  },
   nestedCell: {
     padding: 0,
     borderBottom: "1px solid #d0d7de",
@@ -1168,6 +1343,103 @@ const styles = {
     padding: "28px 16px",
     textAlign: "center",
     color: "#57606a",
+  },
+  cardList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: "100%",
+  },
+  typeCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    background: "#fff",
+    border: "1px solid #d0d7de",
+    borderRadius: 10,
+    overflow: "hidden",
+    boxShadow: "0 1px 2px rgba(31,35,40,0.06)",
+  },
+  typeCardMain: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    padding: "14px 16px",
+    cursor: "pointer",
+    outline: "none",
+  },
+  cardField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  cardLabel: {
+    fontSize: "0.72rem",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    color: "#57606a",
+  },
+  cardValue: {
+    fontSize: "0.95rem",
+    lineHeight: 1.45,
+    color: "#24292f",
+  },
+  cardHint: {
+    margin: 0,
+    fontSize: "0.8rem",
+    color: "#6e7781",
+    lineHeight: 1.4,
+  },
+  cardActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    padding: "10px 16px 14px",
+    borderTop: "1px solid #eaeef2",
+    background: "#fafbfc",
+  },
+  cardEmpty: {
+    padding: "24px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
+    background: "#fff",
+    border: "1px solid #d0d7de",
+    borderRadius: 10,
+  },
+  typeCardNested: {
+    padding: "14px 16px 16px",
+    borderTop: "1px solid #d0d7de",
+    background: "#f6f8fa",
+    borderLeft: "3px solid #2d5a76",
+  },
+  lessonCardList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    marginTop: 4,
+  },
+  lessonCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: "12px 14px",
+    background: "#fff",
+    border: "1px solid #d0d7de",
+    borderRadius: 10,
+    boxSizing: "border-box",
+  },
+  lessonCardActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingTop: 10,
+    borderTop: "1px solid #eaeef2",
   },
   iconBtn: {
     width: 36,

@@ -16,7 +16,26 @@ function normalizeGradeRow(row) {
   };
 }
 
+const MOBILE_MAX_PX = 767;
+
+/** Bảng trên desktop; thẻ dọc trên mobile (tránh cột bảng bị ép sát). */
+function useIsDesktopLayout() {
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia(`(min-width: ${MOBILE_MAX_PX + 1}px)`).matches;
+  });
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${MOBILE_MAX_PX + 1}px)`);
+    const onChange = () => setIsDesktop(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+}
+
 export default function AdminGrades() {
+  const isDesktopLayout = useIsDesktopLayout();
   const [grades, setGrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -240,62 +259,113 @@ export default function AdminGrades() {
       )}
 
       {grades.length > 0 && (
-        <div style={styles.tableWrap}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>ID</th>
-                <th style={styles.th}>Tên khối lớp</th>
-                <th style={styles.th}>Mô tả</th>
-                <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
-                  Thao tác
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
+        isDesktopLayout ? (
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
                 <tr>
-                  <td colSpan={4} style={styles.tdEmpty}>
-                    Không có kết quả phù hợp với “{search}”.
-                  </td>
+                  <th style={styles.th}>ID</th>
+                  <th style={styles.th}>Tên khối lớp</th>
+                  <th style={styles.th}>Mô tả</th>
+                  <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
+                    Thao tác
+                  </th>
                 </tr>
-              ) : (
-                filtered.map((g) => (
-                  <tr key={g.id}>
-                    <td style={styles.td}>{g.id}</td>
-                    <td style={{ ...styles.td, fontWeight: 700 }}>{g.name}</td>
-                    <td style={{ ...styles.td, color: "#57606a" }}>
-                      {g.description ? g.description : "—"}
-                    </td>
-                    <td style={{ ...styles.td, textAlign: "right" }}>
-                      <button
-                        type="button"
-                        style={styles.iconBtn}
-                        title="Chỉnh sửa"
-                        onClick={() => openEdit(g)}
-                      >
-                        <PencilIcon />
-                      </button>
-                      <button
-                        type="button"
-                        style={{
-                          ...styles.iconBtn,
-                          marginLeft: 8,
-                          ...(deletingId === g.id ? { opacity: 0.6, pointerEvents: "none" } : {}),
-                        }}
-                        title="Xóa"
-                        disabled={deletingId != null}
-                        onClick={() => handleDelete(g)}
-                      >
-                        <TrashIcon />
-                      </button>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={styles.tdEmpty}>
+                      Không có kết quả phù hợp với “{search}”.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filtered.map((g) => (
+                    <tr key={g.id}>
+                      <td style={styles.td}>{g.id}</td>
+                      <td style={{ ...styles.td, fontWeight: 700 }}>{g.name}</td>
+                      <td style={{ ...styles.td, color: "#57606a" }}>
+                        {g.description ? g.description : "—"}
+                      </td>
+                      <td style={{ ...styles.td, textAlign: "right" }}>
+                        <button
+                          type="button"
+                          style={styles.iconBtn}
+                          title="Chỉnh sửa"
+                          onClick={() => openEdit(g)}
+                        >
+                          <PencilIcon />
+                        </button>
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.iconBtn,
+                            marginLeft: 8,
+                            ...(deletingId === g.id ? { opacity: 0.6, pointerEvents: "none" } : {}),
+                          }}
+                          title="Xóa"
+                          disabled={deletingId != null}
+                          onClick={() => handleDelete(g)}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={styles.cardList} aria-label="Danh sách khối lớp dạng thẻ">
+            {filtered.length === 0 ? (
+              <div style={styles.cardEmpty}>
+                Không có kết quả phù hợp với “{search}”.
+              </div>
+            ) : (
+              filtered.map((g) => (
+                <article key={g.id} style={styles.gradeCard}>
+                  <div style={styles.cardField}>
+                    <span style={styles.cardLabel}>ID</span>
+                    <span style={styles.cardValue}>{g.id}</span>
+                  </div>
+                  <div style={styles.cardField}>
+                    <span style={styles.cardLabel}>Tên khối lớp</span>
+                    <span style={{ ...styles.cardValue, fontWeight: 700 }}>{g.name}</span>
+                  </div>
+                  <div style={styles.cardField}>
+                    <span style={styles.cardLabel}>Mô tả</span>
+                    <span style={{ ...styles.cardValue, color: "#57606a", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {g.description ? g.description : "—"}
+                    </span>
+                  </div>
+                  <div style={styles.cardActions}>
+                    <button
+                      type="button"
+                      style={styles.iconBtn}
+                      title="Chỉnh sửa"
+                      onClick={() => openEdit(g)}
+                    >
+                      <PencilIcon />
+                    </button>
+                    <button
+                      type="button"
+                      style={{
+                        ...styles.iconBtn,
+                        ...(deletingId === g.id ? { opacity: 0.6, pointerEvents: "none" } : {}),
+                      }}
+                      title="Xóa"
+                      disabled={deletingId != null}
+                      onClick={() => handleDelete(g)}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        )
       )}
 
       {editOpen && (
@@ -639,6 +709,57 @@ const styles = {
     padding: "28px 16px",
     textAlign: "center",
     color: "#57606a",
+  },
+  cardList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: "100%",
+  },
+  gradeCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    background: "#fff",
+    border: "1px solid #d0d7de",
+    borderRadius: 10,
+    padding: "14px 16px",
+    boxShadow: "0 1px 2px rgba(31,35,40,0.06)",
+  },
+  cardField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  cardLabel: {
+    fontSize: "0.72rem",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    color: "#57606a",
+  },
+  cardValue: {
+    fontSize: "0.95rem",
+    lineHeight: 1.45,
+    color: "#24292f",
+  },
+  cardActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingTop: 10,
+    borderTop: "1px solid #eaeef2",
+  },
+  cardEmpty: {
+    padding: "24px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
+    background: "#fff",
+    border: "1px solid #d0d7de",
+    borderRadius: 10,
   },
   iconBtn: {
     width: 36,

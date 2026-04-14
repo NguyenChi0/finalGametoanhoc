@@ -1606,6 +1606,7 @@ const styles = {
     fontWeight: 600,
     fontSize: "0.9rem",
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   btnCancel: {
     padding: "8px 16px",
@@ -1616,6 +1617,7 @@ const styles = {
     fontWeight: 600,
     fontSize: "0.9rem",
     cursor: "pointer",
+    fontFamily: "inherit",
   },
   modalOverlay: {
     position: "fixed",

@@ -20,8 +20,27 @@ function buildExamEditDraft(row, questionsInExam) {
   };
 }
 
+const MOBILE_MAX_PX = 767;
+
+/** Bảng trên desktop; thẻ dọc trên mobile. */
+function useIsDesktopLayout() {
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia(`(min-width: ${MOBILE_MAX_PX + 1}px)`).matches;
+  });
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${MOBILE_MAX_PX + 1}px)`);
+    const onChange = () => setIsDesktop(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+}
+
 export default function AdminExams() {
   const navigate = useNavigate();
+  const isDesktopLayout = useIsDesktopLayout();
   const [grades, setGrades] = useState([]);
   const [gradeId, setGradeId] = useState("");
   const [exams, setExams] = useState([]);
@@ -293,62 +312,179 @@ export default function AdminExams() {
             </div>
           </div>
 
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>ID</th>
-                  <th style={styles.th}>Tên đề</th>
-                  <th style={styles.th}>Khối</th>
-                  <th style={styles.th}>Mô tả</th>
-                  <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
-                    Thao tác
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+          {isDesktopLayout ? (
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
                   <tr>
-                    <td colSpan={5} style={styles.tdEmpty}>
-                      Đang tải danh sách đề…
-                    </td>
+                    <th style={styles.th}>ID</th>
+                    <th style={styles.th}>Tên đề</th>
+                    <th style={styles.th}>Khối</th>
+                    <th style={styles.th}>Mô tả</th>
+                    <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
+                      Thao tác
+                    </th>
                   </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={styles.tdEmpty}>
-                      {search.trim()
-                        ? `Không có kết quả phù hợp với “${search}”.`
-                        : "Chưa có mẫu đề cho khối này — tạo đề mới từ nút trên."}
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((row) => {
-                const eid = String(row.id);
-                const isOpen = expandedExamId === eid;
-                return (
-                  <React.Fragment key={row.id}>
-                    <tr
-                      style={styles.dataRow}
-                      onClick={() => toggleExpand(row)}
-                      aria-expanded={isOpen}
-                    >
-                      <td style={styles.td}>{row.id}</td>
-                      <td style={styles.td}>
-                        <div style={styles.examName}>{row.name}</div>
-                        {row.question_count != null && (
-                          <div style={styles.mutedSmall}>
-                            {Number(row.question_count)} câu trong đề
-                          </div>
-                        )}
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} style={styles.tdEmpty}>
+                        Đang tải danh sách đề…
                       </td>
-                      <td style={styles.td}>{row.grade_name || `ID ${row.grade_id}`}</td>
-                      <td style={{ ...styles.td, color: "#57606a" }}>
-                        {row.description || "—"}
+                    </tr>
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={styles.tdEmpty}>
+                        {search.trim()
+                          ? `Không có kết quả phù hợp với “${search}”.`
+                          : "Chưa có mẫu đề cho khối này — tạo đề mới từ nút trên."}
                       </td>
-                      <td
-                        style={{ ...styles.td, textAlign: "right" }}
-                        onClick={(e) => e.stopPropagation()}
+                    </tr>
+                  ) : (
+                    filtered.map((row) => {
+                      const eid = String(row.id);
+                      const isOpen = expandedExamId === eid;
+                      return (
+                        <React.Fragment key={row.id}>
+                          <tr
+                            style={styles.dataRow}
+                            onClick={() => toggleExpand(row)}
+                            aria-expanded={isOpen}
+                          >
+                            <td style={styles.td}>{row.id}</td>
+                            <td style={styles.td}>
+                              <div style={styles.examName}>{row.name}</div>
+                              {row.question_count != null && (
+                                <div style={styles.mutedSmall}>
+                                  {Number(row.question_count)} câu trong đề
+                                </div>
+                              )}
+                            </td>
+                            <td style={styles.td}>{row.grade_name || `ID ${row.grade_id}`}</td>
+                            <td style={{ ...styles.td, color: "#57606a" }}>
+                              {row.description || "—"}
+                            </td>
+                            <td
+                              style={{ ...styles.td, textAlign: "right" }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                style={styles.iconBtn}
+                                title="Chỉnh sửa đề"
+                                onClick={(e) => handleEditExam(row, e)}
+                              >
+                                <PencilIcon />
+                              </button>
+                              <button
+                                type="button"
+                                style={{ ...styles.iconBtn, marginLeft: 8 }}
+                                title="Xóa đề"
+                                onClick={(e) => handleDeleteExam(row, e)}
+                              >
+                                <TrashIcon />
+                              </button>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={5} style={styles.nestedCell}>
+                                <div style={styles.nestedPanel}>
+                                  <div style={styles.nestedHeader}>
+                                    <span style={styles.nestedTitle}>Câu hỏi trong đề</span>
+                                  </div>
+                                  {detailLoadingId === row.id ? (
+                                    <p style={styles.mutedSmall}>Đang tải câu hỏi…</p>
+                                  ) : (questionsByExamId[row.id] || []).length === 0 ? (
+                                    <p style={styles.mutedSmall}>Chưa có câu hỏi trong đề này.</p>
+                                  ) : (
+                                    <ul style={styles.questionList}>
+                                      {(questionsByExamId[row.id] || []).map((q, index) => (
+                                        <li key={q.id} style={styles.questionItem}>
+                                          <p style={styles.questionText}>
+                                            Câu {index + 1}: {q.text}
+                                          </p>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={styles.cardList} aria-label="Danh sách mẫu đề dạng thẻ">
+              {loading ? (
+                <div style={styles.cardEmpty}>Đang tải danh sách đề…</div>
+              ) : filtered.length === 0 ? (
+                <div style={styles.cardEmpty}>
+                  {search.trim()
+                    ? `Không có kết quả phù hợp với “${search}”.`
+                    : "Chưa có mẫu đề cho khối này — tạo đề mới từ nút trên."}
+                </div>
+              ) : (
+                filtered.map((row) => {
+                  const eid = String(row.id);
+                  const isOpen = expandedExamId === eid;
+                  return (
+                    <article key={row.id} style={styles.examCard}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        aria-label={`${row.name}, chạm để ${isOpen ? "thu gọn" : "mở"} danh sách câu hỏi`}
+                        onClick={() => toggleExpand(row)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleExpand(row);
+                          }
+                        }}
+                        style={styles.examCardMain}
                       >
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>ID</span>
+                          <span style={styles.cardValue}>{row.id}</span>
+                        </div>
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>Tên đề</span>
+                          <div>
+                            <div style={styles.examName}>{row.name}</div>
+                            {row.question_count != null && (
+                              <div style={styles.mutedSmall}>
+                                {Number(row.question_count)} câu trong đề
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>Khối</span>
+                          <span style={styles.cardValue}>{row.grade_name || `ID ${row.grade_id}`}</span>
+                        </div>
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>Mô tả</span>
+                          <span
+                            style={{
+                              ...styles.cardValue,
+                              color: "#57606a",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {row.description || "—"}
+                          </span>
+                        </div>
+                        <p style={styles.cardHint}>Chạm để {isOpen ? "thu gọn" : "xem"} câu hỏi trong đề</p>
+                      </div>
+                      <div style={styles.cardActions} onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           style={styles.iconBtn}
@@ -359,47 +495,41 @@ export default function AdminExams() {
                         </button>
                         <button
                           type="button"
-                          style={{ ...styles.iconBtn, marginLeft: 8 }}
+                          style={styles.iconBtn}
                           title="Xóa đề"
                           onClick={(e) => handleDeleteExam(row, e)}
                         >
                           <TrashIcon />
                         </button>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={5} style={styles.nestedCell}>
-                          <div style={styles.nestedPanel}>
-                            <div style={styles.nestedHeader}>
-                              <span style={styles.nestedTitle}>Câu hỏi trong đề</span>
-                            </div>
-                            {detailLoadingId === row.id ? (
-                              <p style={styles.mutedSmall}>Đang tải câu hỏi…</p>
-                            ) : (questionsByExamId[row.id] || []).length === 0 ? (
-                              <p style={styles.mutedSmall}>Chưa có câu hỏi trong đề này.</p>
-                            ) : (
-                              <ul style={styles.questionList}>
-                                {(questionsByExamId[row.id] || []).map((q, index) => (
-                                  <li key={q.id} style={styles.questionItem}>
-                                    <p style={styles.questionText}>
-                                      Câu {index + 1}: {q.text}
-                                    </p>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                      </div>
+                      {isOpen && (
+                        <div style={styles.examCardNested}>
+                          <div style={styles.nestedHeader}>
+                            <span style={styles.nestedTitle}>Câu hỏi trong đề</span>
                           </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                          {detailLoadingId === row.id ? (
+                            <p style={styles.mutedSmall}>Đang tải câu hỏi…</p>
+                          ) : (questionsByExamId[row.id] || []).length === 0 ? (
+                            <p style={styles.mutedSmall}>Chưa có câu hỏi trong đề này.</p>
+                          ) : (
+                            <ul style={styles.questionList}>
+                              {(questionsByExamId[row.id] || []).map((q, index) => (
+                                <li key={q.id} style={styles.questionItem}>
+                                  <p style={styles.questionText}>
+                                    Câu {index + 1}: {q.text}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -666,6 +796,79 @@ const styles = {
     padding: "28px 16px",
     textAlign: "center",
     color: "#57606a",
+  },
+  cardList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: "100%",
+  },
+  examCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    background: "#fff",
+    border: "1px solid #d0d7de",
+    borderRadius: 10,
+    overflow: "hidden",
+    boxShadow: "0 1px 2px rgba(31,35,40,0.06)",
+  },
+  examCardMain: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    padding: "14px 16px",
+    cursor: "pointer",
+    outline: "none",
+  },
+  cardField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  cardLabel: {
+    fontSize: "0.72rem",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    color: "#57606a",
+  },
+  cardValue: {
+    fontSize: "0.95rem",
+    lineHeight: 1.45,
+    color: "#24292f",
+  },
+  cardHint: {
+    margin: 0,
+    fontSize: "0.8rem",
+    color: "#6e7781",
+    lineHeight: 1.4,
+  },
+  cardActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    padding: "10px 16px 14px",
+    borderTop: "1px solid #eaeef2",
+    background: "#fafbfc",
+  },
+  cardEmpty: {
+    padding: "24px 16px",
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.95rem",
+    background: "#fff",
+    border: "1px solid #d0d7de",
+    borderRadius: 10,
+  },
+  examCardNested: {
+    padding: "14px 16px 16px",
+    borderTop: "1px solid #d0d7de",
+    background: "#f6f8fa",
+    borderLeft: "3px solid #2d5a76",
+    marginLeft: 0,
   },
   dataRow: {
     cursor: "pointer",
