@@ -58,8 +58,8 @@ api.interceptors.response.use(
 // ==========================
 // Auth
 // ==========================
-export const register = async ({ username, password, fullname }) => {
-  return api.post("/register", { username, password, fullname });
+export const register = async ({ username, password, email, phone }) => {
+  return api.post("/register", { username, password, email, phone });
 };
 
 export const login = async ({ username, password }) => {
@@ -68,6 +68,25 @@ export const login = async ({ username, password }) => {
 
 export const getAuthMe = async () => {
   const res = await api.get("/auth/me");
+  return res.data;
+};
+
+// ==========================
+// Contests (trang user — không qua /admin)
+// ==========================
+export const getContests = async () => {
+  const res = await api.get("/contests");
+  return res.data;
+};
+
+export const getContestById = async (id) => {
+  const res = await api.get(`/contests/${id}`);
+  return res.data;
+};
+
+/** Lưu điểm một lần / contest vào `user_contests` (409 nếu đã thi). */
+export const submitContestScore = async (contestId, { score }) => {
+  const res = await api.post(`/contests/${contestId}/submit`, { score });
   return res.data;
 };
 

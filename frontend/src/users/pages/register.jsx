@@ -1,13 +1,23 @@
 import React, { useState, useEffect } from "react";
-import api from "../../api";
+import { Link } from "react-router-dom";
+import { register as registerApi } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 const NAVBAR_OFFSET = 52;
 
+const t = {
+  loginFooterHint: "\u0110\u00E3 c\u00F3 t\u00E0i kho\u1EA3n? ",
+  loginFooterLink: "\u0110\u0103ng nh\u1EADp ngay",
+};
+
 export default function Register() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [fullname, setFullname] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -23,8 +33,17 @@ export default function Register() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    if (password !== confirmPassword) {
+      setMessage("Mật khẩu xác nhận không khớp.");
+      return;
+    }
     try {
-      const res = await api.post("/register", { username, password, fullname });
+      const res = await registerApi({
+        username,
+        password,
+        email,
+        phone,
+      });
       setMessage(res.data.message);
     } catch (err) {
       console.error(err);
@@ -48,22 +67,97 @@ export default function Register() {
             style={styles.input}
           />
           <input
-            type="password"
-            placeholder="Mật khẩu"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
-            autoComplete="new-password"
-            minLength={4}
+            autoComplete="email"
             style={styles.input}
           />
+          <input
+            type="text"
+            placeholder="Số điện thoại"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            required
+            autoComplete="tel"
+            style={styles.input}
+          />
+          <div style={styles.passwordWrap}>
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Mật khẩu"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              minLength={4}
+              style={{ ...styles.input, paddingRight: 54 }}
+            />
+            <button
+              type="button"
+              style={styles.eyeBtn}
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+              title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+            >
+              {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+            </button>
+          </div>
+          <div style={styles.passwordWrap}>
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="Nhập lại mật khẩu"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              minLength={4}
+              style={{ ...styles.input, paddingRight: 54 }}
+            />
+            <button
+              type="button"
+              style={styles.eyeBtn}
+              onClick={() => setShowConfirmPassword((v) => !v)}
+              aria-label={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+              title={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+            >
+              {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
+            </button>
+          </div>
           <button type="submit" style={styles.button}>
             Đăng ký
           </button>
           <p style={styles.message}>{message}</p>
+          <p style={styles.registerHint}>
+            {t.loginFooterHint}
+            <Link to="/login" style={styles.textLink}>
+              {t.loginFooterLink}
+            </Link>
+          </p>
         </form>
       </div>
     </div>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17.94 17.94A10.7 10.7 0 0112 19C5 19 1 12 1 12a21.7 21.7 0 015.06-6.94" />
+      <path d="M9.9 4.24A10.94 10.94 0 0112 5c7 0 11 7 11 7a21.35 21.35 0 01-2.17 3.19" />
+      <path d="M1 1l22 22" />
+    </svg>
   );
 }
 
@@ -88,7 +182,7 @@ const styles = {
   overlay: {
     padding: "40px",
     width: "90%",
-    maxWidth: "300px",
+    maxWidth: "390px",
   },
   form: {
     display: "flex",
@@ -99,8 +193,11 @@ const styles = {
     textAlign: "center",
     color: "#333",
     marginBottom: "10px",
+    fontFamily: "inherit",
   },
   input: {
+    width: "100%",
+    boxSizing: "border-box",
     padding: "20px",
     paddingLeft: "30px",
     fontSize: "16px",
@@ -108,11 +205,31 @@ const styles = {
     border: "1px solid rgb(255, 255, 255)",
     outline: "none",
     transition: "0.3s",
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(0, 0, 0, 0)",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
     color: "black",
-    
+    fontFamily: "inherit",
+  },
+  passwordWrap: {
+    position: "relative",
+    width: "100%",
+  },
+  eyeBtn: {
+    position: "absolute",
+    right: 16,
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 30,
+    height: 30,
+    border: "none",
+    background: "transparent",
+    color: "#333",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
   },
   button: {
     padding: "16px",
@@ -123,12 +240,26 @@ const styles = {
     fontSize: "16px",
     cursor: "pointer",
     transition: "0.3s",
+    fontFamily: "inherit",
   },
   message: {
     textAlign: "center",
     color: "#d9534f",
     fontWeight: 500,
     marginTop: "10px",
+  },
+  textLink: {
+    color: "#1d5f7a",
+    textDecoration: "underline",
+    textUnderlineOffset: "3px",
+    fontWeight: 500,
+    fontSize: "15px",
+  },
+  registerHint: {
+    textAlign: "center",
+    marginTop: "-8px",
+    color: "#333",
+    fontSize: "15px",
   },
 };
 

@@ -123,7 +123,7 @@ function isSelfOrAdminByUsername(req, targetUsername) {
 //  API: ĐĂNG KÝ
 // ==========================
 app.post('/api/register', async (req, res) => {
-  const { username, password, fullname } = req.body;
+  const { username, password, email, phone } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ message: 'Thiếu username hoặc password' });
@@ -131,12 +131,25 @@ app.post('/api/register', async (req, res) => {
 
   try {
     const hashed = bcrypt.hashSync(password, 8);
-    const sql = 'INSERT INTO users (username, password, fullname) VALUES (?, ?, ?)';
-    const [result] = await pool.execute(sql, [username, hashed, fullname || null]);
+    const sql =
+      'INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)';
+    const [result] = await pool.execute(sql, [
+      username,
+      hashed,
+      email || null,
+      phone || null,
+    ]);
 
     res.json({ message: 'Đăng ký thành công', userId: result.insertId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
+      const sqlMessage = String(err.sqlMessage || '');
+      if (sqlMessage.includes('email')) {
+        return res.status(409).json({ message: 'Email đã tồn tại' });
+      }
+      if (sqlMessage.includes('phone')) {
+        return res.status(409).json({ message: 'Số điện thoại đã tồn tại' });
+      }
       return res.status(409).json({ message: 'Username đã tồn tại' });
     }
     console.error(err);
@@ -913,6 +926,181 @@ app.get("/api/leaderboard/week", async (req, res) => {
   }
 });
 
+// ==========================
+// API: CONTESTS (danh sách / chi tiết — trang user, không cần admin)
+// ==========================
+const DEFAULT_CONTEST_EXAM_DURATION_MINUTES = 30;
+const CONTEST_STATUS_ENDED = 0;
+const CONTEST_STATUS_SCHEDULED = 1;
+const CONTEST_STATUS_ACTIVE = 2;
+
+function parseContestTimeMs(v) {
+  if (v == null || v === '') return null;
+  const d = v instanceof Date ? v : new Date(v);
+  const t = d.getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function computeContestStatusByTime(startTime, endTime, nowMs = Date.now()) {
+  const startMs = parseContestTimeMs(startTime);
+  const endMs = parseContestTimeMs(endTime);
+  if (startMs == null || endMs == null) return CONTEST_STATUS_SCHEDULED;
+  if (nowMs >= endMs) return CONTEST_STATUS_ENDED;
+  if (nowMs >= startMs) return CONTEST_STATUS_ACTIVE;
+  return CONTEST_STATUS_SCHEDULED;
+}
+
+async function syncContestStatuses() {
+  await pool.query(
+    `UPDATE contests
+     SET status = CASE
+       WHEN end_time <= NOW() THEN ?
+       WHEN start_time <= NOW() AND end_time > NOW() THEN ?
+       ELSE ?
+     END`,
+    [CONTEST_STATUS_ENDED, CONTEST_STATUS_ACTIVE, CONTEST_STATUS_SCHEDULED]
+  );
+}
+
+function shapePublicContestRow(row) {
+  if (!row) return row;
+  const q = Number(row.question_count);
+  const ms = row.my_score;
+  const effectiveStatus = computeContestStatusByTime(row.start_time, row.end_time);
+  return {
+    ...row,
+    status: effectiveStatus,
+    question_count: Number.isFinite(q) ? q : 0,
+    exam_duration_minutes: DEFAULT_CONTEST_EXAM_DURATION_MINUTES,
+    completed: Boolean(Number(row.completed)),
+    my_score: ms != null && ms !== '' ? Number(ms) : null,
+  };
+}
+
+app.get('/api/contests', authenticateToken, async (req, res) => {
+  const userId = Number(req.auth?.sub);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(401).json({ message: 'Token kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+  try {
+    await syncContestStatuses();
+    const [rows] = await pool.query(
+      `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+              t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name,
+              (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count,
+              uc.score AS my_score,
+              CASE WHEN uc.id IS NOT NULL THEN 1 ELSE 0 END AS completed
+       FROM contests c
+       INNER JOIN exam_templates t ON t.id = c.template_id
+       INNER JOIN grades g ON g.id = t.grade_id
+       LEFT JOIN user_contests uc ON uc.contest_id = c.id AND uc.user_id = ?
+       ORDER BY c.start_time DESC, c.id DESC`,
+      [userId]
+    );
+    res.json(rows.map(shapePublicContestRow));
+  } catch (err) {
+    console.error('Error GET /api/contests:', err);
+    res.status(500).json({ message: 'L\u1ED7i khi l\u1EA5y danh s\u00E1ch cu\u1ED9c thi' });
+  }
+});
+
+app.get('/api/contests/:id', authenticateToken, async (req, res) => {
+  const id = Number(req.params.id);
+  const userId = Number(req.auth?.sub);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(401).json({ message: 'Token kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ message: 'id kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+  try {
+    await syncContestStatuses();
+    const [rows] = await pool.query(
+      `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+              t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name,
+              (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count,
+              uc.score AS my_score,
+              CASE WHEN uc.id IS NOT NULL THEN 1 ELSE 0 END AS completed
+       FROM contests c
+       INNER JOIN exam_templates t ON t.id = c.template_id
+       INNER JOIN grades g ON g.id = t.grade_id
+       LEFT JOIN user_contests uc ON uc.contest_id = c.id AND uc.user_id = ?
+       WHERE c.id = ?`,
+      [userId, id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Kh\u00F4ng t\u00ECm th\u1EA5y cu\u1ED9c thi' });
+    }
+    res.json(shapePublicContestRow(rows[0]));
+  } catch (err) {
+    console.error('Error GET /api/contests/:id:', err);
+    res.status(500).json({ message: 'L\u1ED7i khi l\u1EA5y cu\u1ED9c thi' });
+  }
+});
+
+app.post('/api/contests/:id/submit', authenticateToken, async (req, res) => {
+  const contestId = Number(req.params.id);
+  const userId = Number(req.auth?.sub);
+  const scoreRaw = req.body?.score;
+  const score = Math.floor(Number(scoreRaw));
+
+  if (!Number.isFinite(contestId) || contestId <= 0) {
+    return res.status(400).json({ message: 'Cu\u1ED9c thi kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(401).json({ message: 'Token kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+  if (!Number.isFinite(score) || score < 0) {
+    return res.status(400).json({ message: '\u0110i\u1EC3m s\u1ED1 kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+
+  try {
+    await syncContestStatuses();
+    const [cRows] = await pool.query('SELECT id, template_id, start_time, end_time, status FROM contests WHERE id = ? LIMIT 1', [
+      contestId,
+    ]);
+    if (!cRows.length) {
+      return res.status(404).json({ message: 'Kh\u00F4ng t\u00ECm th\u1EA5y cu\u1ED9c thi' });
+    }
+    const contest = cRows[0];
+    const effectiveStatus = computeContestStatusByTime(contest.start_time, contest.end_time);
+    if (effectiveStatus !== CONTEST_STATUS_ACTIVE) {
+      return res.status(403).json({
+        message:
+          effectiveStatus === CONTEST_STATUS_SCHEDULED
+            ? 'Cu\u1ED9c thi ch\u01B0a \u0111\u1EBFn th\u1EDDi gian b\u1EAFt \u0111\u1EA7u'
+            : 'Cu\u1ED9c thi \u0111\u00E3 k\u1EBFt th\u00FAc',
+      });
+    }
+    const templateId = contest.template_id;
+    const [[cnt]] = await pool.query(
+      'SELECT COUNT(*) AS n FROM exam_template_questions WHERE template_id = ?',
+      [templateId]
+    );
+    const maxQ = Number(cnt?.n) || 0;
+    if (maxQ > 0 && score > maxQ) {
+      return res.status(400).json({ message: '\u0110i\u1EC3m v\u01B0\u1EE3t qu\u00E1 s\u1ED1 c\u00E2u c\u1EE7a \u0111\u1EC1' });
+    }
+
+    await pool.query(
+      'INSERT INTO user_contests (user_id, contest_id, score) VALUES (?, ?, ?)',
+      [userId, contestId, score]
+    );
+    return res.status(201).json({
+      message: '\u0110\u00E3 l\u01B0u k\u1EBFt qu\u1EA3',
+      score,
+      contest_id: contestId,
+    });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        message: 'B\u1EA1n \u0111\u00E3 ho\u00E0n th\u00E0nh cu\u1ED9c thi n\u00E0y r\u1ED3i',
+      });
+    }
+    console.error('Error POST /api/contests/:id/submit:', err);
+    return res.status(500).json({ message: 'L\u1ED7i khi l\u01B0u k\u1EBFt qu\u1EA3' });
+  }
+});
 
 // GET /api/items
 app.get('/api/items', async (req, res) => {
@@ -1073,6 +1261,19 @@ app.post('/api/external-login-child', async (req, res) => {
 /** CRUD admin: /api/admin/users|grades|types|lessons */
 app.use('/api/admin', authenticateToken, requireAdminRole);
 mountAdminCrud(app, pool);
+
+// Đồng bộ trạng thái contest theo lịch mỗi phút (không cần thao tác thủ công).
+const contestStatusTimer = setInterval(() => {
+  syncContestStatuses().catch((err) => {
+    console.error('Error auto-sync contest statuses:', err);
+  });
+}, 60 * 1000);
+if (typeof contestStatusTimer.unref === 'function') {
+  contestStatusTimer.unref();
+}
+syncContestStatuses().catch((err) => {
+  console.error('Error initial contest status sync:', err);
+});
 
 
 // ==========================

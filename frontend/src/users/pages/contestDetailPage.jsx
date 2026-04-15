@@ -1,6 +1,45 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Navigate, useParams } from "react-router-dom";
+import { getContestById, submitContestScore } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+
+function buildSampleQuestions(count) {
+  const n = Math.max(1, Math.min(Number(count) || 10, 100));
+  const qs = [];
+  for (let i = 1; i <= n; i++) {
+    const a = Math.floor(Math.random() * 10) + 1;
+    const b = Math.floor(Math.random() * 10) + 1;
+    qs.push({
+      id: i,
+      question: `${a} + ${b} = ?`,
+      correctAnswer: a + b,
+    });
+  }
+  return qs;
+}
+
+function getOptions(correctAnswer) {
+  const options = new Set();
+  options.add(correctAnswer);
+  options.add(correctAnswer + 1);
+  options.add(correctAnswer - 1);
+  options.add(correctAnswer + 2);
+  let validOptions = Array.from(options).filter((val) => val >= 0 && val <= 20);
+  while (validOptions.length < 4) {
+    let newVal = correctAnswer + validOptions.length;
+    if (newVal >= 0 && newVal <= 20 && !validOptions.includes(newVal)) {
+      validOptions.push(newVal);
+    } else {
+      newVal = correctAnswer - validOptions.length;
+      if (newVal >= 0 && newVal <= 20 && !validOptions.includes(newVal)) {
+        validOptions.push(newVal);
+      } else {
+        validOptions.push(correctAnswer + 3);
+      }
+    }
+  }
+  return validOptions.sort(() => Math.random() - 0.5);
+}
 
 export default function ContestDetailPage() {
   const { contestId } = useParams();
@@ -10,46 +49,13 @@ export default function ContestDetailPage() {
     return <Navigate to="/login" replace />;
   }
 
-  // Tạo 20 câu hỏi toán lớp 1 (chỉ 1 lần)
-  const [questions] = useState(() => {
-    const qs = [];
-    for (let i = 1; i <= 20; i++) {
-      const a = Math.floor(Math.random() * 10) + 1;
-      const b = Math.floor(Math.random() * 10) + 1;
-      qs.push({
-        id: i,
-        question: `${a} + ${b} = ?`,
-        correctAnswer: a + b,
-      });
-    }
-    return qs;
-  });
-
-  // Sinh 4 đáp án trắc nghiệm (nhiễu hợp lý)
-  const getOptions = (correctAnswer) => {
-    let options = new Set();
-    options.add(correctAnswer);
-    options.add(correctAnswer + 1);
-    options.add(correctAnswer - 1);
-    options.add(correctAnswer + 2);
-    let validOptions = Array.from(options).filter(
-      (val) => val >= 0 && val <= 20
-    );
-    while (validOptions.length < 4) {
-      let newVal = correctAnswer + validOptions.length;
-      if (newVal >= 0 && newVal <= 20 && !validOptions.includes(newVal)) {
-        validOptions.push(newVal);
-      } else {
-        newVal = correctAnswer - validOptions.length;
-        if (newVal >= 0 && newVal <= 20 && !validOptions.includes(newVal)) {
-          validOptions.push(newVal);
-        } else {
-          validOptions.push(correctAnswer + 3);
-        }
-      }
-    }
-    return validOptions.sort(() => Math.random() - 0.5);
-  };
+  const [contest, setContest] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [contestLoading, setContestLoading] = useState(true);
+  const [contestErr, setContestErr] = useState("");
+  const [alreadyCompleted, setAlreadyCompleted] = useState(false);
+  const [saveResultError, setSaveResultError] = useState("");
+  const [saveResultOk, setSaveResultOk] = useState(false);
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -57,6 +63,95 @@ export default function ContestDetailPage() {
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [options, setOptions] = useState([]);
+
+  const questionsRef = useRef(questions);
+  const answersRef = useRef(answers);
+  const isFinalizingRef = useRef(false);
+
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  const finalizeQuiz = useCallback(async () => {
+    if (isFinalizingRef.current) return;
+    isFinalizingRef.current = true;
+    const qs = questionsRef.current;
+    const ans = answersRef.current;
+    const totalQ = qs.length || 1;
+    const correctCount = qs.reduce(
+      (acc, q) => acc + (ans[q.id] === q.correctAnswer ? 1 : 0),
+      0
+    );
+    setScore(correctCount);
+    setSubmitted(true);
+    setSaveResultError("");
+    setSaveResultOk(false);
+    const cid = Number(contestId);
+    try {
+      await submitContestScore(cid, { score: correctCount });
+      setSaveResultOk(true);
+    } catch (err) {
+      console.error(err);
+      const msg =
+        err.response?.data?.message ||
+        "Kh\u00F4ng l\u01B0u \u0111\u01B0\u1EE3c k\u1EBFt qu\u1EA3. Th\u1EED l\u1EA1i sau.";
+      setSaveResultError(msg);
+    }
+  }, [contestId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const id = Number(contestId);
+    if (!Number.isFinite(id) || id <= 0) {
+      setContestErr("Cu\u1ED9c thi kh\u00F4ng h\u1EE3p l\u1EC7.");
+      setContestLoading(false);
+      return undefined;
+    }
+    setContestLoading(true);
+    setContestErr("");
+    getContestById(id)
+      .then((c) => {
+        if (cancelled) return;
+        setContest(c);
+        if (c.completed) {
+          setAlreadyCompleted(true);
+          setQuestions([]);
+          isFinalizingRef.current = false;
+          return;
+        }
+        setAlreadyCompleted(false);
+        const qn = Number(c.question_count) || 10;
+        const durationMin = Number(c.exam_duration_minutes) || 30;
+        setQuestions(buildSampleQuestions(qn));
+        setTimeLeft(durationMin * 60);
+        setCurrentQuestion(0);
+        setAnswers({});
+        setSubmitted(false);
+        setScore(0);
+        isFinalizingRef.current = false;
+        setSaveResultError("");
+        setSaveResultOk(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) {
+          setContestErr(
+            err.response?.data?.message ||
+              "Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c \u0111\u1EC1 thi."
+          );
+          setQuestions([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setContestLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contestId]);
 
   useEffect(() => {
     const currentQ = questions[currentQuestion];
@@ -66,18 +161,20 @@ export default function ContestDetailPage() {
   }, [currentQuestion, questions]);
 
   useEffect(() => {
-    if (submitted || timeLeft <= 0) return;
+    if (submitted || timeLeft <= 0 || contestLoading || questions.length === 0) {
+      return undefined;
+    }
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          setSubmitted(true);
+          finalizeQuiz();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [submitted, timeLeft]);
+  }, [submitted, timeLeft, contestLoading, questions.length, finalizeQuiz]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -86,9 +183,11 @@ export default function ContestDetailPage() {
   };
 
   const handleAnswerChange = (value) => {
+    const q = questions[currentQuestion];
+    if (!q) return;
     setAnswers({
       ...answers,
-      [questions[currentQuestion].id]: value,
+      [q.id]: value,
     });
   };
 
@@ -102,12 +201,7 @@ export default function ContestDetailPage() {
   };
 
   const handleSubmit = () => {
-    let correctCount = 0;
-    questions.forEach((q) => {
-      if (answers[q.id] === q.correctAnswer) correctCount++;
-    });
-    setScore(correctCount);
-    setSubmitted(true);
+    finalizeQuiz();
   };
 
   const pageBg = `${publicUrl}/component-images/home-background.png`;
@@ -148,7 +242,180 @@ export default function ContestDetailPage() {
     margin: "2px",
   });
 
+  if (contestErr && !contestLoading) {
+    return (
+      <div style={{ position: "relative", minHeight: "100vh" }}>
+        <div style={bgFixedLayer} aria-hidden />
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            maxWidth: 520,
+            margin: "0 auto",
+            padding: 24,
+          }}
+        >
+          <main>
+            <section
+              style={{
+                background: "#ffffff",
+                borderRadius: 16,
+                padding: "32px 24px",
+                textAlign: "center",
+                boxShadow: "0 10px 36px rgba(0,0,0,0.08)",
+              }}
+            >
+              <p style={{ color: "#c62828", marginBottom: 20 }}>{contestErr}</p>
+              <button
+                type="button"
+                onClick={() => window.history.back()}
+                style={{
+                  backgroundColor: "#0f4c75",
+                  border: "none",
+                  borderRadius: 40,
+                  padding: "12px 32px",
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Quay lại
+              </button>
+            </section>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (contestLoading) {
+    return (
+      <div style={{ position: "relative", minHeight: "100vh" }}>
+        <div style={bgFixedLayer} aria-hidden />
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            maxWidth: 520,
+            margin: "48px auto",
+            padding: 24,
+            textAlign: "center",
+            color: "#455a64",
+            fontSize: 16,
+          }}
+        >
+          {"\u0110ang t\u1EA3i \u0111\u1EC1 thi\u2026"}
+        </div>
+      </div>
+    );
+  }
+
+  if (alreadyCompleted && contest) {
+    const totalQ = Number(contest.question_count) || 1;
+    const sc =
+      contest.my_score != null && contest.my_score !== ""
+        ? Number(contest.my_score)
+        : 0;
+    const ratio = totalQ > 0 ? sc / totalQ : 0;
+    return (
+      <div style={{ position: "relative", minHeight: "100vh" }}>
+        <div style={bgFixedLayer} aria-hidden />
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            maxWidth: 800,
+            margin: "0 auto",
+            padding: 24,
+          }}
+        >
+          <main>
+            <section
+              style={{
+                background: "#ffffff",
+                borderRadius: 20,
+                padding: "48px 32px",
+                textAlign: "center",
+                boxShadow: "0 10px 36px rgba(0,0,0,0.08)",
+              }}
+            >
+              <h1 style={{ color: "#0f4c75" }}>
+                {"\u0110\u00E3 ho\u00E0n th\u00E0nh cu\u1ED9c thi"}
+              </h1>
+              <p style={{ color: "#455a64", marginBottom: 8 }}>
+                {contest.grade_name} — {contest.name}
+              </p>
+              <p style={{ fontSize: 48, fontWeight: 700, color: "#3282b8" }}>
+                {sc}/{totalQ}
+              </p>
+              <p>
+                {"K\u1EBFt qu\u1EA3 \u0111\u00E3 l\u01B0u: "} {sc}{" "}
+                {"c\u00E2u \u0111\u00FAng tr\u00EAn t\u1ED5ng "} {totalQ}.
+              </p>
+              <div
+                style={{
+                  width: "100%",
+                  height: 12,
+                  backgroundColor: "#e8f1f5",
+                  borderRadius: 6,
+                  margin: "24px 0",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.min(100, ratio * 100)}%`,
+                    height: "100%",
+                    backgroundColor: ratio >= 0.7 ? "#4caf50" : "#ff9800",
+                    borderRadius: 6,
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => window.history.back()}
+                style={{
+                  backgroundColor: "#0f4c75",
+                  border: "none",
+                  borderRadius: 40,
+                  padding: "12px 32px",
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Quay lại
+              </button>
+            </section>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (!alreadyCompleted && questions.length === 0) {
+    return (
+      <div style={{ position: "relative", minHeight: "100vh" }}>
+        <div style={bgFixedLayer} aria-hidden />
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            maxWidth: 520,
+            margin: "48px auto",
+            padding: 24,
+            textAlign: "center",
+            color: "#c62828",
+          }}
+        >
+          {"Kh\u00F4ng c\u00F3 c\u00E2u h\u1ECFi cho cu\u1ED9c thi n\u00E0y."}
+        </div>
+      </div>
+    );
+  }
+
   if (submitted) {
+    const totalQ = questions.length || 1;
+    const ratio = score / totalQ;
     return (
       <div style={{ position: "relative", minHeight: "100vh" }}>
         <div style={bgFixedLayer} aria-hidden />
@@ -173,10 +440,10 @@ export default function ContestDetailPage() {
             >
               <h1 style={{ color: "#0f4c75" }}>🎉 Kết quả bài kiểm tra</h1>
               <p style={{ fontSize: 48, fontWeight: 700, color: "#3282b8" }}>
-                {score}/{questions.length}
+                {score}/{totalQ}
               </p>
               <p>
-                Bạn trả lời đúng {score} trên {questions.length} câu.
+                Bạn trả lời đúng {score} trên {totalQ} câu.
               </p>
               <div
                 style={{
@@ -189,19 +456,28 @@ export default function ContestDetailPage() {
               >
                 <div
                   style={{
-                    width: `${(score / questions.length) * 100}%`,
+                    width: `${ratio * 100}%`,
                     height: "100%",
-                    backgroundColor: score / questions.length >= 0.7 ? "#4caf50" : "#ff9800",
+                    backgroundColor: ratio >= 0.7 ? "#4caf50" : "#ff9800",
                     borderRadius: 6,
                   }}
                 />
               </div>
               <p>
-                {score / questions.length >= 0.7
+                {ratio >= 0.7
                   ? "✨ Tuyệt vời!"
                   : "Cố gắng lần sau nhé!"}
               </p>
+              {saveResultOk && (
+                <p style={{ color: "#2e7d32", fontWeight: 600, marginTop: 12 }}>
+                  {"\u0110\u00E3 l\u01B0u k\u1EBFt qu\u1EA3 v\u00E0o h\u1EC7 th\u1ED1ng."}
+                </p>
+              )}
+              {saveResultError && (
+                <p style={{ color: "#c62828", marginTop: 12 }}>{saveResultError}</p>
+              )}
               <button
+                type="button"
                 onClick={() => window.history.back()}
                 style={{
                   backgroundColor: "#0f4c75",
@@ -211,6 +487,7 @@ export default function ContestDetailPage() {
                   color: "white",
                   fontWeight: 600,
                   cursor: "pointer",
+                  marginTop: 16,
                 }}
               >
                 Quay lại
@@ -239,6 +516,18 @@ export default function ContestDetailPage() {
         }}
       >
         <main>
+          {contest && (
+            <p
+              style={{
+                color: "#0f4c75",
+                fontWeight: 600,
+                margin: "0 0 12px 0",
+                fontSize: 17,
+              }}
+            >
+              {contest.grade_name} — {contest.name}
+            </p>
+          )}
           {/* Header: các nút câu hỏi và timer cùng dòng */}
           <div
             style={{

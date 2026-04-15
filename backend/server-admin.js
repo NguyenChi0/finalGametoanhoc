@@ -98,6 +98,38 @@ function stripPassword(row) {
 }
 
 module.exports = function mountAdminCrud(app, pool) {
+  const CONTEST_STATUS_ENDED = 0;
+  const CONTEST_STATUS_SCHEDULED = 1;
+  const CONTEST_STATUS_ACTIVE = 2;
+
+  async function syncContestStatuses() {
+    await pool.query(
+      `UPDATE contests
+       SET status = CASE
+         WHEN end_time <= NOW() THEN ?
+         WHEN start_time <= NOW() AND end_time > NOW() THEN ?
+         ELSE ?
+       END`,
+      [CONTEST_STATUS_ENDED, CONTEST_STATUS_ACTIVE, CONTEST_STATUS_SCHEDULED]
+    );
+  }
+
+  function parseContestTimeMs(v) {
+    if (v == null || v === '') return null;
+    const d = v instanceof Date ? v : new Date(v);
+    const t = d.getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+
+  function computeContestStatusByTime(startTime, endTime, nowMs = Date.now()) {
+    const startMs = parseContestTimeMs(startTime);
+    const endMs = parseContestTimeMs(endTime);
+    if (startMs == null || endMs == null) return CONTEST_STATUS_SCHEDULED;
+    if (nowMs >= endMs) return CONTEST_STATUS_ENDED;
+    if (nowMs >= startMs) return CONTEST_STATUS_ACTIVE;
+    return CONTEST_STATUS_SCHEDULED;
+  }
+
   // ---------- USERS ----------
   app.get('/api/admin/users', async (req, res) => {
     try {
@@ -883,6 +915,7 @@ module.exports = function mountAdminCrud(app, pool) {
   // status: 0 đã kết thúc, 1 đã lên lịch, 2 đang kích hoạt ----------
   app.get('/api/admin/contests', async (req, res) => {
     try {
+      await syncContestStatuses();
       const [rows] = await pool.query(
         `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
                 t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
@@ -901,6 +934,7 @@ module.exports = function mountAdminCrud(app, pool) {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
     try {
+      await syncContestStatuses();
       const [rows] = await pool.query(
         `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
                 t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
@@ -931,8 +965,7 @@ module.exports = function mountAdminCrud(app, pool) {
     const rawName = body.name != null ? String(body.name).trim() : '';
     const startD = parseContestDateTime(body.start_time);
     const endD = parseContestDateTime(body.end_time);
-    let status = Number(body.status);
-    if (!Number.isFinite(status) || status < 0 || status > 2) status = 1;
+    const status = computeContestStatusByTime(startD, endD);
     let prize = Number(body.prize);
     if (!Number.isFinite(prize) || prize < 0) prize = 0;
     prize = Math.min(Math.floor(prize), 65535);
@@ -959,6 +992,7 @@ module.exports = function mountAdminCrud(app, pool) {
     }
 
     try {
+      await syncContestStatuses();
       const [templates] = await pool.query(
         'SELECT id, grade_id FROM exam_templates WHERE id = ?',
         [templateId]
@@ -1001,6 +1035,7 @@ module.exports = function mountAdminCrud(app, pool) {
     const body = req.body || {};
 
     try {
+      await syncContestStatuses();
       const [existing] = await pool.query(
         `SELECT c.id, c.template_id, t.grade_id AS grade_id
          FROM contests c
@@ -1080,15 +1115,6 @@ module.exports = function mountAdminCrud(app, pool) {
         params.push(desc);
       }
 
-      if (body.status !== undefined && body.status !== null) {
-        const st = Number(body.status);
-        if (!Number.isFinite(st) || st < 0 || st > 2) {
-          return res.status(400).json({ message: 'status phải là 0, 1 hoặc 2' });
-        }
-        updates.push('status = ?');
-        params.push(st);
-      }
-
       if (!updates.length) {
         return res.status(400).json({ message: 'Không có trường nào để cập nhật' });
       }
@@ -1109,6 +1135,10 @@ module.exports = function mountAdminCrud(app, pool) {
           message: 'Thời gian kết thúc phải sau thời gian bắt đầu (kiểm tra start_time / end_time)',
         });
       }
+
+      const computedStatus = computeContestStatusByTime(newStart, newEnd);
+      updates.push('status = ?');
+      params.push(computedStatus);
 
       params.push(id);
       await pool.query(`UPDATE contests SET ${updates.join(', ')} WHERE id = ?`, params);
