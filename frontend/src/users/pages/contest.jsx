@@ -16,7 +16,8 @@ const copy = {
     "H\u00E3y chu\u1EA9n b\u1ECB tinh th\u1EA7n v\u00E0 ki\u1EC3m tra k\u1EBFt n\u1ED1i m\u1EA1ng tr\u01B0\u1EDBc khi l\u00E0m b\u00E0i.",
   loading: "\u0110ang t\u1EA3i danh s\u00E1ch cu\u1ED9c thi\u2026",
   loadError: "Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c danh s\u00E1ch cu\u1ED9c thi.",
-  empty: "Ch\u01B0a c\u00F3 cu\u1ED9c thi n\u00E0o. Vui l\u00F2ng quay l\u1EA1i sau.",
+  empty:
+    "Hi\u1EC7n kh\u00F4ng c\u00F3 cu\u1ED9c thi n\u00E0o \u0111ang di\u1EC5n ra. Vui l\u00F2ng quay l\u1EA1i sau.",
   scheduleLabel: "Th\u1EDDi gian t\u1ED5 ch\u1EE9c:",
   questionsSuffix: " c\u00E2u h\u1ECFi",
   doQuiz: "L\u00E0m b\u00E0i",
@@ -49,7 +50,10 @@ export default function Contest() {
       setError("");
       try {
         const data = await getContests();
-        if (!cancelled) setContests(Array.isArray(data) ? data : []);
+        const raw = Array.isArray(data) ? data : [];
+        // Chỉ hiển thị cuộc thi đang diễn ra (status === 2), khớp backend.
+        const activeOnly = raw.filter((c) => Number(c.status) === 2);
+        if (!cancelled) setContests(activeOnly);
       } catch (err) {
         console.error(err);
         if (!cancelled) {

@@ -22,6 +22,7 @@ export default function AdminExamCreate() {
   const [questionCache, setQuestionCache] = useState({});
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
+  const [examStatus, setExamStatus] = useState(0);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -149,6 +150,26 @@ export default function AdminExamCreate() {
     );
   };
 
+  const handleSelectAllFiltered = () => {
+    if (!filteredQuestions.length) return;
+    setQuestionCache((prev) => {
+      const next = { ...prev };
+      filteredQuestions.forEach((q) => {
+        next[q.id] = q;
+      });
+      return next;
+    });
+    setSelectedQuestionIds((prev) => {
+      const next = new Set(prev);
+      filteredQuestions.forEach((q) => next.add(q.id));
+      return Array.from(next);
+    });
+  };
+
+  const handleClearAllSelected = () => {
+    setSelectedQuestionIds([]);
+  };
+
   const handleSaveExam = async () => {
     setMessage("");
     if (!examTitle.trim()) {
@@ -169,6 +190,7 @@ export default function AdminExamCreate() {
         name: examTitle.trim(),
         grade_id: Number(gradeId),
         description: examDescription.trim() || null,
+        status: Number(examStatus) === 1 ? 1 : 0,
         question_ids: selectedQuestionIds,
       });
       navigate("/admin/exams");
@@ -187,18 +209,17 @@ export default function AdminExamCreate() {
         </Link>
         <span style={styles.crumbSep}>›</span>
         <Link to="/admin/exams" style={styles.crumbLink}>
-          Quản lý exams
+          Quản lý đề thi
         </Link>
         <span style={styles.crumbSep}>›</span>
-        <span style={styles.crumbCurrent}>Tạo exam mới</span>
+        <span style={styles.crumbCurrent}>Tạo đề thi mới</span>
       </nav>
 
       <header style={styles.headerRow}>
         <div style={styles.headerText}>
-          <h1 style={styles.title}>Tạo exam mới</h1>
+          <h1 style={styles.title}>Tạo đề thi mới</h1>
           <p style={styles.lead}>
-            Nhập tiêu đề và mô tả, chọn khối lọc câu hỏi từ API — lưu sẽ tạo bản ghi{" "}
-            <code style={styles.inlineCode}>exam_templates</code> và liên kết câu trong đề.
+            Chào mừng bạn đến với trang tạo đề thi mới.
           </p>
         </div>
       </header>
@@ -228,6 +249,20 @@ export default function AdminExamCreate() {
             placeholder="Mô tả ngắn gọn exam"
             style={styles.textarea}
           />
+        </div>
+        <div style={styles.fieldGroup}>
+          <label htmlFor="exam-status" style={styles.label}>
+            Trạng thái hiển thị
+          </label>
+          <select
+            id="exam-status"
+            value={String(examStatus)}
+            onChange={(e) => setExamStatus(Number(e.target.value))}
+            style={styles.select}
+          >
+            <option value="0">Không công khai</option>
+            <option value="1">Công khai</option>
+          </select>
         </div>
       </section>
 
@@ -314,7 +349,22 @@ export default function AdminExamCreate() {
         <div style={styles.gridLayout}>
           <div style={styles.questionPanel}>
             <div style={styles.panelHeader}>
-              <h3 style={styles.panelTitle}>Danh sách câu hỏi</h3>
+              <div style={styles.panelHeaderLeft}>
+                <h3 style={styles.panelTitle}>Danh sách câu hỏi</h3>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.panelActionText,
+                    ...(questionsLoading || filteredQuestions.length === 0
+                      ? styles.panelActionTextDisabled
+                      : {}),
+                  }}
+                  disabled={questionsLoading || filteredQuestions.length === 0}
+                  onClick={handleSelectAllFiltered}
+                >
+                  Chọn tất cả
+                </button>
+              </div>
               <span style={styles.panelMeta}>
                 {questionsLoading ? "Đang tải…" : `${filteredQuestions.length} câu hỏi`}
               </span>
@@ -348,7 +398,20 @@ export default function AdminExamCreate() {
 
           <aside style={styles.summaryPanel}>
             <div style={styles.panelHeader}>
-              <h3 style={styles.panelTitle}>Câu hỏi đã chọn</h3>
+              <div style={styles.panelHeaderLeft}>
+                <h3 style={styles.panelTitle}>Câu hỏi đã chọn</h3>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.panelActionText,
+                    ...(selectedQuestionIds.length === 0 ? styles.panelActionTextDisabled : {}),
+                  }}
+                  disabled={selectedQuestionIds.length === 0}
+                  onClick={handleClearAllSelected}
+                >
+                  Xóa tất cả
+                </button>
+              </div>
               <span style={styles.panelMeta}>{selectedQuestionIds.length} mục</span>
             </div>
             <div style={styles.panelScroll}>
@@ -533,7 +596,7 @@ const styles = {
   },
   filterRow: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 16,
     marginBottom: 20,
     minWidth: 0,
@@ -571,7 +634,7 @@ const styles = {
   },
   gridLayout: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
     gap: 20,
     alignItems: "stretch",
   },
@@ -579,7 +642,7 @@ const styles = {
   questionPanel: {
     boxSizing: "border-box",
     display: "grid",
-    gridTemplateRows: "52px 1fr",
+    gridTemplateRows: "auto 1fr",
     gap: 0,
     height: 520,
     minHeight: 520,
@@ -593,7 +656,7 @@ const styles = {
   summaryPanel: {
     boxSizing: "border-box",
     display: "grid",
-    gridTemplateRows: "52px 1fr",
+    gridTemplateRows: "auto 1fr",
     gap: 0,
     height: 520,
     minHeight: 520,
@@ -607,15 +670,21 @@ const styles = {
   panelHeader: {
     boxSizing: "border-box",
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
-    height: 52,
     minHeight: 52,
-    maxHeight: 52,
-    paddingTop: 4,
+    flexWrap: "wrap",
+    padding: "10px 0 10px",
     flexShrink: 0,
     borderBottom: "1px solid #eaeef2",
+  },
+  panelHeaderLeft: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+    minWidth: 0,
   },
   panelScroll: {
     boxSizing: "border-box",
@@ -637,7 +706,24 @@ const styles = {
     color: "#57606a",
     fontSize: "0.9rem",
     lineHeight: 1.25,
+    whiteSpace: "normal",
+  },
+  panelActionText: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    margin: 0,
+    fontFamily: "inherit",
+    fontSize: "0.9rem",
+    fontWeight: 400,
+    color: "#2d5a76",
+    textDecoration: "underline",
+    cursor: "pointer",
     whiteSpace: "nowrap",
+  },
+  panelActionTextDisabled: {
+    color: "#8c959f",
+    cursor: "not-allowed",
   },
   /** Question cards: same width/height both columns */
   questionCard: {
@@ -648,8 +734,7 @@ const styles = {
     gap: 12,
     width: "100%",
     minHeight: 108,
-    height: 108,
-    maxHeight: 108,
+    height: "auto",
     padding: "12px 14px",
     borderRadius: 12,
     background: "#f6f8fa",

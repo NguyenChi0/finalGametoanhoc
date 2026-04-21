@@ -679,8 +679,9 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   app.post('/api/admin/exam-templates', async (req, res) => {
-    const { name, grade_id, description, question_ids } = req.body || {};
+    const { name, grade_id, description, question_ids, status } = req.body || {};
     const gid = Number(grade_id);
+    const normalizedStatus = Number(status) === 1 ? 1 : 0;
     if (!name || !String(name).trim() || !gid || Number.isNaN(gid)) {
       return res.status(400).json({ message: 'name và grade_id là bắt buộc' });
     }
@@ -694,8 +695,8 @@ module.exports = function mountAdminCrud(app, pool) {
     try {
       await conn.beginTransaction();
       const [result] = await conn.query(
-        'INSERT INTO exam_templates (name, grade_id, description) VALUES (?, ?, ?)',
-        [String(name).trim(), gid, description != null ? description : null]
+        'INSERT INTO exam_templates (name, grade_id, description, status) VALUES (?, ?, ?, ?)',
+        [String(name).trim(), gid, description != null ? description : null, normalizedStatus]
       );
       const tid = result.insertId;
       if (qids.length) {
@@ -749,7 +750,7 @@ module.exports = function mountAdminCrud(app, pool) {
   app.put('/api/admin/exam-templates/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
-    const { name, grade_id, description, question_ids } = req.body || {};
+    const { name, grade_id, description, question_ids, status } = req.body || {};
     const conn = await pool.getConnection();
     try {
       const [existingRows] = await conn.query(
@@ -801,6 +802,10 @@ module.exports = function mountAdminCrud(app, pool) {
       if (description !== undefined) {
         updates.push('description = ?');
         params.push(description);
+      }
+      if (status !== undefined && status !== null) {
+        updates.push('status = ?');
+        params.push(Number(status) === 1 ? 1 : 0);
       }
       if (updates.length) {
         params.push(id);
@@ -913,11 +918,13 @@ module.exports = function mountAdminCrud(app, pool) {
 
   // ---------- CONTESTS (theo gui.sql: name, prize, template_id; khối = exam_templates.grade_id)
   // status: 0 đã kết thúc, 1 đã lên lịch, 2 đang kích hoạt ----------
+  const DEFAULT_CONTEST_DURATION_MINUTES = 30;
   app.get('/api/admin/contests', async (req, res) => {
     try {
       await syncContestStatuses();
       const [rows] = await pool.query(
         `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                c.duration_time,
                 t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
@@ -937,6 +944,7 @@ module.exports = function mountAdminCrud(app, pool) {
       await syncContestStatuses();
       const [rows] = await pool.query(
         `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                c.duration_time,
                 t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
@@ -1006,14 +1014,21 @@ module.exports = function mountAdminCrud(app, pool) {
         });
       }
 
+      let durationTime = Number(body.duration_time);
+      if (!Number.isFinite(durationTime) || durationTime <= 0) {
+        durationTime = DEFAULT_CONTEST_DURATION_MINUTES;
+      }
+      durationTime = Math.min(Math.floor(durationTime), 65535);
+
       const [result] = await pool.query(
-        `INSERT INTO contests (name, template_id, start_time, end_time, status, description, prize)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [name, templateId, startD, endD, status, description, prize]
+        `INSERT INTO contests (name, template_id, start_time, end_time, status, description, prize, duration_time)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, templateId, startD, endD, status, description, prize, durationTime]
       );
       const insertId = result.insertId;
       const [rows] = await pool.query(
         `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                c.duration_time,
                 t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
@@ -1115,6 +1130,16 @@ module.exports = function mountAdminCrud(app, pool) {
         params.push(desc);
       }
 
+      if (body.duration_time !== undefined && body.duration_time !== null) {
+        let dt = Number(body.duration_time);
+        if (!Number.isFinite(dt) || dt <= 0) {
+          return res.status(400).json({ message: 'duration_time phải là số phút dương' });
+        }
+        dt = Math.min(Math.floor(dt), 65535);
+        updates.push('duration_time = ?');
+        params.push(dt);
+      }
+
       if (!updates.length) {
         return res.status(400).json({ message: 'Không có trường nào để cập nhật' });
       }
@@ -1145,6 +1170,7 @@ module.exports = function mountAdminCrud(app, pool) {
 
       const [rows] = await pool.query(
         `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+                c.duration_time,
                 t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id

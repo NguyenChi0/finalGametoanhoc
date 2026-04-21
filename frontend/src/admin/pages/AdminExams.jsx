@@ -16,6 +16,7 @@ function buildExamEditDraft(row, questionsInExam) {
     name: row.name,
     description: row.description || "",
     grade_id: row.grade_id,
+    status: Number(row.status) === 1 ? 1 : 0,
     selectedQuestionIds,
   };
 }
@@ -224,21 +225,21 @@ export default function AdminExams() {
           Tổng quan
         </Link>
         <span style={styles.crumbSep}>›</span>
-        <span style={styles.crumbCurrent}>Quản lý exams</span>
+        <span style={styles.crumbCurrent}>Quản lý đề thi</span>
       </nav>
 
       <header style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>Quản lý exams</h1>
+          <h1 style={styles.title}>Quản lý đề thi</h1>
           <p style={styles.lead}>
-            Chọn 1 khối để xem danh sách mẫu đề tương ứng
+            Chào mừng bạn đến với trang quản lý đề thi.
           </p>
         </div>
         <Link to="new" style={styles.btnPrimary}>
           <span style={styles.btnIcon} aria-hidden>
             <PlusIcon />
           </span>
-          Tạo đề / exam mới
+          Tạo đề thi mới
         </Link>
       </header>
 

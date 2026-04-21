@@ -8,6 +8,10 @@ import {
   getAdminExamTemplates,
   getAdminGrades,
 } from "../../api.js";
+import {
+  AdminContestEditModal,
+  AdminContestCreateModal,
+} from "../components/AdminContestPopUp.jsx";
 
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() =>
@@ -43,6 +47,8 @@ const STATUS_TO_DB = {
   active: 2,
 };
 
+const STATUS_MODAL_OPTIONS = STATUS_OPTIONS.filter((item) => item.id !== "all");
+
 function normalizeContestRow(row) {
   const st = Number(row.status);
   const code = Number.isFinite(st) && st >= 0 && st <= 2 ? st : 1;
@@ -55,6 +61,9 @@ function normalizeContestRow(row) {
   const nm = row.name != null && String(row.name).trim() !== "" ? String(row.name).trim() : "";
   const tpl = row.template_name != null ? String(row.template_name) : "";
   const pr = Number(row.prize);
+  const dt = Number(row.duration_time);
+  const durationMinutes =
+    Number.isFinite(dt) && dt > 0 ? Math.min(Math.floor(dt), 65535) : 30;
   return {
     id: row.id,
     gradeId: row.grade_id,
@@ -62,6 +71,7 @@ function normalizeContestRow(row) {
     name: nm || tpl || `Cuộc thi · ${row.grade_name != null ? row.grade_name : `Khối ${row.grade_id}`}`,
     templateName: tpl,
     prize: Number.isFinite(pr) && pr >= 0 ? pr : 0,
+    durationMinutes,
     gradeName: row.grade_name || "",
     description: row.description || "",
     startsAt: toIso(row.start_time),
@@ -131,6 +141,8 @@ export default function AdminContest() {
   const [editStartTime, setEditStartTime] = useState("00:00");
   const [editEndDate, setEditEndDate] = useState("");
   const [editEndTime, setEditEndTime] = useState("23:59");
+  const [editDurationMinutes, setEditDurationMinutes] = useState("30");
+  const [editTemplateId, setEditTemplateId] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newContestName, setNewContestName] = useState("");
   const [newPrize, setNewPrize] = useState("0");
@@ -142,6 +154,7 @@ export default function AdminContest() {
   const [newStartTime, setNewStartTime] = useState("00:00");
   const [newEndDate, setNewEndDate] = useState("");
   const [newEndTime, setNewEndTime] = useState("23:59");
+  const [newDurationMinutes, setNewDurationMinutes] = useState("30");
 
   const selectedStatus = STATUS_OPTIONS.find((item) => item.id === statusId);
 
@@ -182,6 +195,14 @@ export default function AdminContest() {
     return templates.filter((t) => Number(t.grade_id) === gid);
   }, [templates, newGradeId]);
 
+  /** Mẫu đề cùng khối với contest đang sửa — dùng trong pop-up chỉnh sửa */
+  const templatesForEditContest = useMemo(() => {
+    if (!editingContest) return [];
+    const gid = Number(editingContest.gradeId);
+    if (!gid) return [];
+    return templates.filter((t) => Number(t.grade_id) === gid);
+  }, [templates, editingContest]);
+
   const onEditStartDateChange = (e) => {
     const next = e.target.value;
     if (next !== editStartDate) setEditStartTime("00:00");
@@ -215,6 +236,8 @@ export default function AdminContest() {
     setEditStartTime(s.time);
     setEditEndDate(e.date);
     setEditEndTime(e.time);
+    setEditDurationMinutes(String(contest.durationMinutes ?? 30));
+    setEditTemplateId(contest.examId != null ? String(contest.examId) : "");
   };
 
   const closeEditModal = () => {
@@ -246,6 +269,19 @@ export default function AdminContest() {
     if (!Number.isFinite(prizeNum) || prizeNum < 0) prizeNum = 0;
     prizeNum = Math.min(Math.floor(prizeNum), 65535);
 
+    let durMin = Number(editDurationMinutes);
+    if (!Number.isFinite(durMin) || durMin <= 0) {
+      window.alert("Thời gian làm bài (phút) phải là số dương.");
+      return;
+    }
+    durMin = Math.min(Math.floor(durMin), 65535);
+
+    const tid = Number(editTemplateId);
+    if (!tid) {
+      window.alert("Chọn mẫu đề (exam template).");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -256,6 +292,8 @@ export default function AdminContest() {
         end_time: endsAt,
         description: editDescription.trim() || null,
         status: STATUS_TO_DB[editStatus] ?? 1,
+        duration_time: durMin,
+        template_id: tid,
       });
       await loadAll();
       closeEditModal();
@@ -278,6 +316,7 @@ export default function AdminContest() {
     setNewStartTime("00:00");
     setNewEndDate("");
     setNewEndTime("23:59");
+    setNewDurationMinutes("30");
   };
 
   const closeCreateModal = () => {
@@ -312,6 +351,12 @@ export default function AdminContest() {
       window.alert("Vui lòng nhập đầy đủ ngày giờ bắt đầu và kết thúc.");
       return;
     }
+    let durMin = Number(newDurationMinutes);
+    if (!Number.isFinite(durMin) || durMin <= 0) {
+      window.alert("Thời gian làm bài (phút) phải là số dương.");
+      return;
+    }
+    durMin = Math.min(Math.floor(durMin), 65535);
     setSaving(true);
     setError(null);
     try {
@@ -324,6 +369,7 @@ export default function AdminContest() {
         end_time: endsAt,
         description: newContestDescription.trim() || null,
         status: STATUS_TO_DB[newContestStatus] ?? 1,
+        duration_time: durMin,
       });
       await loadAll();
       closeCreateModal();
@@ -347,7 +393,7 @@ export default function AdminContest() {
     return contests.filter((contest) => {
       const matchesStatus = statusId === "all" || contest.status === statusId;
       const examLabel = getTemplateLabel(contest.examId);
-      const matchesSearch = `${contest.id} ${contest.name} ${contest.templateName} ${contest.prize} ${contest.description} ${contest.gradeName} ${formatContestSchedule(
+      const matchesSearch = `${contest.id} ${contest.name} ${contest.templateName} ${contest.prize} ${contest.durationMinutes} ${contest.description} ${contest.gradeName} ${formatContestSchedule(
         contest.startsAt,
         contest.endsAt
       )} ${examLabel}`
@@ -584,6 +630,10 @@ export default function AdminContest() {
                   <span style={styles.cardValue}>{contest.prize}</span>
                 </div>
                 <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Thời gian làm bài</span>
+                  <span style={styles.cardValue}>{contest.durationMinutes} phút</span>
+                </div>
+                <div style={styles.cardField}>
                   <span style={styles.cardLabel}>Thời gian diễn ra</span>
                   <span style={{ ...styles.cardValue, fontSize: "0.85rem" }}>
                     {formatContestSchedule(contest.startsAt, contest.endsAt)}
@@ -646,6 +696,7 @@ export default function AdminContest() {
                 <th style={styles.th}>Tên contest</th>
                 <th style={styles.th}>Mô tả</th>
                 <th style={{ ...styles.th, width: 88, textAlign: "right" }}>Điểm giải</th>
+                <th style={{ ...styles.th, width: 96, textAlign: "right" }}>Làm bài</th>
                 <th style={{ ...styles.th, minWidth: 200 }}>Thời gian</th>
                 <th style={styles.th}>Mẫu đề</th>
                 <th style={styles.th}>Trạng thái</th>
@@ -657,13 +708,13 @@ export default function AdminContest() {
             <tbody>
               {listLoading ? (
                 <tr>
-                  <td colSpan={8} style={styles.tdEmpty}>
+                  <td colSpan={9} style={styles.tdEmpty}>
                     Đang tải danh sách contest…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={styles.tdEmpty}>
+                  <td colSpan={9} style={styles.tdEmpty}>
                     {search.trim()
                       ? `Không có kết quả phù hợp với “${search}”.`
                       : contests.length === 0
@@ -691,6 +742,9 @@ export default function AdminContest() {
                         </td>
                         <td style={{ ...styles.td, textAlign: "right", fontWeight: 600 }}>
                           {contest.prize}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: "right", fontSize: "0.88rem" }}>
+                          {contest.durationMinutes}′
                         </td>
                         <td style={{ ...styles.td, fontSize: "0.82rem", color: "#57606a", whiteSpace: "nowrap" }}>
                           {formatContestSchedule(contest.startsAt, contest.endsAt)}
@@ -744,7 +798,7 @@ export default function AdminContest() {
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={8} style={styles.nestedCell}>
+                          <td colSpan={9} style={styles.nestedCell}>
                             <div style={styles.nestedPanel}>
                               <div style={styles.nestedHeader} />
                               {renderExamAssignment(contest)}
@@ -762,328 +816,71 @@ export default function AdminContest() {
       )}
 
       {editingContest && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-contest-title">
-            <div style={styles.modalHeader}>
-              <h2 id="edit-contest-title" style={styles.modalTitle}>
-                Chỉnh sửa contest
-              </h2>
-              <button type="button" style={styles.modalClose} onClick={closeEditModal} aria-label="Đóng">
-                ×
-              </button>
-            </div>
-            <div style={styles.modalBody}>
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="edit-contest-name">
-                  Tên cuộc thi
-                </label>
-                <input
-                  id="edit-contest-name"
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  style={styles.modalTextInput}
-                  maxLength={255}
-                />
-              </div>
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="edit-contest-prize">
-                  Điểm giải (prize)
-                </label>
-                <input
-                  id="edit-contest-prize"
-                  type="number"
-                  min={0}
-                  max={65535}
-                  step={1}
-                  value={editPrize}
-                  onChange={(e) => setEditPrize(e.target.value)}
-                  style={styles.modalTextInput}
-                />
-              </div>
-              <div style={styles.modalField}>
-                <span style={styles.modalLabel}>Mẫu đề đang gắn</span>
-                <p style={{ margin: "4px 0 0", fontSize: "0.9rem", color: "#24292f" }}>
-                  {editingContest.templateName || "—"}
-                </p>
-                <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#57606a" }}>
-                  Khối: {editingContest.gradeName} — đổi mẫu đề trong phần mở rộng dòng bảng.
-                </p>
-              </div>
-
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="edit-contest-description">
-                  Mô tả
-                </label>
-                <textarea
-                  id="edit-contest-description"
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Mô tả ngắn về contest"
-                  rows={3}
-                  style={styles.modalTextarea}
-                />
-              </div>
-
-              <div style={styles.modalField}>
-                <span style={styles.modalLabel}>Thời gian bắt đầu</span>
-                <div style={styles.modalDateTimeRow} lang="en-GB">
-                  <input
-                    type="date"
-                    value={editStartDate}
-                    onChange={onEditStartDateChange}
-                    style={styles.modalDateInput}
-                    aria-label="Ngày bắt đầu"
-                  />
-                  <input
-                    type="time"
-                    step={60}
-                    value={editStartTime}
-                    onChange={(e) => setEditStartTime(e.target.value)}
-                    style={styles.modalTimeInput}
-                    aria-label="Giờ bắt đầu (24h)"
-                  />
-                </div>
-              </div>
-              <div style={styles.modalField}>
-                <span style={styles.modalLabel}>Thời gian kết thúc</span>
-                <div style={styles.modalDateTimeRow} lang="en-GB">
-                  <input
-                    type="date"
-                    value={editEndDate}
-                    onChange={onEditEndDateChange}
-                    style={styles.modalDateInput}
-                    aria-label="Ngày kết thúc"
-                  />
-                  <input
-                    type="time"
-                    step={60}
-                    value={editEndTime}
-                    onChange={(e) => setEditEndTime(e.target.value)}
-                    style={styles.modalTimeInput}
-                    aria-label="Giờ kết thúc (24h)"
-                  />
-                </div>
-              </div>
-                
-
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="edit-contest-status">
-                  Trạng thái
-                </label>
-                <select
-                  id="edit-contest-status"
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value)}
-                  style={styles.modalSelect}
-                >
-                {STATUS_OPTIONS.filter((item) => item.id !== "all").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-                </select>
-              </div>
-            </div>
-            <div style={styles.modalActions}>
-              <button
-                type="button"
-                style={styles.btnSave}
-                onClick={saveEditModal}
-                disabled={saving}
-              >
-                Lưu
-              </button>
-              <button
-                type="button"
-                style={styles.btnCancel}
-                onClick={closeEditModal}
-                disabled={saving}
-              >
-                Hủy
-              </button>
-            </div>
-          </div>
-        </div>
+        <AdminContestEditModal
+          styles={styles}
+          statusModalOptions={STATUS_MODAL_OPTIONS}
+          contest={editingContest}
+          editName={editName}
+          setEditName={setEditName}
+          editPrize={editPrize}
+          setEditPrize={setEditPrize}
+          editDescription={editDescription}
+          setEditDescription={setEditDescription}
+          editStatus={editStatus}
+          setEditStatus={setEditStatus}
+          editStartDate={editStartDate}
+          editStartTime={editStartTime}
+          editEndDate={editEndDate}
+          editEndTime={editEndTime}
+          setEditStartTime={setEditStartTime}
+          setEditEndTime={setEditEndTime}
+          editDurationMinutes={editDurationMinutes}
+          setEditDurationMinutes={setEditDurationMinutes}
+          editTemplateId={editTemplateId}
+          setEditTemplateId={setEditTemplateId}
+          templatesForEdit={templatesForEditContest}
+          onEditStartDateChange={onEditStartDateChange}
+          onEditEndDateChange={onEditEndDateChange}
+          onClose={closeEditModal}
+          onSave={saveEditModal}
+          saving={saving}
+        />
       )}
 
       {isCreateModalOpen && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modal} role="dialog" aria-modal="true" aria-labelledby="create-contest-title">
-            <div style={styles.modalHeader}>
-              <h2 id="create-contest-title" style={styles.modalTitle}>
-                Tạo contest mới
-              </h2>
-              <button type="button" style={styles.modalClose} onClick={closeCreateModal} aria-label="Đóng">
-                ×
-              </button>
-            </div>
-            <div style={styles.modalBody}>
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="create-contest-name">
-                  Tên cuộc thi
-                </label>
-                <input
-                  id="create-contest-name"
-                  type="text"
-                  value={newContestName}
-                  onChange={(e) => setNewContestName(e.target.value)}
-                  placeholder="Ví dụ: Tuần 3 – Lớp 1"
-                  style={styles.modalTextInput}
-                  maxLength={255}
-                />
-              </div>
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="create-contest-prize">
-                  Điểm giải (prize)
-                </label>
-                <input
-                  id="create-contest-prize"
-                  type="number"
-                  min={0}
-                  max={65535}
-                  step={1}
-                  value={newPrize}
-                  onChange={(e) => setNewPrize(e.target.value)}
-                  style={styles.modalTextInput}
-                />
-              </div>
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="create-contest-grade">
-                  Khối lớp
-                </label>
-                <select
-                  id="create-contest-grade"
-                  value={newGradeId}
-                  onChange={(e) => {
-                    setNewGradeId(e.target.value);
-                    setNewTemplateId("");
-                  }}
-                  style={styles.modalSelect}
-                >
-                  <option value="">— Chọn khối —</option>
-                  {grades.map((g) => (
-                    <option key={g.id} value={String(g.id)}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              
-              </div>
-
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="create-contest-template">
-                  Mẫu đề (exam template)
-                </label>
-                <select
-                  id="create-contest-template"
-                  value={newTemplateId}
-                  onChange={(e) => setNewTemplateId(e.target.value)}
-                  style={styles.modalSelect}
-                  disabled={!newGradeId}
-                >
-                  <option value="">— Chọn mẫu đề —</option>
-                  {templatesForGrade.map((t) => (
-                    <option key={t.id} value={String(t.id)}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="create-contest-description">
-                  Mô tả
-                </label>
-                <textarea
-                  id="create-contest-description"
-                  value={newContestDescription}
-                  onChange={(e) => setNewContestDescription(e.target.value)}
-                  placeholder="Mô tả ngắn về contest"
-                  rows={3}
-                  style={styles.modalTextarea}
-                />
-              </div>
-
-              <div style={styles.modalField}>
-                <span style={styles.modalLabel}>Thời gian bắt đầu</span>
-                <div style={styles.modalDateTimeRow} lang="en-GB">
-                  <input
-                    type="date"
-                    value={newStartDate}
-                    onChange={onNewStartDateChange}
-                    style={styles.modalDateInput}
-                    aria-label="Ngày bắt đầu"
-                  />
-                  <input
-                    type="time"
-                    step={60}
-                    value={newStartTime}
-                    onChange={(e) => setNewStartTime(e.target.value)}
-                    style={styles.modalTimeInput}
-                    aria-label="Giờ bắt đầu (24h)"
-                  />
-                </div>
-              </div>
-              <div style={styles.modalField}>
-                <span style={styles.modalLabel}>Thời gian kết thúc</span>
-                <div style={styles.modalDateTimeRow} lang="en-GB">
-                  <input
-                    type="date"
-                    value={newEndDate}
-                    onChange={onNewEndDateChange}
-                    style={styles.modalDateInput}
-                    aria-label="Ngày kết thúc"
-                  />
-                  <input
-                    type="time"
-                    step={60}
-                    value={newEndTime}
-                    onChange={(e) => setNewEndTime(e.target.value)}
-                    style={styles.modalTimeInput}
-                    aria-label="Giờ kết thúc (24h)"
-                  />
-                </div>
-              </div>
-
-              <div style={styles.modalField}>
-                <label style={styles.modalLabel} htmlFor="create-contest-status">
-                  Trạng thái
-                </label>
-                <select
-                  id="create-contest-status"
-                  value={newContestStatus}
-                  onChange={(e) => setNewContestStatus(e.target.value)}
-                  style={styles.modalSelect}
-                >
-                {STATUS_OPTIONS.filter((item) => item.id !== "all").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-                </select>
-              </div>
-            </div>
-            <div style={styles.modalActions}>
-              <button
-                type="button"
-                style={styles.btnSave}
-                onClick={saveCreateModal}
-                disabled={saving}
-              >
-                Tạo contest
-              </button>
-              <button
-                type="button"
-                style={styles.btnCancel}
-                onClick={closeCreateModal}
-                disabled={saving}
-              >
-                Hủy
-              </button>
-            </div>
-          </div>
-        </div>
+        <AdminContestCreateModal
+          styles={styles}
+          statusModalOptions={STATUS_MODAL_OPTIONS}
+          newContestName={newContestName}
+          setNewContestName={setNewContestName}
+          newPrize={newPrize}
+          setNewPrize={setNewPrize}
+          newDurationMinutes={newDurationMinutes}
+          setNewDurationMinutes={setNewDurationMinutes}
+          newGradeId={newGradeId}
+          setNewGradeId={setNewGradeId}
+          newTemplateId={newTemplateId}
+          setNewTemplateId={setNewTemplateId}
+          newContestDescription={newContestDescription}
+          setNewContestDescription={setNewContestDescription}
+          newContestStatus={newContestStatus}
+          setNewContestStatus={setNewContestStatus}
+          newStartDate={newStartDate}
+          setNewStartDate={setNewStartDate}
+          newStartTime={newStartTime}
+          setNewStartTime={setNewStartTime}
+          newEndDate={newEndDate}
+          setNewEndDate={setNewEndDate}
+          newEndTime={newEndTime}
+          setNewEndTime={setNewEndTime}
+          onNewStartDateChange={onNewStartDateChange}
+          onNewEndDateChange={onNewEndDateChange}
+          grades={grades}
+          templatesForGrade={templatesForGrade}
+          onClose={closeCreateModal}
+          onSave={saveCreateModal}
+          saving={saving}
+        />
       )}
     </div>
   );
@@ -1624,14 +1421,20 @@ const styles = {
     inset: 0,
     background: "rgba(15, 23, 42, 0.35)",
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
     zIndex: 1000,
-    padding: 16,
+    padding: "max(20px, env(safe-area-inset-top, 0px)) 16px max(28px, env(safe-area-inset-bottom, 0px))",
+    /* Mobile + dài: cuộn cả lớp phủ (scroll trang), không cuộn riêng trong khung modal */
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    WebkitOverflowScrolling: "touch",
   },
   modal: {
     width: "min(560px, calc(100vw - 32px))",
     maxWidth: "100%",
+    marginTop: 8,
+    marginBottom: 8,
     background: "#fff",
     borderRadius: 18,
     boxShadow: "0 24px 56px rgba(15, 23, 42, 0.18)",

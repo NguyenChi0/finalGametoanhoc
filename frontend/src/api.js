@@ -74,11 +74,16 @@ export const getAuthMe = async () => {
 // ==========================
 // Contests (trang user — không qua /admin)
 // ==========================
+/**
+ * Danh sách cuộc thi (user): chỉ cuộc đang diễn ra (`status === 2`).
+ * Mỗi phần tử có `exam_duration_minutes` / `duration_time` = thời gian làm bài (phút) từ DB.
+ */
 export const getContests = async () => {
   const res = await api.get("/contests");
   return res.data;
 };
 
+/** Chi tiết một cuộc thi — cùng trường thời lượng làm bài như danh sách. */
 export const getContestById = async (id) => {
   const res = await api.get(`/contests/${id}`);
   return res.data;
@@ -87,6 +92,20 @@ export const getContestById = async (id) => {
 /** Lưu điểm một lần / contest vào `user_contests` (409 nếu đã thi). */
 export const submitContestScore = async (contestId, { score }) => {
   const res = await api.post(`/contests/${contestId}/submit`, { score });
+  return res.data;
+};
+
+// ==========================
+// Exams (exam_templates) - user
+// ==========================
+export const getExams = async () => {
+  const res = await api.get("/exams");
+  return res.data;
+};
+
+/** Chi tiết đề luyện: `questions[]` có `question_text`, `question_image`, `answers` (giống /api/questions). */
+export const getExamById = async (id) => {
+  const res = await api.get(`/exams/${id}`);
   return res.data;
 };
 

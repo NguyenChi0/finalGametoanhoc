@@ -9,6 +9,8 @@ const Register = lazy(() => import("./users/pages/register"));
 const ForgotPassword = lazy(() => import("./users/pages/forgotPassword"));
 const Contest = lazy(() => import("./users/pages/contest"));
 const ContestDetailPage = lazy(() => import("./users/pages/contestDetailPage"));
+const Exam = lazy(() => import("./users/pages/Exam"));
+const ExamDetailPage = lazy(() => import("./users/pages/ExamDetailPage"));
 const GamePage = lazy(() => import("./users/pages/gamepage"));
 const Profile = lazy(() => import("./users/pages/profile"));
 const Shop = lazy(() => import("./users/pages/shop"));
@@ -44,6 +46,8 @@ function AppShell() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/contest" element={<Contest />} />
           <Route path="/contest/:contestId" element={<ContestDetailPage />} />
+          <Route path="/exam" element={<Exam />} />
+          <Route path="/exam/:examId" element={<ExamDetailPage />} />
           <Route path="/game/:gameId" element={<GamePage />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile/:username" element={<Profile />} />

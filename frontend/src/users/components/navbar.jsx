@@ -290,6 +290,11 @@ export default function Navbar() {
               </Link>
             )}
             {user && (
+              <Link to="/exam" style={linkBase}>
+                Đề thi
+              </Link>
+            )}
+            {user && (
               <Link to="/shop" style={linkBase}>
                 Cửa hàng
               </Link>
@@ -395,6 +400,11 @@ export default function Navbar() {
         {user && (
           <Link to="/contest" role="menuitem" onClick={() => setMobileOpen(false)}>
             Cuộc thi
+          </Link>
+        )}
+        {user && (
+          <Link to="/exam" role="menuitem" onClick={() => setMobileOpen(false)}>
+            Đề thi
           </Link>
         )}
         {user && (

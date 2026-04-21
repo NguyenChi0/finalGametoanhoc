@@ -927,6 +927,76 @@ app.get("/api/leaderboard/week", async (req, res) => {
 });
 
 // ==========================
+// API: EXAMS (exam_templates) - user
+// ==========================
+app.get('/api/exams', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.id, t.name, t.grade_id, g.name AS grade_name, t.description,
+              t.duration_time, t.start_date, t.status, t.created_at,
+              (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = t.id) AS question_count
+       FROM exam_templates t
+       LEFT JOIN grades g ON g.id = t.grade_id
+       WHERE t.status = 1
+       ORDER BY t.id DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Error GET /api/exams:', err);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách đề thi' });
+  }
+});
+
+app.get('/api/exams/:id', authenticateToken, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ message: 'id không hợp lệ' });
+  }
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.id, t.name, t.grade_id, g.name AS grade_name, t.description,
+              t.duration_time, t.start_date, t.status, t.created_at
+       FROM exam_templates t
+       LEFT JOIN grades g ON g.id = t.grade_id
+       WHERE t.id = ? AND t.status = 1
+       LIMIT 1`,
+      [id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Không tìm thấy đề thi' });
+    }
+
+    const [qrows] = await pool.query(
+      `SELECT q.*
+       FROM exam_template_questions etq
+       JOIN questions q ON q.id = etq.question_id
+       WHERE etq.template_id = ?
+       ORDER BY etq.id ASC`,
+      [id]
+    );
+
+    const questions = qrows.map((r) => ({
+      id: r.id,
+      grade_id: r.grade_id,
+      type_id: r.type_id,
+      lesson_id: r.lesson_id,
+      question_text: r.question_text,
+      question_image: r.question_image,
+      answers: buildAnswers(r),
+    }));
+
+    return res.json({
+      ...rows[0],
+      question_count: questions.length,
+      questions,
+    });
+  } catch (err) {
+    console.error('Error GET /api/exams/:id:', err);
+    res.status(500).json({ message: 'Lỗi khi lấy chi tiết đề thi' });
+  }
+});
+
+// ==========================
 // API: CONTESTS (danh sách / chi tiết — trang user, không cần admin)
 // ==========================
 const DEFAULT_CONTEST_EXAM_DURATION_MINUTES = 30;
@@ -967,11 +1037,17 @@ function shapePublicContestRow(row) {
   const q = Number(row.question_count);
   const ms = row.my_score;
   const effectiveStatus = computeContestStatusByTime(row.start_time, row.end_time);
+  const rawDur = row.duration_time != null ? Number(row.duration_time) : NaN;
+  const examMinutes =
+    Number.isFinite(rawDur) && rawDur > 0
+      ? Math.min(Math.floor(rawDur), 65535)
+      : DEFAULT_CONTEST_EXAM_DURATION_MINUTES;
   return {
     ...row,
     status: effectiveStatus,
     question_count: Number.isFinite(q) ? q : 0,
-    exam_duration_minutes: DEFAULT_CONTEST_EXAM_DURATION_MINUTES,
+    exam_duration_minutes: examMinutes,
+    duration_time: examMinutes,
     completed: Boolean(Number(row.completed)),
     my_score: ms != null && ms !== '' ? Number(ms) : null,
   };
@@ -986,6 +1062,7 @@ app.get('/api/contests', authenticateToken, async (req, res) => {
     await syncContestStatuses();
     const [rows] = await pool.query(
       `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+              c.duration_time,
               t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name,
               (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count,
               uc.score AS my_score,
@@ -997,7 +1074,9 @@ app.get('/api/contests', authenticateToken, async (req, res) => {
        ORDER BY c.start_time DESC, c.id DESC`,
       [userId]
     );
-    res.json(rows.map(shapePublicContestRow));
+    const shaped = rows.map(shapePublicContestRow);
+    // Trang user: chỉ liệt kê cuộc thi đang diễn ra (theo thời gian → status = 2).
+    res.json(shaped.filter((c) => c.status === CONTEST_STATUS_ACTIVE));
   } catch (err) {
     console.error('Error GET /api/contests:', err);
     res.status(500).json({ message: 'L\u1ED7i khi l\u1EA5y danh s\u00E1ch cu\u1ED9c thi' });
@@ -1017,6 +1096,7 @@ app.get('/api/contests/:id', authenticateToken, async (req, res) => {
     await syncContestStatuses();
     const [rows] = await pool.query(
       `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+              c.duration_time,
               t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name,
               (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count,
               uc.score AS my_score,
