@@ -8,6 +8,8 @@ import {
   itemImageUrl,
 } from "../../api";
 
+const ITEMS_PAGE_SIZE = 10;
+
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia(query).matches : false
@@ -45,6 +47,7 @@ export default function AdminItems() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -94,6 +97,24 @@ export default function AdminItems() {
       return blob.includes(q);
     });
   }, [items, search]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / ITEMS_PAGE_SIZE) || 1),
+    [filtered.length]
+  );
+
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * ITEMS_PAGE_SIZE;
+    return filtered.slice(start, start + ITEMS_PAGE_SIZE);
+  }, [filtered, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, items.length]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const totalFormatted = useMemo(() => {
     if (loading && items.length === 0 && !error) return "—";
@@ -368,7 +389,10 @@ export default function AdminItems() {
             type="search"
             placeholder="Tìm theo ID, tên, mô tả, giá…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             style={styles.searchInput}
             aria-label="Tìm kiếm vật phẩm"
           />
@@ -389,7 +413,7 @@ export default function AdminItems() {
             {filtered.length === 0 ? (
               <div style={styles.cardEmpty}>Không có kết quả phù hợp với “{search}”.</div>
             ) : (
-              filtered.map((it) => (
+              pagedItems.map((it) => (
                 <article key={it.id} style={styles.itemCard}>
                   <div style={styles.cardField}>
                     <span style={styles.cardLabel}>ID</span>
@@ -466,7 +490,7 @@ export default function AdminItems() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((it) => (
+                  pagedItems.map((it) => (
                     <tr key={it.id}>
                       <td style={styles.td}>{it.id}</td>
                       <td style={{ ...styles.td, fontWeight: 700 }}>{it.name}</td>
@@ -513,6 +537,42 @@ export default function AdminItems() {
             </table>
           </div>
         ))}
+
+      {filtered.length > 0 && (
+        <nav style={styles.paginationBar} aria-label="Phân trang danh sách vật phẩm">
+          <p style={styles.paginationMeta}>
+            Hiển thị {(page - 1) * ITEMS_PAGE_SIZE + 1}-
+            {Math.min(page * ITEMS_PAGE_SIZE, filtered.length)} / {filtered.length} vật phẩm
+          </p>
+          <div style={styles.paginationControls}>
+            <button
+              type="button"
+              style={{
+                ...styles.paginationBtn,
+                ...(page <= 1 ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Trước
+            </button>
+            <span style={styles.paginationPage}>
+              Trang {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              style={{
+                ...styles.paginationBtn,
+                ...(page >= totalPages ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Sau
+            </button>
+          </div>
+        </nav>
+      )}
 
       {editOpen && (
         <div style={styles.modalOverlay} role="dialog" aria-modal="true">
@@ -1283,5 +1343,44 @@ const styles = {
     cursor: "pointer",
     fontWeight: 600,
     fontFamily: "inherit",
+  },
+  paginationBar: {
+    marginTop: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  paginationMeta: {
+    margin: 0,
+    fontSize: "0.9rem",
+    color: "#57606a",
+  },
+  paginationControls: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  paginationBtn: {
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    color: "#24292f",
+    borderRadius: 8,
+    padding: "6px 12px",
+    cursor: "pointer",
+    fontWeight: 600,
+    fontFamily: "inherit",
+  },
+  paginationBtnDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  },
+  paginationPage: {
+    minWidth: 96,
+    textAlign: "center",
+    color: "#57606a",
+    fontSize: "0.9rem",
   },
 };

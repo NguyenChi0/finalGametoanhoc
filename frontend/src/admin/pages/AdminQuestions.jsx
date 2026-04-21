@@ -9,7 +9,7 @@ import {
 } from "../../api";
 
 /** Số câu hỏi tối đa mỗi trang (đồng bộ với API limit). */
-const QUESTIONS_PAGE_SIZE = 20;
+const QUESTIONS_PAGE_SIZE = 10;
 
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() =>

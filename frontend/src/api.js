@@ -98,8 +98,11 @@ export const submitContestScore = async (contestId, { score }) => {
 // ==========================
 // Exams (exam_templates) - user
 // ==========================
-export const getExams = async () => {
-  const res = await api.get("/exams");
+export const getExams = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await api.get("/exams", { params });
   return res.data;
 };
 

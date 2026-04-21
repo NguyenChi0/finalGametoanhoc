@@ -174,7 +174,7 @@ export default function Shop() {
         <div className="shop-frame">
           <div className="shop-header-block">
             <h2 style={{ marginTop: 0, marginBottom: 8, color: "#0F4C75", fontSize: "1.25rem" }}>
-              🛍️ Cửa hàng vật phẩm
+              Cửa hàng vật phẩm
             </h2>
             <p style={{ color: "#004F8D", marginBottom: 12, fontSize: "0.9rem" }}>
               Điểm hiện tại của bạn: <strong>{user?.score ?? 0}</strong>

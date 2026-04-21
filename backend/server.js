@@ -931,16 +931,53 @@ app.get("/api/leaderboard/week", async (req, res) => {
 // ==========================
 app.get('/api/exams', authenticateToken, async (req, res) => {
   try {
+    const rawGradeId = req.query.grade_id;
+    const gradeId =
+      rawGradeId != null && String(rawGradeId).trim() !== '' ? Number(rawGradeId) : null;
+    const rawPage = Number(req.query.page);
+    const rawPageSize = Number(req.query.page_size);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0
+      ? Math.min(100, Math.floor(rawPageSize))
+      : 10;
+    const offset = (page - 1) * pageSize;
+
+    const where = ['t.status = 1'];
+    const whereParams = [];
+    if (Number.isFinite(gradeId) && gradeId > 0) {
+      where.push('t.grade_id = ?');
+      whereParams.push(gradeId);
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM exam_templates t
+       ${whereSql}`,
+      whereParams
+    );
+    const total = Number(countRows?.[0]?.total || 0);
+
     const [rows] = await pool.query(
       `SELECT t.id, t.name, t.grade_id, g.name AS grade_name, t.description,
               t.duration_time, t.start_date, t.status, t.created_at,
               (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = t.id) AS question_count
        FROM exam_templates t
        LEFT JOIN grades g ON g.id = t.grade_id
-       WHERE t.status = 1
-       ORDER BY t.id DESC`
+       ${whereSql}
+       ORDER BY t.id DESC
+       LIMIT ? OFFSET ?`,
+      [...whereParams, pageSize, offset]
     );
-    res.json(rows);
+    res.json({
+      data: rows,
+      pagination: {
+        page,
+        page_size: pageSize,
+        total,
+        total_pages: total > 0 ? Math.ceil(total / pageSize) : 1,
+      },
+    });
   } catch (err) {
     console.error('Error GET /api/exams:', err);
     res.status(500).json({ message: 'Lỗi khi lấy danh sách đề thi' });
