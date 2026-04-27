@@ -89,9 +89,9 @@ export const getContestById = async (id) => {
   return res.data;
 };
 
-/** Lưu điểm một lần / contest vào `user_contests` (409 nếu đã thi). */
-export const submitContestScore = async (contestId, { score }) => {
-  const res = await api.post(`/contests/${contestId}/submit`, { score });
+/** Lưu kết quả contest một lần: `score` và `times` (giây) vào `user_contests`. */
+export const submitContestScore = async (contestId, { score, times }) => {
+  const res = await api.post(`/contests/${contestId}/submit`, { score, times });
   return res.data;
 };
 

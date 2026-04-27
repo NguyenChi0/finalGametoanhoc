@@ -21,6 +21,8 @@ export default function Leaderboard() {
       }
     };
     fetchLeaders();
+    const timer = setInterval(fetchLeaders, 60 * 1000);
+    return () => clearInterval(timer);
   }, [tab]);
 
   const getRankStyle = (index) => {
@@ -505,7 +507,7 @@ const styles = {
     background: "rgba(255, 255, 255, 0.38)",
     backdropFilter: "blur(14px)",
     WebkitBackdropFilter: "blur(14px)",
-    borderRadius: "16px",
+    borderRadius: "0px",
     border: "1px solid rgba(255, 255, 255, 0.65)",
     padding: "15px",
     boxShadow: "0 8px 32px rgba(74, 158, 196, 0.18)",

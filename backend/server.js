@@ -803,8 +803,65 @@ app.put(
 );
 
 //=========Lưu điểm=========================
+const WEEKLY_LEADERBOARD_STATE_KEY = 'leaderboard_week_key';
+
+async function ensureWeeklyLeaderboardStateTable() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS app_runtime_state (
+      key_name VARCHAR(64) NOT NULL PRIMARY KEY,
+      value_text VARCHAR(64) NOT NULL,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`
+  );
+}
+
+/**
+ * Reset tuần đúng 1 lần khi sang tuần ISO mới (YEARWEEK mode 1).
+ * Dùng row lock để tránh reset trùng nếu có nhiều request đồng thời.
+ */
+async function resetWeeklyScoresIfNeeded() {
+  await ensureWeeklyLeaderboardStateTable();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[wkRow]] = await conn.query(
+      'SELECT CAST(YEARWEEK(NOW(), 1) AS CHAR) AS week_key'
+    );
+    const currentWeekKey = String(wkRow?.week_key || '');
+    const [stateRows] = await conn.query(
+      'SELECT value_text FROM app_runtime_state WHERE key_name = ? FOR UPDATE',
+      [WEEKLY_LEADERBOARD_STATE_KEY]
+    );
+    if (!stateRows.length) {
+      await conn.query(
+        'INSERT INTO app_runtime_state (key_name, value_text) VALUES (?, ?)',
+        [WEEKLY_LEADERBOARD_STATE_KEY, currentWeekKey]
+      );
+      await conn.commit();
+      return;
+    }
+    const previousWeekKey = String(stateRows[0].value_text || '');
+    if (previousWeekKey !== currentWeekKey) {
+      await conn.query(
+        'UPDATE users SET week_score = 0 WHERE COALESCE(week_score, 0) <> 0'
+      );
+      await conn.query(
+        'UPDATE app_runtime_state SET value_text = ? WHERE key_name = ?',
+        [currentWeekKey, WEEKLY_LEADERBOARD_STATE_KEY]
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 app.post('/api/score/increment', authenticateToken, async (req, res) => {
   try {
+    await resetWeeklyScoresIfNeeded();
     const { userId, delta = 1 } = req.body;
     const targetUserId =
       Number(req.auth?.role) === 1 ? Number(userId) : Number(req.auth?.sub);
@@ -843,6 +900,7 @@ app.get('/api/user/:username', authenticateToken, async (req, res) => {
   }
 
   try {
+    await resetWeeklyScoresIfNeeded();
     // 1) Lấy user
     const [rows] = await pool.execute(
       'SELECT * FROM users WHERE username = ?',
@@ -916,6 +974,7 @@ app.get("/api/leaderboard/all", async (req, res) => {
 
 app.get("/api/leaderboard/week", async (req, res) => {
   try {
+    await resetWeeklyScoresIfNeeded();
     const [rows] = await pool.execute(
       "SELECT username, week_score FROM users ORDER BY week_score DESC LIMIT 10"
     );
@@ -1069,6 +1128,64 @@ async function syncContestStatuses() {
   );
 }
 
+/**
+ * Mỗi cuộc thi đã kết thúc: cộng `contests.prize` vào `users.score` cho tối đa 3 người điểm cao nhất
+ * (cùng mức thưởng mỗi người). Chỉ chạy một lần nhờ `prize_distributed`.
+ */
+async function distributeEndedContestPrizes() {
+  const [pending] = await pool.query(
+    `SELECT id FROM contests
+     WHERE end_time <= NOW() AND prize_distributed = 0
+     ORDER BY id ASC`
+  );
+  if (!pending.length) return;
+  for (const row of pending) {
+    const contestId = row.id;
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [locked] = await conn.query(
+        `SELECT id, prize FROM contests
+         WHERE id = ? AND end_time <= NOW() AND prize_distributed = 0
+         FOR UPDATE`,
+        [contestId]
+      );
+      if (!locked.length) {
+        await conn.commit();
+        continue;
+      }
+      const prize = Math.max(0, Math.floor(Number(locked[0].prize)) || 0);
+      if (prize > 0) {
+        const [top] = await conn.query(
+          `SELECT user_id FROM user_contests
+           WHERE contest_id = ?
+           ORDER BY score DESC, id ASC
+           LIMIT 3`,
+          [contestId]
+        );
+        for (const t of top) {
+          const uid = Number(t.user_id);
+          if (Number.isFinite(uid) && uid > 0) {
+            await conn.query('UPDATE users SET score = score + ? WHERE id = ?', [prize, uid]);
+          }
+        }
+      }
+      await conn.query('UPDATE contests SET prize_distributed = 1 WHERE id = ?', [contestId]);
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      console.error('Error distributeEndedContestPrizes (contest %s):', contestId, err);
+    } finally {
+      conn.release();
+    }
+  }
+}
+
+async function syncContestJobs() {
+  await syncContestStatuses();
+  await distributeEndedContestPrizes();
+}
+
 function shapePublicContestRow(row) {
   if (!row) return row;
   const q = Number(row.question_count);
@@ -1096,7 +1213,7 @@ app.get('/api/contests', authenticateToken, async (req, res) => {
     return res.status(401).json({ message: 'Token kh\u00F4ng h\u1EE3p l\u1EC7' });
   }
   try {
-    await syncContestStatuses();
+    await syncContestJobs();
     const [rows] = await pool.query(
       `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
               c.duration_time,
@@ -1130,7 +1247,7 @@ app.get('/api/contests/:id', authenticateToken, async (req, res) => {
     return res.status(400).json({ message: 'id kh\u00F4ng h\u1EE3p l\u1EC7' });
   }
   try {
-    await syncContestStatuses();
+    await syncContestJobs();
     const [rows] = await pool.query(
       `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
               c.duration_time,
@@ -1159,7 +1276,9 @@ app.post('/api/contests/:id/submit', authenticateToken, async (req, res) => {
   const contestId = Number(req.params.id);
   const userId = Number(req.auth?.sub);
   const scoreRaw = req.body?.score;
+  const timesRaw = req.body?.times;
   const score = Math.floor(Number(scoreRaw));
+  const times = Math.floor(Number(timesRaw));
 
   if (!Number.isFinite(contestId) || contestId <= 0) {
     return res.status(400).json({ message: 'Cu\u1ED9c thi kh\u00F4ng h\u1EE3p l\u1EC7' });
@@ -1170,9 +1289,12 @@ app.post('/api/contests/:id/submit', authenticateToken, async (req, res) => {
   if (!Number.isFinite(score) || score < 0) {
     return res.status(400).json({ message: '\u0110i\u1EC3m s\u1ED1 kh\u00F4ng h\u1EE3p l\u1EC7' });
   }
+  if (!Number.isFinite(times) || times < 0) {
+    return res.status(400).json({ message: 'Th\u1EDDi gian l\u00E0m b\u00E0i (gi\u00E2y) kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
 
   try {
-    await syncContestStatuses();
+    await syncContestJobs();
     const [cRows] = await pool.query('SELECT id, template_id, start_time, end_time, status FROM contests WHERE id = ? LIMIT 1', [
       contestId,
     ]);
@@ -1200,12 +1322,13 @@ app.post('/api/contests/:id/submit', authenticateToken, async (req, res) => {
     }
 
     await pool.query(
-      'INSERT INTO user_contests (user_id, contest_id, score) VALUES (?, ?, ?)',
-      [userId, contestId, score]
+      'INSERT INTO user_contests (user_id, contest_id, score, times) VALUES (?, ?, ?, ?)',
+      [userId, contestId, score, times]
     );
     return res.status(201).json({
       message: '\u0110\u00E3 l\u01B0u k\u1EBFt qu\u1EA3',
       score,
+      times,
       contest_id: contestId,
     });
   } catch (err) {
@@ -1381,15 +1504,28 @@ mountAdminCrud(app, pool);
 
 // Đồng bộ trạng thái contest theo lịch mỗi phút (không cần thao tác thủ công).
 const contestStatusTimer = setInterval(() => {
-  syncContestStatuses().catch((err) => {
-    console.error('Error auto-sync contest statuses:', err);
+  syncContestJobs().catch((err) => {
+    console.error('Error auto-sync contest jobs:', err);
   });
 }, 60 * 1000);
 if (typeof contestStatusTimer.unref === 'function') {
   contestStatusTimer.unref();
 }
-syncContestStatuses().catch((err) => {
-  console.error('Error initial contest status sync:', err);
+syncContestJobs().catch((err) => {
+  console.error('Error initial contest jobs:', err);
+});
+
+// Reset điểm tuần tự động khi sang tuần mới.
+const weeklyLeaderboardTimer = setInterval(() => {
+  resetWeeklyScoresIfNeeded().catch((err) => {
+    console.error('Error auto-reset weekly leaderboard:', err);
+  });
+}, 10 * 60 * 1000);
+if (typeof weeklyLeaderboardTimer.unref === 'function') {
+  weeklyLeaderboardTimer.unref();
+}
+resetWeeklyScoresIfNeeded().catch((err) => {
+  console.error('Error initial weekly leaderboard reset check:', err);
 });
 
 

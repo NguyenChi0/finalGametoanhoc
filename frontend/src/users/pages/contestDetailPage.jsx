@@ -66,6 +66,7 @@ export default function ContestDetailPage() {
 
   const questionsRef = useRef(questions);
   const answersRef = useRef(answers);
+  const timeLeftRef = useRef(timeLeft);
   const isFinalizingRef = useRef(false);
 
   useEffect(() => {
@@ -74,6 +75,9 @@ export default function ContestDetailPage() {
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
+  useEffect(() => {
+    timeLeftRef.current = timeLeft;
+  }, [timeLeft]);
 
   const finalizeQuiz = useCallback(async () => {
     if (isFinalizingRef.current) return;
@@ -90,8 +94,11 @@ export default function ContestDetailPage() {
     setSaveResultError("");
     setSaveResultOk(false);
     const cid = Number(contestId);
+    const durationSeconds =
+      Math.max(1, Math.floor(Number(contest?.exam_duration_minutes) || 30)) * 60;
+    const solvedSeconds = Math.max(0, durationSeconds - Math.max(0, Number(timeLeftRef.current) || 0));
     try {
-      await submitContestScore(cid, { score: correctCount });
+      await submitContestScore(cid, { score: correctCount, times: solvedSeconds });
       setSaveResultOk(true);
     } catch (err) {
       console.error(err);
@@ -100,7 +107,7 @@ export default function ContestDetailPage() {
         "Kh\u00F4ng l\u01B0u \u0111\u01B0\u1EE3c k\u1EBFt qu\u1EA3. Th\u1EED l\u1EA1i sau.";
       setSaveResultError(msg);
     }
-  }, [contestId]);
+  }, [contestId, contest?.exam_duration_minutes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -438,12 +445,9 @@ export default function ContestDetailPage() {
                 boxShadow: "0 10px 36px rgba(0,0,0,0.08)",
               }}
             >
-              <h1 style={{ color: "#0f4c75" }}>🎉 Kết quả bài kiểm tra</h1>
+              <h1 style={{ color: "#0f4c75" }}>Điểm của bạn</h1>
               <p style={{ fontSize: 48, fontWeight: 700, color: "#3282b8" }}>
                 {score}/{totalQ}
-              </p>
-              <p>
-                Bạn trả lời đúng {score} trên {totalQ} câu.
               </p>
               <div
                 style={{
@@ -463,14 +467,9 @@ export default function ContestDetailPage() {
                   }}
                 />
               </div>
-              <p>
-                {ratio >= 0.7
-                  ? "✨ Tuyệt vời!"
-                  : "Cố gắng lần sau nhé!"}
-              </p>
               {saveResultOk && (
                 <p style={{ color: "#2e7d32", fontWeight: 600, marginTop: 12 }}>
-                  {"\u0110\u00E3 l\u01B0u k\u1EBFt qu\u1EA3 v\u00E0o h\u1EC7 th\u1ED1ng."}
+                  {"Nộp bài thi thành công!"}
                 </p>
               )}
               {saveResultError && (
