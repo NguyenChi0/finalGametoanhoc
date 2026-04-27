@@ -23,6 +23,7 @@ export default function AdminExamCreate() {
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
   const [examStatus, setExamStatus] = useState(0);
+  const [examDurationMinutes, setExamDurationMinutes] = useState("30");
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -180,6 +181,11 @@ export default function AdminExamCreate() {
       setMessage("Chọn khối lớp.");
       return;
     }
+    const duration = Number(String(examDurationMinutes).trim());
+    if (!Number.isInteger(duration) || duration < 1 || duration > 9999) {
+      setMessage("Thời gian làm bài phải là số phút từ 1 đến 9999.");
+      return;
+    }
     if (selectedQuestionIds.length === 0) {
       setMessage("Vui lòng thêm ít nhất 1 câu hỏi vào exam.");
       return;
@@ -191,6 +197,7 @@ export default function AdminExamCreate() {
         grade_id: Number(gradeId),
         description: examDescription.trim() || null,
         status: Number(examStatus) === 1 ? 1 : 0,
+        duration_time: duration,
         question_ids: selectedQuestionIds,
       });
       navigate("/admin/exams");
@@ -248,6 +255,21 @@ export default function AdminExamCreate() {
             onChange={(e) => setExamDescription(e.target.value)}
             placeholder="Mô tả ngắn gọn exam"
             style={styles.textarea}
+          />
+        </div>
+        <div style={styles.fieldGroup}>
+          <label htmlFor="exam-duration" style={styles.label}>
+            Thời gian làm bài (phút)
+          </label>
+          <input
+            id="exam-duration"
+            type="number"
+            min={1}
+            max={9999}
+            step={1}
+            value={examDurationMinutes}
+            onChange={(e) => setExamDurationMinutes(e.target.value)}
+            style={styles.input}
           />
         </div>
         <div style={styles.fieldGroup}>

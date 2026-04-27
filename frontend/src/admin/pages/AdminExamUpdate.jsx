@@ -9,7 +9,7 @@ import {
 } from "../../api.js";
 
 /**
- * Draft từ Quản lý exams: { id, name, description, grade_id, selectedQuestionIds }.
+ * Draft từ Quản lý exams: { id, name, description, grade_id, status, duration_time, selectedQuestionIds }.
  */
 export default function AdminExamUpdate() {
   const location = useLocation();
@@ -20,6 +20,7 @@ export default function AdminExamUpdate() {
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
   const [examStatus, setExamStatus] = useState(0);
+  const [examDurationMinutes, setExamDurationMinutes] = useState("30");
   const [templateGradeId, setTemplateGradeId] = useState(null);
   const [gradeName, setGradeName] = useState("");
   const [types, setTypes] = useState([]);
@@ -40,6 +41,7 @@ export default function AdminExamUpdate() {
       setExamTitle("");
       setExamDescription("");
       setExamStatus(0);
+      setExamDurationMinutes("30");
       setTemplateGradeId(null);
       setGradeName("");
       setSelectedQuestionIds([]);
@@ -57,6 +59,11 @@ export default function AdminExamUpdate() {
         setExamTitle(t.name || "");
         setExamDescription(t.description || "");
         setExamStatus(Number(t.status) === 1 ? 1 : 0);
+        setExamDurationMinutes(
+          t.duration_time != null && String(t.duration_time).trim() !== ""
+            ? String(Number(t.duration_time))
+            : "30"
+        );
         setTemplateGradeId(Number(t.grade_id));
         setGradeName(t.grade_name || "");
         const ids = (t.questions || []).map((q) => Number(q.id));
@@ -74,6 +81,11 @@ export default function AdminExamUpdate() {
           setExamTitle(draft.name || "");
           setExamDescription(draft.description || "");
           setExamStatus(Number(draft.status) === 1 ? 1 : 0);
+          setExamDurationMinutes(
+            draft.duration_time != null && String(draft.duration_time).trim() !== ""
+              ? String(Number(draft.duration_time))
+              : "30"
+          );
           setTemplateGradeId(Number(draft.grade_id));
           setGradeName("");
           const ids = Array.isArray(draft.selectedQuestionIds)
@@ -211,6 +223,11 @@ export default function AdminExamUpdate() {
   const handleSaveExam = async () => {
     if (!draft?.id) return;
     if (!examTitle.trim()) return;
+    const duration = Number(String(examDurationMinutes).trim());
+    if (!Number.isInteger(duration) || duration < 1 || duration > 9999) {
+      setInitError("Thời gian làm bài phải là số phút từ 1 đến 9999.");
+      return;
+    }
     if (selectedQuestionIds.length === 0) return;
     setSaving(true);
     try {
@@ -218,6 +235,7 @@ export default function AdminExamUpdate() {
         name: examTitle.trim(),
         description: examDescription.trim(),
         status: Number(examStatus) === 1 ? 1 : 0,
+        duration_time: duration,
         question_ids: selectedQuestionIds,
       });
       navigate("/admin/exams", { replace: true });
@@ -309,6 +327,21 @@ export default function AdminExamUpdate() {
             onChange={(e) => setExamDescription(e.target.value)}
             placeholder="Mô tả ngắn gọn exam"
             style={styles.textarea}
+          />
+        </div>
+        <div style={styles.fieldGroup}>
+          <label htmlFor="exam-duration" style={styles.label}>
+            Thời gian làm bài (phút)
+          </label>
+          <input
+            id="exam-duration"
+            type="number"
+            min={1}
+            max={9999}
+            step={1}
+            value={examDurationMinutes}
+            onChange={(e) => setExamDurationMinutes(e.target.value)}
+            style={styles.input}
           />
         </div>
         <div style={styles.fieldGroup}>

@@ -227,6 +227,7 @@ export const deleteAdminLesson = async (id) => {
 
 // ==========================
 // Admin — Exam templates (mẫu đề / exam_templates)
+// Payload/response: `duration_time` = số phút (1..9999), mặc định tạo 30 nếu không gửi.
 // ==========================
 export const getAdminExamTemplates = async (opts = {}) => {
   const params = Object.fromEntries(

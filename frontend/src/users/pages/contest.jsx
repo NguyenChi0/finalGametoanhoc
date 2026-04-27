@@ -4,25 +4,24 @@ import { getContests } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 const copy = {
-  pageTitle: "Cu\u1ED9c thi Math Contest",
+  pageTitle: "Cuộc thi Toán học",
   intro:
-    "Ch\u00E0o m\u1EEBng b\u1EA1n \u0111\u1EBFn v\u1EDBi ph\u1EA7n thi Contest! T\u1EA1i \u0111\u00E2y b\u1EA1n c\u00F3 th\u1EC3 tham gia c\u00E1c b\u00E0i thi to\u00E1n h\u1ECDc. Ch\u1ECDn m\u1ED9t \u0111\u1EC1 thi b\u00EAn d\u01B0\u1EDBi v\u00E0 b\u1EAFt \u0111\u1EA7u th\u1EED th\u00E1ch.",
-  noteTitle: "\uD83D\uDCCC L\u01B0u \u00FD:",
+    "Chào mừng bạn đến với Cuộc thi Toán học",
+  noteTitle: "Lưu ý:",
   note1:
-    "\u0110\u0103ng nh\u1EADp \u0111\u1EC3 qu\u1EA3n l\u00FD h\u1ED3 s\u01A1 v\u00E0 truy c\u1EADp \u0111\u1EA7y \u0111\u1EE7 t\u00EDnh n\u0103ng.",
+    "Mỗi bài thi chỉ được làm một lần",
   note2:
-    "M\u1ED7i b\u00E0i thi ch\u1EC9 \u0111\u01B0\u1EE3c l\u00E0m m\u1ED9t l\u1EA7n, k\u1EBFt qu\u1EA3 s\u1EBD \u0111\u01B0\u1EE3c c\u1EADp nh\u1EADt trong trang c\u00E1 nh\u00E2n.",
+    "Điểm thưởng sẽ được cộng sau khi kết thúc cuộc thi",
   note3:
-    "H\u00E3y chu\u1EA9n b\u1ECB tinh th\u1EA7n v\u00E0 ki\u1EC3m tra k\u1EBFt n\u1ED1i m\u1EA1ng tr\u01B0\u1EDBc khi l\u00E0m b\u00E0i.",
-  loading: "\u0110ang t\u1EA3i danh s\u00E1ch cu\u1ED9c thi\u2026",
-  loadError: "Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c danh s\u00E1ch cu\u1ED9c thi.",
-  empty:
-    "Hi\u1EC7n kh\u00F4ng c\u00F3 cu\u1ED9c thi n\u00E0o \u0111ang di\u1EC5n ra. Vui l\u00F2ng quay l\u1EA1i sau.",
-  scheduleLabel: "Th\u1EDDi gian t\u1ED5 ch\u1EE9c:",
-  questionsSuffix: " c\u00E2u h\u1ECFi",
-  doQuiz: "L\u00E0m b\u00E0i",
-  completedQuiz: "\u0110\u00E3 ho\u00E0n th\u00E0nh",
-  yourScore: "\u0110i\u1EC3m:",
+    "Hãy kiểm tra kết nối mạng trước khi làm bài.",
+  loading: "Đang tải danh sách cuộc thi…",
+  loadError: "Không tải được danh sách cuộc thi.",
+  empty: "Hiện không có cuộc thi nào đang diễn ra. Vui lòng quay lại sau.",
+  scheduleLabel: "Thời gian tổ chức:",
+  questionsSuffix: " câu hỏi",
+  doQuiz: "Làm bài",
+  completedQuiz: "Đã hoàn thành",
+  yourScore: "Điểm:",
 };
 
 function formatContestWindow(start, end) {

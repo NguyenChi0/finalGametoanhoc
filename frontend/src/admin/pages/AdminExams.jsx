@@ -17,6 +17,7 @@ function buildExamEditDraft(row, questionsInExam) {
     description: row.description || "",
     grade_id: row.grade_id,
     status: Number(row.status) === 1 ? 1 : 0,
+    duration_time: row.duration_time != null ? Number(row.duration_time) : 30,
     selectedQuestionIds,
   };
 }

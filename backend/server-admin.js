@@ -97,6 +97,34 @@ function stripPassword(row) {
   return rest;
 }
 
+const DEFAULT_EXAM_TEMPLATE_DURATION_MINUTES = 30;
+const MAX_EXAM_TEMPLATE_DURATION_MINUTES = 9999;
+
+/**
+ * Chuẩn hoá `duration_time` (phút) cho exam_templates.
+ * - Nếu không gửi: trả về default (30) khi optional; hoặc throw khi required.
+ * - Giới hạn 1..9999.
+ */
+function normalizeExamTemplateDurationMinutes(raw, { required = false } = {}) {
+  if (raw === undefined || raw === null || raw === '') {
+    if (required) {
+      const e = new Error('duration_time là bắt buộc');
+      e.statusCode = 400;
+      throw e;
+    }
+    return DEFAULT_EXAM_TEMPLATE_DURATION_MINUTES;
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_EXAM_TEMPLATE_DURATION_MINUTES) {
+    const e = new Error(
+      `duration_time phải là số phút từ 1 đến ${MAX_EXAM_TEMPLATE_DURATION_MINUTES}`
+    );
+    e.statusCode = 400;
+    throw e;
+  }
+  return n;
+}
+
 module.exports = function mountAdminCrud(app, pool) {
   const CONTEST_STATUS_ENDED = 0;
   const CONTEST_STATUS_SCHEDULED = 1;
@@ -679,9 +707,15 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   app.post('/api/admin/exam-templates', async (req, res) => {
-    const { name, grade_id, description, question_ids, status } = req.body || {};
+    const { name, grade_id, description, question_ids, status, duration_time } = req.body || {};
     const gid = Number(grade_id);
     const normalizedStatus = Number(status) === 1 ? 1 : 0;
+    let durationMinutes;
+    try {
+      durationMinutes = normalizeExamTemplateDurationMinutes(duration_time, { required: false });
+    } catch (e) {
+      return res.status(e.statusCode || 400).json({ message: e.message });
+    }
     if (!name || !String(name).trim() || !gid || Number.isNaN(gid)) {
       return res.status(400).json({ message: 'name và grade_id là bắt buộc' });
     }
@@ -695,8 +729,14 @@ module.exports = function mountAdminCrud(app, pool) {
     try {
       await conn.beginTransaction();
       const [result] = await conn.query(
-        'INSERT INTO exam_templates (name, grade_id, description, status) VALUES (?, ?, ?, ?)',
-        [String(name).trim(), gid, description != null ? description : null, normalizedStatus]
+        'INSERT INTO exam_templates (name, grade_id, description, status, duration_time) VALUES (?, ?, ?, ?, ?)',
+        [
+          String(name).trim(),
+          gid,
+          description != null ? description : null,
+          normalizedStatus,
+          durationMinutes,
+        ]
       );
       const tid = result.insertId;
       if (qids.length) {
@@ -750,7 +790,7 @@ module.exports = function mountAdminCrud(app, pool) {
   app.put('/api/admin/exam-templates/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
-    const { name, grade_id, description, question_ids, status } = req.body || {};
+    const { name, grade_id, description, question_ids, status, duration_time } = req.body || {};
     const conn = await pool.getConnection();
     try {
       const [existingRows] = await conn.query(
@@ -787,6 +827,17 @@ module.exports = function mountAdminCrud(app, pool) {
         }
       }
 
+      let durationMinutesForUpdate = null;
+      if (duration_time !== undefined && duration_time !== null) {
+        try {
+          durationMinutesForUpdate = normalizeExamTemplateDurationMinutes(duration_time, {
+            required: true,
+          });
+        } catch (e) {
+          return res.status(e.statusCode || 400).json({ message: e.message });
+        }
+      }
+
       await conn.beginTransaction();
 
       const updates = [];
@@ -806,6 +857,10 @@ module.exports = function mountAdminCrud(app, pool) {
       if (status !== undefined && status !== null) {
         updates.push('status = ?');
         params.push(Number(status) === 1 ? 1 : 0);
+      }
+      if (durationMinutesForUpdate != null) {
+        updates.push('duration_time = ?');
+        params.push(durationMinutesForUpdate);
       }
       if (updates.length) {
         params.push(id);
