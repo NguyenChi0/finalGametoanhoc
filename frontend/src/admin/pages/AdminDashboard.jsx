@@ -6,7 +6,7 @@ import React from "react";
 export default function AdminDashboard() {
   return (
     <div>
-      <h1 style={styles.h1}>Bảng điều khiển</h1>
+      <h1 style={styles.h1}>Trang quản trị</h1>
       <p style={styles.lead}>
         Chào mừng đến khu vực quản trị. Các mục Users, bài học, câu hỏi, bài kiểm tra
         theo tuần sẽ được thêm dần.

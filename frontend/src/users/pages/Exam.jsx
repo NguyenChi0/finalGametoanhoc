@@ -187,6 +187,7 @@ export default function Exam() {
                           <button
                             type="button"
                             onClick={() => navigate(`/exam/${exam.id}`)}
+                            style={{ backgroundColor: "#0f4c75", fontFamily: "inherit" }}
                           >
                             {copy.viewDetail}
                           </button>

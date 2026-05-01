@@ -666,7 +666,7 @@ export default function ContestDetailPage() {
                   cursor: currentQuestion === 0 ? "not-allowed" : "pointer",
                 }}
               >
-                ← Trước
+                Trước
               </button>
               {currentQuestion === questions.length - 1 ? (
                 <button
@@ -681,7 +681,7 @@ export default function ContestDetailPage() {
                     cursor: "pointer",
                   }}
                 >
-                  ✓ Nộp bài
+                  Nộp bài
                 </button>
               ) : (
                 <button
@@ -696,7 +696,7 @@ export default function ContestDetailPage() {
                     cursor: "pointer",
                   }}
                 >
-                  Sau →
+                  Tiếp
                 </button>
               )}
             </div>

@@ -256,7 +256,7 @@ export default function Shop() {
                   fontSize: "0.85rem",
                 }}
               >
-                ← Trước
+                Trước
               </button>
               <span style={{ color: "#004F8D", fontSize: "0.9rem" }}>
                 Trang {currentPage + 1} / {totalPages}

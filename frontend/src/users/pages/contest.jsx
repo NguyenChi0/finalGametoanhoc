@@ -164,6 +164,7 @@ export default function Contest() {
                             disabled={done}
                             onClick={() => !done && handleDoQuiz(contest.id)}
                             className={done ? "btn-done" : ""}
+                            style={{ fontFamily: "inherit" }}
                           >
                             {done ? copy.completedQuiz : copy.doQuiz}
                           </button>

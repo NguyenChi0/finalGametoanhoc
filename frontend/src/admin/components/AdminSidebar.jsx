@@ -7,7 +7,6 @@ const ADMIN_CHROME_BORDER = "1px solid #d0d7de";
 const navItems = [
   { to: "/admin", end: true, label: "Tổng quan" },
   { to: "/admin/questions", end: true, label: "Quản lý câu hỏi" },
-  { to: "/admin/questions/new", end: true, label: "Tạo câu hỏi" },
   { to: "/admin/grades", end: false, label: "Quản lý lớp" },
   { to: "/admin/math-types", end: false, label: "Quản lý chủ đề" },
   { to: "/admin/contest", end: false, label: "Quản lý cuộc thi" },
@@ -55,7 +54,6 @@ export default function AdminSidebar({ variant = "default", onRequestClose }) {
             box-shadow: none !important;
           }
           .admin-nav-link[aria-current="page"] {
-            border: 1px solid #b6e3ff !important;
             box-shadow: inset 3px 0 0 #2d5a76 !important;
           }
           .admin-nav-link:focus {
@@ -70,7 +68,7 @@ export default function AdminSidebar({ variant = "default", onRequestClose }) {
             outline-offset: 2px;
           }
           .admin-nav-link:focus-visible[aria-current="page"] {
-            outline-offset: 2px;
+            outline-offset: 4px;
           }
           .admin-nav-link:active {
             outline: none !important;
@@ -79,7 +77,7 @@ export default function AdminSidebar({ variant = "default", onRequestClose }) {
       </style>
 
       <div style={brandStyle}>
-        <span style={styles.brandText}>Bảng điều khiển</span>
+        <span style={styles.brandText}>Trang quản trị</span>
         {isDrawer && (
           <button
             type="button"

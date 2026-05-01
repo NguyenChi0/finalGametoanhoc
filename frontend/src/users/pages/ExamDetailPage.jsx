@@ -333,10 +333,10 @@ export default function ExamDetailPage() {
                 boxShadow: "0 10px 36px rgba(0,0,0,0.08)",
               }}
             >
-              <h1 style={{ color: "#0f4c75" }}>Kết quả luyện tập</h1>
+              <h1 style={{ color: "#0f4c75" }}>Điểm của bạn</h1>
               {exam && (
                 <p style={{ color: "#455a64", marginBottom: 8 }}>
-                  {exam.grade_name} — {exam.name}
+                  {exam.name}
                 </p>
               )}
               <p style={{ fontSize: 48, fontWeight: 700, color: "#3282b8" }}>
@@ -363,20 +363,6 @@ export default function ExamDetailPage() {
                   }}
                 />
               </div>
-              <p>
-                {ratio >= 0.7 ? "✨ Tuyệt vời!" : "Cố gắng lần sau nhé!"}
-              </p>
-              <p
-                style={{
-                  color: "#607d8b",
-                  fontSize: 15,
-                  marginTop: 16,
-                  lineHeight: 1.5,
-                }}
-              >
-                Đây là bài <strong>luyện tập</strong>. Kết quả không được lưu
-                vào hệ thống (khác với cuộc thi).
-              </p>
               <button
                 type="button"
                 onClick={() => window.history.back()}

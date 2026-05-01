@@ -93,15 +93,15 @@ export default function Leaderboard() {
     
     switch (index) {
       case 0:
-        return `${baseUrl}/ranking-images/leaderboard-top1.png`;
+        return `${baseUrl}/ranking-images/top1.png`;
       case 1:
-        return `${baseUrl}/ranking-images/leaderboard-top2.png`;
+        return `${baseUrl}/ranking-images/top2.png`;
       case 2:
-        return `${baseUrl}/ranking-images/leaderboard-top3.png`;
+        return `${baseUrl}/ranking-images/top3.png`;
       case 3:
-        return `${baseUrl}/ranking-images/leaderboard-top4.png`;
+        return `${baseUrl}/ranking-images/top4.png`;
       case 4:
-        return `${baseUrl}/ranking-images/leaderboard-top5.png`;
+        return `${baseUrl}/ranking-images/top5.png`;
       default:
         return null;
     }
@@ -541,7 +541,7 @@ const styles = {
     fontFamily: "inherit",
   },
   activeTab: {
-    background: "linear-gradient(45deg, #ff6b6b, #ee5a24)",
+    background: "linear-gradient(45deg, #045062, #0c4c59)",
     color: "#fff",
     border: "none",
     padding: "8px 16px",
@@ -549,7 +549,7 @@ const styles = {
     cursor: "pointer",
     fontWeight: "600",
     transform: "translateY(-1px)",
-    boxShadow: "0 4px 12px rgba(255, 107, 107, 0.4)",
+    boxShadow: "0 4px 12px rgba(4, 80, 98, 0.4)",
     fontSize: "0.9rem",
     fontFamily: "inherit",
   },

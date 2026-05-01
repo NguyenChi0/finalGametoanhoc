@@ -1409,34 +1409,6 @@ app.get('/api/my-items/:userId', authenticateToken, async (req, res) => {
 });
 
 
-// ==========================
-//  API: LẤY DANH SÁCH NHẠC
-// ==========================
-app.get('/api/music', async (req, res) => {
-  try {
-    const [rows] = await pool.execute('SELECT id, name, link FROM music ORDER BY id ASC');
-    // Nếu link trong DB dạng '/music/nhac1.mp3' thì client có thể dùng trực tiếp
-    res.json(rows);
-  } catch (err) {
-    console.error('Error fetching music list:', err);
-    res.status(500).json({ message: 'Lỗi server khi lấy danh sách nhạc' });
-  }
-});
-
-// ==========================
-//  API: LẤY CHI TIẾT MỘT ĐOẠN NHẠC
-// ==========================
-app.get('/api/music/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [rows] = await pool.execute('SELECT id, name, link FROM music WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ message: 'Không tìm thấy nhạc' });
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('Error fetching music by id:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-});
 
 // ==========================
 // API: EXTERNAL LOGIN CHILD (KILOVIA)

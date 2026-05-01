@@ -558,19 +558,4 @@ export const externalLoginChild = async ({ maTreEm, fullname, school }) => {
   return res.data;
 };
 
-
-// ==========================
-// Music
-// ==========================
-export const getMusicList = async () => {
-  const res = await api.get('/music');
-  return res.data;
-};
-
-export const getMusicById = async (id) => {
-  const res = await api.get(`/music/${id}`);
-  return res.data;
-};
-
-
 export default api;
