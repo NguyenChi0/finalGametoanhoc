@@ -261,7 +261,7 @@ export default function AdminExamUpdate() {
           <span style={styles.crumbCurrent}>Cập nhật exam</span>
         </nav>
         <div style={styles.emptyWrap}>
-          <p style={styles.emptyTitle}>Chưa có dữ liệu đề</p>
+          <p style={styles.emptyTitle}>Chưa có đề thi nào</p>
           <p style={styles.muted}>
             Mở từ <strong>Quản lý exams</strong> → nút chỉnh sửa (bút) trên một dòng đề. F5 hoặc vào URL trực
             tiếp sẽ mất <code style={styles.code}>location.state</code>.
@@ -496,7 +496,7 @@ export default function AdminExamUpdate() {
             </div>
             <div style={styles.panelScroll}>
               {selectedQuestions.length === 0 ? (
-                <div style={styles.emptyState}>Chưa có câu hỏi nào được thêm.</div>
+                <div style={styles.emptyState}>Chưa có câu hỏi nào</div>
               ) : (
                 selectedQuestions.map((question) => (
                   <div key={question.id} style={styles.questionCard}>

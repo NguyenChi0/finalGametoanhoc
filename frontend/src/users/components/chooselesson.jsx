@@ -2,6 +2,15 @@
 import React, { useState, useEffect } from "react";
 import { getGrades, getTypes, getLessons, getQuestions } from "../../api";
 
+function shuffleArray(arr) {
+  const a = Array.isArray(arr) ? arr.slice() : [];
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export default function ChooseLessonTree({ onStartGame, kilovia }) {
   const [grades, setGrades] = useState([]);
   const [selectedGrade, setSelectedGrade] = useState(null);
@@ -71,6 +80,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
           grade_id: gradeId,
           type_id: typeId,
           lesson_id: lessonId,
+          randomize: true,
         });
         questions = res.data || res;
         setCache((prev) => ({
@@ -86,6 +96,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
 
     const rawUser = localStorage.getItem("user");
     const currentUser = rawUser ? JSON.parse(rawUser) : null;
+    const shuffledQuestions = shuffleArray(questions);
 
     onStartGame(selectedGameInterface, {
   grade: { id: gradeId },
@@ -103,7 +114,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
         (row) => String(row.id) === String(lessonId)
       )?.name || null,
   },
-  questions,
+  questions: shuffledQuestions,
   user: currentUser,
   ...(kilovia && { kilovia }),
 });
@@ -273,7 +284,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
           {cache.types[selectedGrade].map((t, idx) => (
             <div key={t.id} style={{ marginBottom: 16 }}>
               <div style={{ fontWeight: "bold", marginBottom: 8 }}>
-                {String.fromCharCode(65 + idx)}. {t.name}
+                {idx + 1}. {t.name}
               </div>
               <div style={{ marginLeft: 20 }}>
                 {cache.lessons[t.id]?.map((o, i) => (

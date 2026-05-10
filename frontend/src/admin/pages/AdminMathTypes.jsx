@@ -451,7 +451,7 @@ export default function AdminMathTypes() {
       )}
 
       {!loadingGrades && !hasGradeOptions && !error && (
-        <p style={styles.muted}>Chưa có khối lớp trong hệ thống.</p>
+        <p style={styles.muted}>Chưa có khối lớp nào</p>
       )}
 
       {error && (
@@ -504,7 +504,7 @@ export default function AdminMathTypes() {
 
           {types.length === 0 ? (
             <p style={styles.muted}>
-              Khối này chưa có chủ đề nào. Bạn có thể thêm mới bằng nút phía trên.
+              Khối này chưa có chủ đề nào
             </p>
           ) : isDesktopLayout ? (
             <div style={styles.tableWrap}>
@@ -598,7 +598,7 @@ export default function AdminMathTypes() {
                                   )}
                                   {!loadingLessons && lessons !== undefined && lessons.length === 0 && (
                                     <p style={styles.mutedSmall}>
-                                      Chưa có bài học. Thêm mới bằng nút bên trên.
+                                      Chưa có bài học nào
                                     </p>
                                   )}
                                   {!loadingLessons && lessons && lessons.length > 0 && (
@@ -765,7 +765,7 @@ export default function AdminMathTypes() {
                           )}
                           {!loadingLessons && lessons !== undefined && lessons.length === 0 && (
                             <p style={{ ...styles.mutedSmall, marginTop: 0 }}>
-                              Chưa có bài học. Thêm mới bằng nút bên trên.
+                              Chưa có bài học nào
                             </p>
                           )}
                           {!loadingLessons && lessons && lessons.length > 0 && (

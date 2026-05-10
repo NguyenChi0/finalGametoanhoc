@@ -1,6 +1,6 @@
 // src/components/games/Game1.jsx
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 export default function Game1({ payload, onLessonComplete }) {
@@ -543,11 +543,7 @@ export default function Game1({ payload, onLessonComplete }) {
           {currentQuestion.question_image && (
             <div style={{ textAlign: "center", marginBottom: "20px" }}>
               <img
-                src={
-                  currentQuestion.question_image.startsWith("http")
-                    ? currentQuestion.question_image
-                    : `/gametoanhoc/${currentQuestion.question_image}`
-                }
+                src={questionImageUrl(currentQuestion.question_image) || undefined}
                 alt="minh họa"
                 style={{
                   maxWidth: "100%",

@@ -1,6 +1,6 @@
 // src/components/games/game5.jsx — Marlin & Nemo tìm Dory giữa đám cá (đáp án)
 import React, { useMemo, useState, useEffect } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 const gameShellStyle = {
@@ -28,13 +28,6 @@ const startEndRootStyle = {
 
 const img = (name) =>
   `${publicUrl || ""}/game-images/${name}`;
-
-function getQuestionImageSrc(path) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  if (path.startsWith("/")) return path;
-  return `${publicUrl}/${path}`;
-}
 
 export default function Game5({ payload, onLessonComplete }) {
   const [gameStarted, setGameStarted] = useState(false);
@@ -296,7 +289,7 @@ export default function Game5({ payload, onLessonComplete }) {
 
   const sel = selected[currentQuestion.id];
   const qImg = currentQuestion.question_image
-    ? getQuestionImageSrc(currentQuestion.question_image)
+    ? questionImageUrl(currentQuestion.question_image) || null
     : null;
 
   return (

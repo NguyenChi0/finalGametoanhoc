@@ -255,7 +255,7 @@ export default function AdminGrades() {
       )}
 
       {!loading && grades.length === 0 && !error && (
-        <p style={styles.muted}>Chưa có dữ liệu lớp.</p>
+        <p style={styles.muted}>Chưa có khối lớp nào</p>
       )}
 
       {grades.length > 0 && (

@@ -1,6 +1,6 @@
 // src/components/games/Game1.jsx
 import React, { useState, useMemo, useRef } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 export default function Game1({ payload, onLessonComplete }) {
@@ -149,29 +149,23 @@ export default function Game1({ payload, onLessonComplete }) {
   };
 
 
-  const getQuestionImageSrc = (imgPath) => {
-    if (!imgPath) return null;
-    // Nếu đã là link http thì trả về nguyên bản
-    if (/^https?:\/\//i.test(imgPath)) return imgPath;
-    // Nếu là đường dẫn tương đối từ DB, thêm /gametoanhoc
-    return `/gametoanhoc/${imgPath}`; // imgPath bắt đầu với /hh1-cauhoi/...
-  };
 
-  /** Vỏ khu chơi — đồng bộ template với game 2 (desktop): full chiều ngang, cao 70vh */
+  /** Vỏ khu chơi: đủ cao theo nội dung (không cắt đáp án); min-height giữ tỷ lệ đẹp */
+  const GAME1_SHELL_MIN_H = "clamp(480px, 78vh, 920px)";
   const gameShellStyle = {
     width: "100%",
     maxWidth: "100%",
-    height: "70vh",
-    minHeight: "70vh",
+    minHeight: GAME1_SHELL_MIN_H,
+    height: "auto",
     position: "relative",
     boxSizing: "border-box",
-    overflow: "hidden",
+    overflow: "visible",
   };
   /** @deprecated dùng `gameShellStyle`; giữ alias để tương thích nếu chunk HMR còn tham chiếu tên cũ */
   // eslint-disable-next-line no-unused-vars -- alias chỉ để tránh ReferenceError từ hot-reload cũ
   const gameContainerStyle = gameShellStyle;
 
-  // Khung kết quả: lấp đầy vỏ 70vh
+  // Khung kết quả: lấp đầy vỏ game
   const resultBackgroundStyle = {
     width: "100%",
     height: "100%",
@@ -189,19 +183,15 @@ export default function Game1({ payload, onLessonComplete }) {
     boxSizing: "border-box",
   };
 
-  // tính phần trăm tiến độ (số câu đã hoàn thành / tổng số câu)
-  const progressPercent = Math.round(
-    (Math.min(current, gameQuestions.length - 1) / gameQuestions.length) * 100
-  );
-
   // Menu bắt đầu
   if (showMenu) {
     return (
-      <div style={gameShellStyle}>
+      <div style={{ ...gameShellStyle, display: "flex", flexDirection: "column" }}>
         <div
           style={{
             width: "100%",
-            height: "100%",
+            minHeight: GAME1_SHELL_MIN_H,
+            flex: 1,
             background: "linear-gradient(135deg, #005fbeff, #003d7aff)",
             display: "flex",
             flexDirection: "column",
@@ -310,70 +300,152 @@ export default function Game1({ payload, onLessonComplete }) {
     const isPerfect = correctCount === totalQuestions;
 
     return (
-      <div style={gameShellStyle}>
-        <div style={resultBackgroundStyle}>
+      <div className="game1-result-shell" style={gameShellStyle}>
+        <style>{`
+          .game1-result-shell {
+            min-height: min(92vh, 920px) !important;
+          }
+          .game1-result-shell .game1-result-bg {
+            padding: clamp(20px, 3.5vw, 40px) !important;
+          }
+          @media (min-width: 768px) {
+            .game1-result-shell .game1-result-card {
+              max-width: min(1120px, 98%) !important;
+              padding: clamp(40px, 4.5vw, 64px) !important;
+              border-radius: 18px !important;
+            }
+            .game1-result-shell .game1-result-title {
+              font-size: clamp(2.15rem, 3.4vw, 2.85rem) !important;
+              margin-bottom: clamp(22px, 3vw, 32px) !important;
+            }
+            .game1-result-shell .game1-result-body {
+              margin-bottom: clamp(22px, 3vw, 36px) !important;
+            }
+            .game1-result-shell .game1-result-body p:first-child {
+              font-size: clamp(1.35rem, 2.2vw, 1.6rem) !important;
+            }
+            .game1-result-shell .game1-result-body p:last-child {
+              font-size: clamp(1.2rem, 2vw, 1.45rem) !important;
+            }
+            .game1-result-shell .game1-result-actions {
+              gap: clamp(18px, 2.5vw, 28px) !important;
+            }
+            .game1-result-shell .game1-result-actions button {
+              font-size: clamp(1.1rem, 1.6vw, 1.25rem) !important;
+              padding: clamp(16px, 2vw, 22px) clamp(28px, 4vw, 44px) !important;
+              min-height: 56px !important;
+              border-radius: 12px !important;
+            }
+          }
+          @media (max-width: 767px) {
+            .game1-result-shell {
+              min-height: min(94vh, 900px) !important;
+            }
+            .game1-result-shell .game1-result-bg {
+              padding: clamp(12px, 4vw, 24px) !important;
+            }
+            .game1-result-shell .game1-result-card {
+              padding: clamp(36px, 9vw, 56px) !important;
+              max-width: 100% !important;
+              width: 100% !important;
+              border-radius: 16px !important;
+            }
+            .game1-result-shell .game1-result-title {
+              font-size: clamp(2.05rem, 8.5vw, 2.85rem) !important;
+              margin-bottom: clamp(20px, 5vw, 30px) !important;
+              line-height: 1.2 !important;
+            }
+            .game1-result-shell .game1-result-body {
+              margin-bottom: clamp(22px, 6vw, 36px) !important;
+            }
+            .game1-result-shell .game1-result-body p {
+              font-size: clamp(1.25rem, 5.2vw, 1.5rem) !important;
+              margin-bottom: clamp(10px, 3vw, 14px) !important;
+            }
+            .game1-result-shell .game1-result-body p:last-child {
+              font-size: clamp(1.15rem, 4.8vw, 1.4rem) !important;
+            }
+            .game1-result-shell .game1-result-actions {
+              gap: clamp(14px, 4vw, 22px) !important;
+            }
+            .game1-result-shell .game1-result-actions button {
+              font-size: clamp(1.12rem, 4.8vw, 1.35rem) !important;
+              padding: clamp(16px, 4.5vw, 22px) clamp(26px, 7vw, 40px) !important;
+              min-height: 58px !important;
+              border-radius: 12px !important;
+            }
+          }
+        `}</style>
+        <div className="game1-result-bg" style={resultBackgroundStyle}>
             <div
+              className="game1-result-card"
               style={{
                 background: "rgba(78, 150, 221, 0.9)",
-                padding: "clamp(20px, 3vw, 36px)",
-                borderRadius: 12,
+                padding: "clamp(32px, 4vw, 52px)",
+                borderRadius: 16,
                 width: "100%",
-                maxWidth: "min(960px, 96%)",
+                maxWidth: "min(1120px, 98%)",
                 boxSizing: "border-box",
               }}
             >
               <h2
+                className="game1-result-title"
                 style={{
                   color: isPerfect ? "#FFD700" : "#4ecdc4",
-                  fontSize: "2em",
-                  marginBottom: "20px",
+                  fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
+                  marginBottom: "24px",
                 }}
               >
                 {isPerfect ? "🎉 CHÚC MỪNG!" : "✅ HOÀN THÀNH BÀI LÀM"}
               </h2>
 
-              <div style={{ marginBottom: "20px" }}>
-                <p style={{ fontSize: "1.2em", marginBottom: "10px" }}>
+              <div className="game1-result-body" style={{ marginBottom: "24px" }}>
+                <p style={{ fontSize: "1.35em", marginBottom: "12px" }}>
                   Bạn trả lời đúng {correctCount} / {totalQuestions} câu hỏi.
                 </p>
-                <p style={{ fontSize: "1.1em", color: "#FFD700" }}>
+                <p style={{ fontSize: "1.25em", color: "#FFD700" }}>
                   Hoàn thành: <b>100%</b>
                 </p>
               </div>
 
               <div
+                className="game1-result-actions"
                 style={{
                   display: "flex",
-                  gap: "15px",
+                  gap: "18px",
                   justifyContent: "center",
                   flexWrap: "wrap",
                 }}
               >
                 <button
+                  type="button"
+                  className="game1-result-btn"
                   onClick={resetGame}
                   style={{
                     background: "linear-gradient(135deg, #4CAF50, #45a049)",
                     color: "white",
-                    padding: "12px 24px",
+                    padding: "14px 28px",
                     border: "none",
-                    borderRadius: 8,
+                    borderRadius: 10,
                     cursor: "pointer",
-                    fontSize: "1em",
+                    fontSize: "1.08em",
                     fontWeight: "bold",
                   }}
                 >
                   🔄 Chơi Lại
                 </button>
                 <button
+                  type="button"
+                  className="game1-result-btn"
                   onClick={() => (window.location.href = "/gametoanhoc")}
                   style={{
                     background: "linear-gradient(135deg, #2196F3, #1976D2)",
                     color: "white",
-                    padding: "12px 24px",
+                    padding: "14px 28px",
                     border: "none",
-                    borderRadius: 8,
+                    borderRadius: 10,
                     cursor: "pointer",
-                    fontSize: "1em",
+                    fontSize: "1.08em",
                     fontWeight: "bold",
                   }}
                 >
@@ -398,20 +470,65 @@ export default function Game1({ payload, onLessonComplete }) {
     );
   }
 
-  const questionImageSrc = getQuestionImageSrc(currentQuestion.question_image);
+  const questionImageSrc = questionImageUrl(currentQuestion.question_image) || null;
 
   return (
     <div style={{ ...gameShellStyle, display: "flex", flexDirection: "column" }}>
         <style>{`
+          .game1-question-col {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
+          .game1-question-text {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            hyphens: auto;
+          }
           .game1-answers-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             margin-bottom: 15px;
+            flex-shrink: 0;
           }
           @media (max-width: 600px) {
             .game1-answers-grid {
               grid-template-columns: 1fr;
+            }
+          }
+          @media (max-width: 767px) {
+            .game1-question-wrap {
+              flex: 0 0 auto !important;
+              min-height: auto !important;
+              overflow-x: hidden !important;
+              overflow-y: visible !important;
+            }
+            /* Phản hồi đúng/sai: không còn text trong flow — cần chiều cao lớn để ảnh thắng/thua rõ */
+            .game1-question-wrap.game1-question-wrap--feedback {
+              min-height: min(58vh, 520px) !important;
+            }
+            .game1-question-text {
+              font-size: clamp(0.95rem, 4.2vw, 1.15rem) !important;
+              line-height: 1.45 !important;
+            }
+          }
+          @media (min-width: 768px) {
+            .game1-question-wrap {
+              flex: 1 1 auto !important;
+              min-height: 38vh !important;
+            }
+            .game1-shell-inner {
+              padding-left: clamp(12px, 1.2vw, 20px) !important;
+              padding-right: clamp(12px, 1.2vw, 20px) !important;
+            }
+            .game1-question-wrap {
+              padding-left: clamp(10px, 1.2vw, 18px) !important;
+              padding-right: clamp(10px, 1.2vw, 18px) !important;
+              padding-top: 20px !important;
+              padding-bottom: 20px !important;
+            }
+            .game1-question-img {
+              max-width: 100% !important;
             }
           }
         `}</style>
@@ -428,14 +545,15 @@ export default function Game1({ payload, onLessonComplete }) {
         />
 
         <div
+          className="game1-shell-inner"
           style={{
             width: "100%",
-            height: "100%",
-            flex: 1,
+            flex: "1 1 auto",
             minHeight: 0,
             backgroundColor: "#002f5eff",
             color: "white",
             padding: "clamp(16px, 2.5vw, 32px)",
+            paddingBottom: "clamp(18px, 2.8vw, 36px)",
             borderRadius: "12px",
             border: "3px solid #1e88e5",
             display: "flex",
@@ -443,13 +561,25 @@ export default function Game1({ payload, onLessonComplete }) {
             boxSizing: "border-box",
           }}
         >
-          {/* Phần câu hỏi với background */}
-          <div style={{
-            flex: 1,
-            backgroundImage: `url(${publicUrl}/game-images/${background})`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center center",
-            backgroundSize: "cover",
+          <div
+            style={{
+              flexShrink: 0,
+              marginBottom: 12,
+              fontSize: "0.95em",
+              color: "white",
+              textAlign: "center",
+            }}
+          >
+            Câu : <b>{current + 1}/{gameQuestions.length}</b>
+          </div>
+
+          {/* Phần câu hỏi: nền scene + lớp tối bán trong (không blur) */}
+          <div
+            className={`game1-question-wrap${locked ? " game1-question-wrap--feedback" : ""}`}
+            style={{
+            flex: "0 1 auto",
+            flexShrink: 0,
+            minHeight: "38vh",
             padding: "20px",
             borderRadius: "10px",
             marginBottom: "20px",
@@ -460,53 +590,85 @@ export default function Game1({ payload, onLessonComplete }) {
             justifyContent: "center",
             textAlign: "center",
             position: "relative",
-            color: "black"
+            color: "black",
+            overflowX: "hidden",
+            overflowY: "visible",
+            isolation: "isolate",
           }}>
-            <div style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: "10px",
-              zIndex: 1
-            }}></div>
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 0,
+                backgroundImage: `url(${publicUrl}/game-images/${background})`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "center center",
+                backgroundSize: "cover",
+              }}
+            />
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 1,
+                borderRadius: "10px",
+                background:
+                  "linear-gradient(180deg, rgba(2, 14, 34, 0.52) 0%, rgba(1, 10, 28, 0.68) 100%)",
+                pointerEvents: "none",
+              }}
+            />
 
-            {/* Khi đã chọn đáp án (ảnh đúng/sai): không đè text/ảnh câu hỏi lên nhân vật nền */}
+            {/* Chữ + ảnh trên lớp phủ (full chiều ngang ô) */}
             {!locked && (
-            <div style={{ 
-              position: "relative", 
-              zIndex: 2,
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center"
-            }}>
-              <div style={{ 
-                color: "white", 
+            <div
+              className="game1-question-col"
+              style={{
+                position: "relative",
+                zIndex: 2,
+                width: "100%",
+                maxWidth: "100%",
+                marginLeft: "auto",
+                marginRight: "auto",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                minWidth: 0,
+                boxSizing: "border-box",
+              }}
+            >
+              <div
+                className="game1-question-text"
+                style={{
+                color: "white",
                 fontSize: "1.3em",
                 fontWeight: "bold",
                 marginBottom: questionImageSrc ? "10px" : "0",
                 textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
-                padding: "0 10px"
-              }}>
+                padding: "0 8px",
+                width: "100%",
+                maxWidth: "100%",
+                textAlign: "center",
+              }}
+              >
                 {currentQuestion.question_text}
               </div>
 
               {questionImageSrc && (
                 <img
+                  className="game1-question-img"
                   src={questionImageSrc}
                   alt="Minh họa câu hỏi"
                   onError={(e) => {
                     e.currentTarget.onerror = null;
-                    e.currentTarget.src = "/gametoanhoc/hh1-cauhoi/placeholder.png";
+                    e.currentTarget.style.display = "none";
                   }}
                   style={{
-                    maxWidth: "70%",
-                    maxHeight: "150px",
-                    borderRadius: "8px",
-                    border: "2px solid #1e88e5",
-                    objectFit: "contain"
+                    maxWidth: "100%",
+                    maxHeight: "min(50vh, 300px)",
+                    objectFit: "contain",
+                    backgroundColor: "white",
                   }}
                 />
               )}
@@ -570,16 +732,6 @@ export default function Game1({ payload, onLessonComplete }) {
                 </button>
               );
             })}
-          </div>
-
-          {/* Thanh phần trăm tiến độ */}
-          <div style={{ marginTop: "auto" }}>
-            <div style={{ fontSize: "0.95em", marginBottom: "8px", color: "white" }}>
-              Tiến độ: <b>{progressPercent}%</b> ({current}/{gameQuestions.length})
-            </div>
-            <div style={{ background: "rgba(255,255,255,0.12)", height: "14px", borderRadius: "8px", overflow: "hidden" }}>
-              <div style={{ width: `${progressPercent}%`, height: "100%", background: "linear-gradient(90deg,#FFD700,#FFA000)" }} />
-            </div>
           </div>
         </div>
     </div>

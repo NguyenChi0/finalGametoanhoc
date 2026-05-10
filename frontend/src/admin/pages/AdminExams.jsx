@@ -340,7 +340,7 @@ export default function AdminExams() {
                       <td colSpan={5} style={styles.tdEmpty}>
                         {search.trim()
                           ? `Không có kết quả phù hợp với “${search}”.`
-                          : "Chưa có mẫu đề cho khối này — tạo đề mới từ nút trên."}
+                          : "Chưa có đề thi nào."}
                       </td>
                     </tr>
                   ) : (
@@ -430,7 +430,7 @@ export default function AdminExams() {
                 <div style={styles.cardEmpty}>
                   {search.trim()
                     ? `Không có kết quả phù hợp với “${search}”.`
-                    : "Chưa có mẫu đề cho khối này — tạo đề mới từ nút trên."}
+                    : "Chưa có đề thi nào."}
                 </div>
               ) : (
                 filtered.map((row) => {

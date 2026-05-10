@@ -471,29 +471,32 @@ app.get('/api/questions/:id', async (req, res) => {
 });
 
 /**
- * POST /api/questions — tạo câu hỏi trắc nghiệm 4 đáp án
+ * POST /api/questions — tạo câu hỏi trắc nghiệm 2..4 đáp án
  * multipart/form-data: grade_id, type_id, lesson_id, question_text, answers (JSON string), correct_index,
  *   optional file field question_image, optional text question_image_path (khi không gửi file)
  * Hoặc JSON (application/json) như cũ — question_image là chuỗi path/URL nếu có
  */
 function mapFourAnswersToColumns(answers, correctIndex) {
-  const a = (answers || []).map((x) => (x != null ? String(x).trim() : ''));
-  if (a.length !== 4) {
-    throw new Error('Cần đúng 4 đáp án');
+  const all = Array.isArray(answers) ? answers : [];
+  const a = all
+    .map((x) => (x != null ? String(x).trim() : ''))
+    .filter((x) => x !== '');
+  if (a.length < 2) {
+    throw new Error('Cần tối thiểu 2 đáp án');
   }
-  if (a.some((x) => !x)) {
-    throw new Error('Mỗi đáp án không được để trống');
+  if (a.length > 4) {
+    throw new Error('Tối đa 4 đáp án');
   }
   const ci = Number(correctIndex);
-  if (!Number.isInteger(ci) || ci < 0 || ci > 3) {
+  if (!Number.isInteger(ci) || ci < 0 || ci >= a.length) {
     throw new Error('Đáp án đúng không hợp lệ');
   }
   const rest = a.filter((_, i) => i !== ci);
   return {
     answercorrect_text: a[ci],
-    answer2_text: rest[0],
-    answer3_text: rest[1],
-    answer4_text: rest[2],
+    answer2_text: rest[0] ?? null,
+    answer3_text: rest[1] ?? null,
+    answer4_text: rest[2] ?? null,
   };
 }
 
@@ -801,6 +804,47 @@ app.put(
     }
   }
 );
+
+app.delete('/api/questions/:id', authenticateToken, requireAdminRole, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+
+  try {
+    const [[existing]] = await pool.query(
+      'SELECT id, question_image FROM questions WHERE id = ? LIMIT 1',
+      [id]
+    );
+    if (!existing) {
+      return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
+    }
+
+    const [result] = await pool.query('DELETE FROM questions WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
+    }
+
+    const relImg = String(existing.question_image || '').trim();
+    if (relImg.startsWith('/questions-images/')) {
+      const filename = path.basename(relImg);
+      const absolutePath = path.join(QUESTIONS_IMAGES_DIR, filename);
+      if (fs.existsSync(absolutePath)) {
+        try {
+          fs.unlinkSync(absolutePath);
+        } catch (_) {}
+      }
+    }
+
+    return res.json({ message: 'Đã xóa câu hỏi', id });
+  } catch (err) {
+    if (err?.code === 'ER_ROW_IS_REFERENCED_2' || err?.errno === 1451) {
+      return res.status(409).json({
+        message: 'Không thể xóa vì câu hỏi đang được sử dụng ở đề thi.',
+      });
+    }
+    console.error('Error DELETE /api/questions/:id:', err);
+    return res.status(500).json({ message: 'Lỗi khi xóa câu hỏi', error: err.message });
+  }
+});
 
 //=========Lưu điểm=========================
 const WEEKLY_LEADERBOARD_STATE_KEY = 'leaderboard_week_key';

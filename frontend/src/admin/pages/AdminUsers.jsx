@@ -36,6 +36,15 @@ function formatDateTime(isoLike) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function CellTruncate({ children, title, style }) {
+  const t = title != null && title !== "" ? String(title) : undefined;
+  return (
+    <span style={{ ...styles.truncateCell, ...style }} title={t}>
+      {children}
+    </span>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg
@@ -310,12 +319,12 @@ export default function AdminUsers() {
           Tổng quan
         </Link>
         <span style={styles.crumbSep}>›</span>
-        <span style={styles.crumbCurrent}>Quản lý user</span>
+        <span style={styles.crumbCurrent}>Quản lý tài khoản</span>
       </nav>
 
       <header style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>Quản lý user</h1>
+          <h1 style={styles.title}>Quản lý tài khoản</h1>
           <p style={styles.lead}>
           Chào mừng bạn đến với trang quản lý tài khoản.
           </p>
@@ -464,21 +473,28 @@ export default function AdminUsers() {
       ) : (
         <div style={styles.tableWrap}>
           <table style={styles.table}>
+            <colgroup>
+              <col style={{ width: 76 }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: 108 }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: 156 }} />
+              <col style={{ width: 124 }} />
+            </colgroup>
             <thead>
               <tr>
-                <th style={{ ...styles.th, whiteSpace: "nowrap" }}>User ID</th>
+                <th style={styles.th}>User ID</th>
                 <th style={styles.th}>Username</th>
                 <th style={{ ...styles.th, textAlign: "right" }}>Điểm tuần</th>
                 <th style={{ ...styles.th, textAlign: "right" }}>Điểm tất cả</th>
                 <th style={styles.th}>Vai trò</th>
                 <th style={styles.th}>Email</th>
                 <th style={styles.th}>Số điện thoại</th>
-                <th style={{ ...styles.th, whiteSpace: "nowrap" }}>
-                  Thời gian tạo
-                </th>
-                <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
-                  Thao tác
-                </th>
+                <th style={styles.th}>Thời gian tạo</th>
+                <th style={{ ...styles.th, textAlign: "right" }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -491,15 +507,33 @@ export default function AdminUsers() {
               ) : (
                 users.map((u) => (
                   <tr key={u.id}>
-                    <td style={styles.td}>{u.id}</td>
-                    <td style={{ ...styles.td, fontWeight: 700 }}>{u.username}</td>
-                    <td style={{ ...styles.td, textAlign: "right" }}>
-                      {u.week_score != null ? u.week_score.toLocaleString("vi-VN") : "—"}
+                    <td style={{ ...styles.td, whiteSpace: "nowrap" }}>{u.id}</td>
+                    <td style={{ ...styles.td, fontWeight: 700 }}>
+                      <CellTruncate title={u.username}>{u.username}</CellTruncate>
                     </td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
-                      {u.score != null ? u.score.toLocaleString("vi-VN") : "—"}
+                      <CellTruncate
+                        title={
+                          u.week_score != null
+                            ? u.week_score.toLocaleString("vi-VN")
+                            : undefined
+                        }
+                        style={{ textAlign: "right" }}
+                      >
+                        {u.week_score != null ? u.week_score.toLocaleString("vi-VN") : "—"}
+                      </CellTruncate>
                     </td>
-                    <td style={styles.td}>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      <CellTruncate
+                        title={
+                          u.score != null ? u.score.toLocaleString("vi-VN") : undefined
+                        }
+                        style={{ textAlign: "right" }}
+                      >
+                        {u.score != null ? u.score.toLocaleString("vi-VN") : "—"}
+                      </CellTruncate>
+                    </td>
+                    <td style={{ ...styles.td, whiteSpace: "nowrap" }}>
                       <span
                         style={
                           u.role === 1 ? styles.badgeAdmin : styles.badgeUser
@@ -509,15 +543,21 @@ export default function AdminUsers() {
                       </span>
                     </td>
                     <td style={{ ...styles.td, color: "#57606a" }}>
-                      {u.email || "—"}
+                      <CellTruncate title={u.email || undefined}>
+                        {u.email || "—"}
+                      </CellTruncate>
                     </td>
                     <td style={{ ...styles.td, color: "#57606a" }}>
-                      {u.phone || "—"}
+                      <CellTruncate title={u.phone || undefined}>
+                        {u.phone || "—"}
+                      </CellTruncate>
                     </td>
-                    <td style={{ ...styles.td, whiteSpace: "nowrap", fontSize: "0.88rem" }}>
-                      {formatDateTime(u.created_at)}
+                    <td style={{ ...styles.td, fontSize: "0.88rem" }}>
+                      <CellTruncate title={formatDateTime(u.created_at)}>
+                        {formatDateTime(u.created_at)}
+                      </CellTruncate>
                     </td>
-                    <td style={{ ...styles.td, textAlign: "right" }}>
+                    <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap" }}>
                       <button
                         type="button"
                         style={styles.iconBtn}
@@ -866,6 +906,7 @@ const styles = {
     background: "transparent",
     color: "#24292f",
     outline: "none",
+    fontFamily: "inherit",
   },
   searchIconSlot: {
     display: "flex",
@@ -943,6 +984,14 @@ const styles = {
     borderCollapse: "collapse",
     fontSize: "0.9rem",
     minWidth: 960,
+    tableLayout: "fixed",
+  },
+  truncateCell: {
+    display: "block",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   th: {
     textAlign: "left",
@@ -954,6 +1003,7 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.04em",
     borderBottom: "1px solid #d0d7de",
+    whiteSpace: "nowrap",
   },
   td: {
     padding: "14px 16px",

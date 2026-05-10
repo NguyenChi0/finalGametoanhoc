@@ -346,7 +346,7 @@ export default function AdminItems() {
           Tổng quan
         </Link>
         <span style={styles.crumbSep}>›</span>
-        <span style={styles.crumbCurrent}>Quản lý item (cửa hàng)</span>
+        <span style={styles.crumbCurrent}>Quản lý vật phẩm</span>
       </nav>
 
       <header style={styles.headerRow}>
@@ -1138,21 +1138,34 @@ const styles = {
   modalOverlay: {
     position: "fixed",
     inset: 0,
+    zIndex: 300,
     background: "rgba(31, 35, 40, 0.5)",
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
-    zIndex: 300,
-    padding: 16,
+    padding:
+      "max(20px, env(safe-area-inset-top, 0px)) 16px max(20px, env(safe-area-inset-bottom, 0px)) 16px",
+    boxSizing: "border-box",
+    overflowY: "auto",
+    overflowX: "hidden",
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
   },
   modal: {
     width: "100%",
     maxWidth: 440,
+    flexShrink: 0,
+    maxHeight: "none",
+    marginLeft: "auto",
+    marginRight: "auto",
     background: "#fff",
     borderRadius: 12,
     padding: "24px",
     boxShadow: "0 8px 32px rgba(31,35,40,0.2)",
     border: "1px solid #d0d7de",
+    boxSizing: "border-box",
+    overflowX: "hidden",
+    overflowY: "visible",
   },
   modalTitle: {
     margin: "0 0 18px",

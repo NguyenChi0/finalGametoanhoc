@@ -46,6 +46,23 @@ const gameLabels = {
   game11: "Đố vui nhanh tay",
 };
 
+function shuffleArray(arr) {
+  const a = Array.isArray(arr) ? arr.slice() : [];
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function withShuffledQuestions(payload) {
+  if (!payload || !Array.isArray(payload.questions)) return payload;
+  return {
+    ...payload,
+    questions: shuffleArray(payload.questions),
+  };
+}
+
 function GameLoadFallback() {
   return (
     <div style={{ padding: 24, textAlign: "center", color: "#455a64" }}>
@@ -74,10 +91,10 @@ export default function GamePage() {
       });
 
     if (location.state) {
-      const merged = {
+      const merged = withShuffledQuestions({
         ...location.state,
         kilovia: location.state.kilovia || kiloviaFallback,
-      };
+      });
       setPayload(merged);
       try {
         sessionStorage.setItem(
@@ -95,10 +112,10 @@ export default function GamePage() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.gameId === gameId && parsed.payload) {
-          const merged = {
+          const merged = withShuffledQuestions({
             ...parsed.payload,
             kilovia: parsed.payload.kilovia || kiloviaFallback,
-          };
+          });
           setPayload(merged);
           return;
         }

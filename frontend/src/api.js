@@ -24,6 +24,20 @@ export function itemImageUrl(link) {
   return `${origin}/items-images/${segments.join("/")}`;
 }
 
+/**
+ * URL ảnh câu hỏi — DB chuẩn lưu `/questions-images/<file>`; chấp nhận cả URL tuyệt đối,
+ * relative bắt đầu bằng `/...`, hoặc legacy chỉ là tên file/đường dẫn tương đối.
+ */
+export function questionImageUrl(link) {
+  if (link == null || String(link).trim() === "") return "";
+  const s = String(link).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const origin = API_ORIGIN.replace(/\/$/, "");
+  if (s.startsWith("/")) return `${origin}${s}`;
+  const rel = s.replace(/^\/+/, "");
+  return `${origin}/questions-images/${rel}`;
+}
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
@@ -426,8 +440,13 @@ export const deleteAdminUser = async (id) => {
 // Questions
 // ==========================
 export const getQuestions = async (opts = {}) => {
+  const normalized = { ...opts };
+  if (normalized.randomize === true && normalized.random == null) {
+    normalized.random = 1;
+  }
+  delete normalized.randomize;
   const params = Object.fromEntries(
-    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    Object.entries(normalized).filter(([, v]) => v !== undefined && v !== null && v !== "")
   );
   const res = await api.get("/questions", { params });
   return res.data;
@@ -439,7 +458,7 @@ export const getQuestionById = async (id) => {
 };
 
 /**
- * Tạo câu hỏi trắc nghiệm 4 đáp án.
+ * Tạo câu hỏi trắc nghiệm 2..4 đáp án.
  * - Nếu có `imageFile` (File/Blob): gửi multipart, ảnh lưu ở backend/questions-images.
  * - Nếu có `question_image_path` (chuỗi path/URL, không file): gửi kèm trong form.
  * - Ngược lại: JSON như cũ (tương thích script / không ảnh).
@@ -488,7 +507,7 @@ export const createQuestion = async (payload) => {
 };
 
 /**
- * Cập nhật câu hỏi — cùng payload / multipart như createQuestion.
+ * Cập nhật câu hỏi — cùng payload / multipart như createQuestion (2..4 đáp án).
  */
 export const updateQuestion = async (id, payload) => {
   const { imageFile, question_image_path, clear_question_image, ...rest } = payload;
@@ -535,6 +554,13 @@ export const updateQuestion = async (id, payload) => {
     ...rest,
     ...(clear_question_image ? { clear_question_image: true } : {}),
   });
+  return res.data;
+};
+
+export const deleteQuestion = async (id) => {
+  const qid = Number(id);
+  if (!qid) throw new Error("id không hợp lệ");
+  const res = await api.delete(`/questions/${qid}`);
   return res.data;
 };
 

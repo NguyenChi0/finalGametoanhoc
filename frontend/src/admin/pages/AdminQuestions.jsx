@@ -6,6 +6,7 @@ import {
   getLessons,
   getQuestions,
   getHierarchyLabels,
+  deleteQuestion,
 } from "../../api";
 
 /** Số câu hỏi tối đa mỗi trang (đồng bộ với API limit). */
@@ -127,6 +128,9 @@ export default function AdminQuestions() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [allTypes, setAllTypes] = useState([]);
   const [allLessons, setAllLessons] = useState([]);
+  const [deletingId, setDeletingId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const loadGrades = useCallback(async () => {
     setLoadingFilters(true);
@@ -254,6 +258,42 @@ export default function AdminQuestions() {
     fetchQuestions();
   }, [fetchQuestions]);
 
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [page, gradeId, typeId, lessonId, debouncedSearch]);
+
+  const handleDeleteQuestion = useCallback(
+    async (row) => {
+      const id = Number(row?.id);
+      if (!id) return;
+      const questionText = String(row?.question_text || "").trim();
+      const preview =
+        questionText.length > 90 ? `${questionText.slice(0, 90)}...` : questionText;
+      const ok = window.confirm(
+        `Bạn có chắc muốn xóa câu hỏi #${id}${preview ? `\n"${preview}"` : ""}?`
+      );
+      if (!ok) return;
+
+      setDeletingId(id);
+      setError(null);
+      try {
+        await deleteQuestion(id);
+        if (questions.length === 1 && page > 1) {
+          setPage((p) => Math.max(1, p - 1));
+        } else {
+          await fetchQuestions();
+        }
+      } catch (e) {
+        setError(
+          e?.response?.data?.message || e?.message || "Không xóa được câu hỏi."
+        );
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [fetchQuestions, page, questions.length]
+  );
+
   const totalPages = Math.max(1, Math.ceil(totalDb / QUESTIONS_PAGE_SIZE) || 1);
 
   useEffect(() => {
@@ -294,6 +334,67 @@ export default function AdminQuestions() {
     () => ({ gradeById, typeById, lessonById }),
     [gradeById, typeById, lessonById]
   );
+  const currentPageIds = useMemo(
+    () =>
+      questions
+        .map((row) => Number(row.id))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    [questions]
+  );
+  const allSelectedOnPage =
+    currentPageIds.length > 0 &&
+    currentPageIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectOne = useCallback((id) => {
+    const qid = Number(id);
+    if (!qid) return;
+    setSelectedIds((prev) =>
+      prev.includes(qid) ? prev.filter((x) => x !== qid) : [...prev, qid]
+    );
+  }, []);
+
+  const toggleSelectAllCurrentPage = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (!currentPageIds.length) return [];
+      const everySelected = currentPageIds.every((id) => prev.includes(id));
+      if (everySelected) return prev.filter((id) => !currentPageIds.includes(id));
+      const merged = new Set([...prev, ...currentPageIds]);
+      return Array.from(merged);
+    });
+  }, [currentPageIds]);
+
+  const handleDeleteSelected = useCallback(async () => {
+    const targets = selectedIds.filter((id) => Number.isFinite(Number(id)));
+    if (!targets.length) return;
+    const ok = window.confirm(`Bạn có chắc muốn xóa ${targets.length} câu hỏi đã chọn?`);
+    if (!ok) return;
+
+    setBulkDeleting(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(targets.map((id) => deleteQuestion(id)));
+      const failed = results.filter((r) => r.status === "rejected");
+      const successCount = results.length - failed.length;
+
+      if (failed.length) {
+        const firstErr = failed[0]?.reason;
+        setError(
+          firstErr?.response?.data?.message ||
+            firstErr?.message ||
+            `Đã xóa ${successCount}/${results.length} câu hỏi.`
+        );
+      }
+
+      setSelectedIds([]);
+      if (questions.length === successCount && page > 1) {
+        setPage((p) => Math.max(1, p - 1));
+      } else {
+        await fetchQuestions();
+      }
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [selectedIds, questions.length, page, fetchQuestions]);
 
   return (
     <div style={styles.root}>
@@ -440,6 +541,38 @@ export default function AdminQuestions() {
         </section>
       )}
 
+      {!loading && (
+        <div style={styles.bulkBar}>
+          <div style={styles.bulkMeta}>
+            Đã chọn: <b>{selectedIds.length}</b> câu hỏi
+          </div>
+          <div style={styles.bulkActions}>
+            <button
+              type="button"
+              style={{
+                ...styles.paginationBtn,
+                ...(selectedIds.length === 0 || bulkDeleting ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={selectedIds.length === 0 || bulkDeleting}
+              onClick={handleDeleteSelected}
+            >
+              {bulkDeleting ? "Đang xóa..." : "Xóa đã chọn"}
+            </button>
+            <button
+              type="button"
+              style={{
+                ...styles.btnSecondaryInline,
+                ...(selectedIds.length === 0 ? styles.paginationBtnDisabled : {}),
+              }}
+              disabled={selectedIds.length === 0}
+              onClick={() => setSelectedIds([])}
+            >
+              Bỏ chọn
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={styles.loadingBox}>Đang tải danh sách câu hỏi…</div>
       ) : isNarrow ? (
@@ -447,6 +580,17 @@ export default function AdminQuestions() {
           {questions.length > 0 ? (
             questions.map((row) => (
               <article key={row.id} style={styles.questionCard}>
+                <div style={styles.cardSelectRow}>
+                  <label style={styles.cardSelectLabel}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(Number(row.id))}
+                      onChange={() => toggleSelectOne(row.id)}
+                      disabled={bulkDeleting}
+                    />
+                    <span>Chọn câu hỏi #{row.id}</span>
+                  </label>
+                </div>
                 <div style={styles.cardField}>
                   <span style={styles.cardLabel}>ID</span>
                   <span style={styles.cardValue}>{row.id}</span>
@@ -482,9 +626,19 @@ export default function AdminQuestions() {
                   >
                     <PencilIcon />
                   </button>
-                  <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.actionBtn,
+                      ...styles.actionBtnDanger,
+                      ...(deletingId === Number(row.id) ? styles.actionBtnDisabled : {}),
+                    }}
+                    title="Xóa câu hỏi"
+                    onClick={() => handleDeleteQuestion(row)}
+                    disabled={deletingId === Number(row.id)}
+                  >
                     <TrashIcon />
-                  </span>
+                  </button>
                 </div>
               </article>
             ))
@@ -497,11 +651,20 @@ export default function AdminQuestions() {
           <table style={styles.table}>
             <thead>
               <tr>
+                <th style={{ ...styles.th, width: 48, textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Chọn tất cả câu hỏi trang hiện tại"
+                    checked={allSelectedOnPage}
+                    onChange={toggleSelectAllCurrentPage}
+                    disabled={!currentPageIds.length || bulkDeleting}
+                  />
+                </th>
                 <th style={{ ...styles.th, width: 72 }}>ID</th>
-                <th style={{ ...styles.th, width: "26%", minWidth: 200 }}>Phân cấp</th>
-                <th style={styles.th}>Nội dung câu hỏi</th>
-                <th style={{ ...styles.th, width: 100 }}>Đáp án đúng</th>
-                <th style={{ ...styles.th, width: 120, textAlign: "right" }}>
+                <th style={{ ...styles.th, width: "22%" }}>Phân cấp</th>
+                <th style={{ ...styles.th, width: "auto" }}>Nội dung câu hỏi</th>
+                <th style={{ ...styles.th, width: "14%", minWidth: 96 }}>Đáp án đúng</th>
+                <th style={{ ...styles.th, width: 112, textAlign: "right" }}>
                   Thao tác
                 </th>
               </tr>
@@ -510,6 +673,15 @@ export default function AdminQuestions() {
               {questions.length > 0 ? (
                 questions.map((row) => (
                   <tr key={row.id}>
+                    <td style={{ ...styles.td, ...styles.tdCheckbox }}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Chọn câu hỏi ${row.id}`}
+                        checked={selectedIds.includes(Number(row.id))}
+                        onChange={() => toggleSelectOne(row.id)}
+                        disabled={bulkDeleting}
+                      />
+                    </td>
                     <td style={styles.td}>{row.id}</td>
                     <td style={{ ...styles.td, ...styles.tdHierarchy }}>
                       <div style={styles.hierarchy}>
@@ -517,7 +689,9 @@ export default function AdminQuestions() {
                       </div>
                     </td>
                     <td style={{ ...styles.td, ...styles.tdContent }}>{row.question_text}</td>
-                    <td style={{ ...styles.td, fontWeight: 600 }}>{formatAnswerLabel(row)}</td>
+                    <td style={{ ...styles.td, ...styles.tdAnswer, fontWeight: 600 }}>
+                      {formatAnswerLabel(row)}
+                    </td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
                       <div style={styles.actionGroup}>
                         <button
@@ -532,16 +706,26 @@ export default function AdminQuestions() {
                         >
                           <PencilIcon />
                         </button>
-                        <span style={{ ...styles.actionBtn, ...styles.actionBtnDanger }} title="Xóa">
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.actionBtn,
+                            ...styles.actionBtnDanger,
+                            ...(deletingId === Number(row.id) ? styles.actionBtnDisabled : {}),
+                          }}
+                          title="Xóa câu hỏi"
+                          onClick={() => handleDeleteQuestion(row)}
+                          disabled={deletingId === Number(row.id)}
+                        >
                           <TrashIcon />
-                        </span>
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td style={styles.emptyState} colSpan={5}>
+                  <td style={styles.emptyState} colSpan={6}>
                     {emptyListMessage}
                   </td>
                 </tr>
@@ -917,6 +1101,18 @@ const styles = {
     marginTop: 4,
     borderTop: "1px solid #eaeef2",
   },
+  cardSelectRow: {
+    display: "flex",
+    justifyContent: "flex-end",
+    marginBottom: 10,
+  },
+  cardSelectLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: "0.82rem",
+    color: "#57606a",
+  },
   cardEmpty: {
     padding: "28px 16px",
     textAlign: "center",
@@ -928,16 +1124,23 @@ const styles = {
   },
   tableWrap: {
     width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
     overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
     background: "#ffffff",
     border: "1px solid #d0d7de",
     borderRadius: 0,
+    boxSizing: "border-box",
   },
   table: {
     width: "100%",
+    maxWidth: "100%",
     borderCollapse: "collapse",
     fontSize: "0.875rem",
-    minWidth: 960,
+    tableLayout: "fixed",
+    minWidth: 0,
+    wordBreak: "break-word",
   },
   th: {
     textAlign: "left",
@@ -955,26 +1158,43 @@ const styles = {
     borderBottom: "1px solid #eaeef2",
     verticalAlign: "top",
     color: "#24292f",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    minWidth: 0,
+    boxSizing: "border-box",
   },
   tdContent: {
-    lineHeight: 1.5,
-    maxWidth: 360,
+    lineHeight: 1.55,
+    hyphens: "auto",
+  },
+  tdCheckbox: {
+    width: 48,
+    textAlign: "center",
+    verticalAlign: "middle",
+  },
+  tdAnswer: {
+    lineHeight: 1.45,
+    hyphens: "auto",
   },
   tdHierarchy: {
     verticalAlign: "top",
-    minWidth: 180,
-    maxWidth: 320,
     wordBreak: "break-word",
-    overflowWrap: "break-word",
+    overflowWrap: "anywhere",
+    minWidth: 0,
   },
   hierarchy: {
     maxWidth: "100%",
+    minWidth: 0,
   },
   hierarchyMain: {
     fontWeight: 600,
     fontSize: "0.85rem",
     color: "#24292f",
     lineHeight: 1.35,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    display: "block",
+    maxWidth: "100%",
   },
   actionGroup: {
     display: "inline-flex",
@@ -998,6 +1218,43 @@ const styles = {
   actionBtnDanger: {
     background: "#fff8f8",
     borderColor: "#f0c4c8",
+  },
+  actionBtnDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  },
+  bulkBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 12,
+    padding: "10px 12px",
+    background: "#f6f8fa",
+    border: "1px solid #d0d7de",
+    borderRadius: 0,
+  },
+  bulkMeta: {
+    fontSize: "0.9rem",
+    color: "#24292f",
+  },
+  bulkActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  btnSecondaryInline: {
+    padding: "8px 14px",
+    borderRadius: 8,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    color: "#24292f",
+    fontWeight: 600,
+    fontSize: "0.88rem",
+    cursor: "pointer",
+    fontFamily: "inherit",
   },
   paginationBar: {
     display: "flex",

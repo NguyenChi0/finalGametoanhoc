@@ -216,13 +216,30 @@ export default function AdminQuestionCreate() {
           ? questionImage.trim()
           : undefined;
 
+      const normalizedAnswers = answers.map((a) => String(a ?? "").trim());
+      const nonEmptyIndices = normalizedAnswers
+        .map((text, idx) => (text ? idx : -1))
+        .filter((idx) => idx >= 0);
+      if (nonEmptyIndices.length < 2) {
+        setError("Cần ít nhất 2 đáp án.");
+        setSaving(false);
+        return;
+      }
+      if (!nonEmptyIndices.includes(correctIndex)) {
+        setError("Vui lòng chọn đáp án đúng nằm trong các đáp án đã nhập.");
+        setSaving(false);
+        return;
+      }
+      const compactAnswers = nonEmptyIndices.map((idx) => normalizedAnswers[idx]);
+      const compactCorrectIndex = nonEmptyIndices.indexOf(correctIndex);
+
       await createQuestion({
         grade_id: Number(gradeId),
         type_id: Number(typeId),
         lesson_id: Number(lessonId),
         question_text: questionText,
-        answers,
-        correct_index: correctIndex,
+        answers: compactAnswers,
+        correct_index: compactCorrectIndex,
         ...(fileToSend ? { imageFile: fileToSend } : {}),
         ...(pathOnly ? { question_image_path: pathOnly } : {}),
       });
@@ -271,12 +288,6 @@ export default function AdminQuestionCreate() {
           </p>
         </div>
       </header>
-
-      {error && (
-        <div style={styles.errorBanner} role="alert">
-          {error}
-        </div>
-      )}
 
       {loadingGrades && (
         <p style={styles.muted}>Đang tải danh sách khối lớp…</p>
@@ -359,7 +370,7 @@ export default function AdminQuestionCreate() {
               </select>
               {typeId && !loadingLessons && lessons.length === 0 && (
                 <span style={styles.warnInline}>
-                  Chưa có bài học cho chủ đề này — thêm bài học ở Quản lý chủ đề
+                  Chưa có bài học nào
                   trước.
                 </span>
               )}
@@ -458,9 +469,6 @@ export default function AdminQuestionCreate() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Đáp án trắc nghiệm</h2>
-          <p style={styles.hint}>
-            Nhập đủ 4 phương án và chọn một đáp án đúng.
-          </p>
           {[0, 1, 2, 3].map((i) => {
             const label = ["A", "B", "C", "D"][i];
             return (
@@ -471,6 +479,7 @@ export default function AdminQuestionCreate() {
                     name="correct"
                     checked={correctIndex === i}
                     onChange={() => setCorrectIndex(i)}
+                    disabled={!String(answers[i] ?? "").trim()}
                   />
                   <span style={styles.answerBadge}>{label}</span>
                 </label>
@@ -480,7 +489,6 @@ export default function AdminQuestionCreate() {
                   onChange={(e) => setAnswerAt(i, e.target.value)}
                   style={styles.inputFlex}
                   placeholder={`Đáp án ${label}`}
-                  required
                 />
               </div>
             );
@@ -503,11 +511,18 @@ export default function AdminQuestionCreate() {
           </button>
         </div>
       </form>
-      {successMessage && (
-        <div style={styles.successBanner} role="status">
-          {successMessage}
-        </div>
-      )}
+      <div style={styles.formFeedback}>
+        {error && (
+          <div style={styles.errorBanner} role="alert">
+            {error}
+          </div>
+        )}
+        {successMessage && (
+          <div style={styles.successBanner} role="status">
+            {successMessage}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -554,9 +569,17 @@ const styles = {
     color: "#57606a",
     lineHeight: 1.5,
   },
+  formFeedback: {
+    marginTop: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+  },
   errorBanner: {
     padding: "12px 16px",
-    marginBottom: 16,
+    marginBottom: 0,
     borderRadius: 8,
     background: "#fff8f5",
     border: "1px solid #f0c4a8",
@@ -784,12 +807,6 @@ const styles = {
     maxWidth: "100%",
     boxSizing: "border-box",
   },
-  hint: {
-    margin: "0 0 12px",
-    fontSize: "0.88rem",
-    color: "#57606a",
-    fontWeight: 400,
-  },
   answerRow: {
     display: "flex",
     alignItems: "center",
@@ -867,7 +884,8 @@ const styles = {
   },
   successBanner: {
     padding: "12px 16px",
-    marginBottom: 16,
+    marginBottom: 0,
+    borderRadius: 8,
     background: "#ecfdf5",
     border: "1px solid #b7ebc6",
     color: "#14532d",

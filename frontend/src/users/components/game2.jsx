@@ -1,6 +1,6 @@
 // src/components/games/game2.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 export default function Game1({ payload, onLessonComplete }) {
@@ -33,13 +33,6 @@ const [, forceRender] = useState(0); // chỉ để render
   if (imgPath.startsWith("/")) return imgPath;
   if (imgPath.startsWith("game-images/")) return `${publicUrl}/${imgPath}`;
   return `${publicUrl}/game-images/${imgPath}`;
-};
-
-
-const getQuestionImageSrc = (imgPath) => {
-  if (!imgPath) return null;
-  if (/^https?:\/\//i.test(imgPath)) return imgPath;
-  return `http://210.245.52.119/gametoanhoc/${imgPath}`;
 };
 
 
@@ -635,7 +628,7 @@ const getQuestionImageSrc = (imgPath) => {
           {/* Ảnh câu hỏi - SỬA DÙNG getImageSrc */}
           {currentQuestion.question_image && (
             <img
-  src={getQuestionImageSrc(currentQuestion.question_image)} // dùng riêng cho question
+  src={questionImageUrl(currentQuestion.question_image) || undefined}
   alt="Minh họa câu hỏi"
   onError={(e) => {
     console.error(`Không thể tải ảnh: ${currentQuestion.question_image}`);
