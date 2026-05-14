@@ -6,7 +6,7 @@ import { publicUrl } from "../../lib/publicUrl";
 const copy = {
   pageTitle: "Danh sách đề thi",
   intro:
-    "Chọn một đề phù hợp để luyện tập. Mỗi đề được xây dựng từ ngân hàng câu hỏi theo từng khối lớp.",
+    "Chọn một đề phù hợp để luyện tập",
   loading: "Đang tải danh sách đề thi…",
   loadError: "Không tải được danh sách đề thi.",
   empty: "Chưa có đề thi nào. Vui lòng quay lại sau.",

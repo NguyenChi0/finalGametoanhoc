@@ -1,6 +1,6 @@
 // src/components/games/game12.jsx
 import React, { useMemo, useState } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -116,7 +116,7 @@ export default function Game1({ payload, onLessonComplete }) {
               </div>
               {q.question_image && (
                 <img
-                  src={q.question_image}
+                  src={questionImageUrl(q.question_image) || q.question_image}
                   alt=""
                   style={{ maxWidth: 360, display: "block", marginBottom: 8 }}
                 />
@@ -159,7 +159,11 @@ export default function Game1({ payload, onLessonComplete }) {
                       <div>
                         {a.text ||
                           (a.image ? (
-                            <img src={a.image} alt="" style={{ maxWidth: 120 }} />
+                            <img
+                              src={questionImageUrl(a.image) || a.image}
+                              alt=""
+                              style={{ maxWidth: 120 }}
+                            />
                           ) : (
                             "—"
                           ))}

@@ -280,10 +280,13 @@ export const removeQuestionFromExamTemplate = async (templateId, questionId) => 
 };
 
 // ==========================
-// Admin — Contests (name, prize, template_id; khối qua exam_templates — nhiều cuộc thi / khối)
+// Admin — Contests (có `grade_id` trên bảng contests; query `grade_id` = lọc theo khối)
 // ==========================
-export const getAdminContests = async () => {
-  const res = await api.get("/admin/contests");
+export const getAdminContests = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await api.get("/admin/contests", { params });
   return res.data;
 };
 

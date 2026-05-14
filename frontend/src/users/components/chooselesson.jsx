@@ -1,6 +1,12 @@
 // src/components/chooselesson.jsx
 import React, { useState, useEffect } from "react";
-import { getGrades, getTypes, getLessons, getQuestions } from "../../api";
+import {
+  getGrades,
+  getTypes,
+  getLessons,
+  getQuestions,
+  questionImageUrl,
+} from "../../api";
 
 function shuffleArray(arr) {
   const a = Array.isArray(arr) ? arr.slice() : [];
@@ -9,6 +15,44 @@ function shuffleArray(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+const GRADES_PER_ROW = 5;
+/** Kích thước cố định mỗi ô khối lớp (px) — hàng tối đa 5 ô, có chồng lấn -18px */
+const GRADE_CHEVRON_WIDTH_PX = 156;
+const GRADE_CHEVRON_HEIGHT_PX = 52;
+/** Một hình cho mọi ô: trái lõm (khía tam giác), phải nhọn — nối chuỗi giống breadcrumb */
+const GRADE_CHEVRON_CLIP =
+  "polygon(14% 50%, 0% 0%, 86% 0%, 100% 50%, 86% 100%, 0% 100%)";
+
+function chunkArray(arr, size) {
+  const chunks = [];
+  const list = Array.isArray(arr) ? arr : [];
+  for (let i = 0; i < list.length; i += size) {
+    chunks.push(list.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/** DB: `/questions-images/...` — nối origin API để `<img src>` tải đúng. */
+function withResolvedQuestionMedia(q) {
+  if (!q || typeof q !== "object") return q;
+  return {
+    ...q,
+    question_image: q.question_image
+      ? questionImageUrl(q.question_image) || q.question_image
+      : q.question_image,
+    answers: Array.isArray(q.answers)
+      ? q.answers.map((a) =>
+          !a || typeof a !== "object"
+            ? a
+            : {
+                ...a,
+                image: a.image ? questionImageUrl(a.image) || a.image : a.image,
+              }
+        )
+      : q.answers,
+  };
 }
 
 export default function ChooseLessonTree({ onStartGame, kilovia }) {
@@ -24,7 +68,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
     { id: "game2", label: "Diệt ruồi" },
     { id: "game3", label: "Phi tiêu" },
     { id: "game4", label: "Vượt chướng ngại vật" },
-    { id: "game5", label: "Tìm người nói thật" },
+    { id: "game5", label: "Finding Dory" },
     { id: "game6", label: "Chém hoa quả" },
     { id: "game7", label: "Nhà thám hiểm tài ba" },
     { id: "game8", label: "Bài kiểm tra" },
@@ -96,7 +140,7 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
 
     const rawUser = localStorage.getItem("user");
     const currentUser = rawUser ? JSON.parse(rawUser) : null;
-    const shuffledQuestions = shuffleArray(questions);
+    const shuffledQuestions = shuffleArray(questions.map(withResolvedQuestionMedia));
 
     onStartGame(selectedGameInterface, {
   grade: { id: gradeId },
@@ -166,101 +210,100 @@ export default function ChooseLessonTree({ onStartGame, kilovia }) {
           Chọn khối lớp bạn muốn học nhé 
         </div>
         <div
-          className="grade-chevron-row"
           style={{
             display: "flex",
-            flexDirection: "row",
-            alignItems: "stretch",
+            flexDirection: "column",
+            gap: 14,
             width: "100%",
-            maxWidth: "min(100%, 720px)",
-            minHeight: 48,
+            maxWidth: "100%",
             fontFamily: "inherit",
           }}
         >
-          {grades.map((g, index) => {
-            const last = index === grades.length - 1;
-            const first = index === 0;
-            const only = grades.length === 1;
-            /* Ô đầu: trái vuông, phải mũi tên; giữa: trái lõm phải nhọn; cuối: trái lõm phải thẳng; 1 ô: hình chữ nhật */
-            let clipPath;
-            if (only) {
-              clipPath = "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)";
-            } else if (first) {
-              clipPath =
-                "polygon(0% 0%, 88% 0%, 100% 50%, 88% 100%, 0% 100%)";
-            } else if (last) {
-              clipPath =
-                "polygon(14% 50%, 0% 0%, 100% 0%, 100% 100%, 0% 100%)";
-            } else {
-              clipPath =
-                "polygon(14% 50%, 0% 0%, 86% 0%, 100% 50%, 86% 100%, 0% 100%)";
-            }
-
-            return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => handleSelectGrade(g.id)}
-                className="grade-chevron-btn"
-                style={{
-                  position: "relative",
-                  zIndex: index + 1,
-                  flex: "1 1 0",
-                  minWidth: 72,
-                  boxSizing: "border-box",
-                  marginLeft: index === 0 ? 0 : -18,
-                  padding:
-                    first && !only
-                      ? "10px 22px 10px 16px"
-                      : !first && !last
-                        ? "10px 18px 10px 22px"
-                        : last && !first
-                          ? "10px 16px 10px 26px"
-                          : "10px 20px",
-                  background: selectedGrade === g.id ? "#0f4c75" : "#ffffff",
-                  color: selectedGrade === g.id ? "#fff" : "#1a1a1a",
-                  border: "none",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: "clamp(0.8rem, 2.2vw, 0.95rem)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  clipPath,
-                  WebkitClipPath: clipPath,
-                  boxShadow:
-                    selectedGrade === g.id
-                      ? "0 4px 14px #0f4c75"
-                      : "0 2px 8px rgba(0,0,0,0.1)",
-                  transition:
-                    "transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease",
-                    fontFamily: "inherit",
-                }}
-              >
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    maxWidth: "100%",
-                  }}
-                >
-                  {g.name}
-                </span>
-              </button>
-            );
-          })}
+          {chunkArray(grades, GRADES_PER_ROW).map((rowGrades, rowIndex) => (
+            <div
+              key={rowIndex}
+              className="grade-chevron-row"
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                width: "100%",
+                minHeight: GRADE_CHEVRON_HEIGHT_PX,
+                fontFamily: "inherit",
+                paddingLeft: 2,
+                boxSizing: "border-box",
+              }}
+            >
+              {rowGrades.map((g, index) => {
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => handleSelectGrade(g.id)}
+                    className="grade-chevron-btn"
+                    style={{
+                      position: "relative",
+                      zIndex: index + 1,
+                      flex: `0 0 ${GRADE_CHEVRON_WIDTH_PX}px`,
+                      width: GRADE_CHEVRON_WIDTH_PX,
+                      height: GRADE_CHEVRON_HEIGHT_PX,
+                      minWidth: GRADE_CHEVRON_WIDTH_PX,
+                      maxWidth: GRADE_CHEVRON_WIDTH_PX,
+                      minHeight: GRADE_CHEVRON_HEIGHT_PX,
+                      maxHeight: GRADE_CHEVRON_HEIGHT_PX,
+                      boxSizing: "border-box",
+                      marginLeft: index === 0 ? 0 : -18,
+                      padding: "10px 20px 10px 24px",
+                      background:
+                        selectedGrade === g.id ? "#0f4c75" : "#ffffff",
+                      color: selectedGrade === g.id ? "#fff" : "#1a1a1a",
+                      border: "none",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                      fontSize: "0.8125rem",
+                      lineHeight: 1.2,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      textAlign: "center",
+                      clipPath: GRADE_CHEVRON_CLIP,
+                      WebkitClipPath: GRADE_CHEVRON_CLIP,
+                      boxShadow:
+                        selectedGrade === g.id
+                          ? "0 4px 14px #0f4c75"
+                          : "0 2px 8px rgba(0,0,0,0.1)",
+                      transition:
+                        "transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: "100%",
+                        minWidth: 0,
+                      }}
+                    >
+                      {g.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
       <style>{`
         .grade-chevron-row {
           overflow-x: auto;
-          font-family: inherit;
           overflow-y: visible;
-          padding-bottom: 4px;
+          padding-bottom: 2px;
           -webkit-overflow-scrolling: touch;
+          font-family: inherit;
         }
         .grade-chevron-btn:hover {
           background: #3282b8 !important;

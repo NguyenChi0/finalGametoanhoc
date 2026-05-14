@@ -314,7 +314,7 @@ export default function AdminItems() {
   const handleDelete = async (it) => {
     if (
       !window.confirm(
-        `Xóa vật phẩm "${it.name}" (ID ${it.id})?\n\nNếu đã có người chơi mua vật phẩm này, hệ thống sẽ không cho xóa.`
+        `Xóa vật phẩm "${it.name}" (ID ${it.id})?\n\nNếu đã có người chơi mua vật phẩm này, vật phẩm sẽ không thể bị xóa`
       )
     ) {
       return;

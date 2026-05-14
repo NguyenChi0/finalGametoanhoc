@@ -12,6 +12,10 @@ import {
 /** Số câu hỏi tối đa mỗi trang (đồng bộ với API limit). */
 const QUESTIONS_PAGE_SIZE = 10;
 
+/** Tooltip khi câu hỏi đang nằm trong mẫu đề — không cho xóa khỏi DB. */
+const QUESTION_IN_EXAM_DELETE_HINT =
+  "Không thể xóa: câu hỏi đang có trong mẫu đề. Gỡ khỏi đề trong Quản lý exams trước.";
+
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia(query).matches : false
@@ -266,6 +270,7 @@ export default function AdminQuestions() {
     async (row) => {
       const id = Number(row?.id);
       if (!id) return;
+      if (row?.in_exam_template) return;
       const questionText = String(row?.question_text || "").trim();
       const preview =
         questionText.length > 90 ? `${questionText.slice(0, 90)}...` : questionText;
@@ -334,20 +339,32 @@ export default function AdminQuestions() {
     () => ({ gradeById, typeById, lessonById }),
     [gradeById, typeById, lessonById]
   );
-  const currentPageIds = useMemo(
+  /** Chỉ câu có thể xóa hàng loạt — câu đã gắn mẫu đề không được chọn. */
+  const selectablePageIds = useMemo(
     () =>
       questions
+        .filter((row) => !row.in_exam_template)
         .map((row) => Number(row.id))
         .filter((id) => Number.isFinite(id) && id > 0),
     [questions]
   );
   const allSelectedOnPage =
-    currentPageIds.length > 0 &&
-    currentPageIds.every((id) => selectedIds.includes(id));
+    selectablePageIds.length > 0 &&
+    selectablePageIds.every((id) => selectedIds.includes(id));
 
-  const toggleSelectOne = useCallback((id) => {
+  const selectionIncludesExamQuestion = useMemo(
+    () =>
+      selectedIds.some((id) => {
+        const row = questions.find((q) => Number(q.id) === Number(id));
+        return row?.in_exam_template;
+      }),
+    [selectedIds, questions]
+  );
+
+  const toggleSelectOne = useCallback((id, row) => {
     const qid = Number(id);
     if (!qid) return;
+    if (row?.in_exam_template) return;
     setSelectedIds((prev) =>
       prev.includes(qid) ? prev.filter((x) => x !== qid) : [...prev, qid]
     );
@@ -355,17 +372,24 @@ export default function AdminQuestions() {
 
   const toggleSelectAllCurrentPage = useCallback(() => {
     setSelectedIds((prev) => {
-      if (!currentPageIds.length) return [];
-      const everySelected = currentPageIds.every((id) => prev.includes(id));
-      if (everySelected) return prev.filter((id) => !currentPageIds.includes(id));
-      const merged = new Set([...prev, ...currentPageIds]);
+      if (!selectablePageIds.length) return [];
+      const everySelected = selectablePageIds.every((id) => prev.includes(id));
+      if (everySelected) return prev.filter((id) => !selectablePageIds.includes(id));
+      const merged = new Set([...prev, ...selectablePageIds]);
       return Array.from(merged);
     });
-  }, [currentPageIds]);
+  }, [selectablePageIds]);
 
   const handleDeleteSelected = useCallback(async () => {
     const targets = selectedIds.filter((id) => Number.isFinite(Number(id)));
     if (!targets.length) return;
+    if (
+      targets.some((id) =>
+        questions.some((q) => Number(q.id) === Number(id) && q.in_exam_template)
+      )
+    ) {
+      return;
+    }
     const ok = window.confirm(`Bạn có chắc muốn xóa ${targets.length} câu hỏi đã chọn?`);
     if (!ok) return;
 
@@ -394,7 +418,7 @@ export default function AdminQuestions() {
     } finally {
       setBulkDeleting(false);
     }
-  }, [selectedIds, questions.length, page, fetchQuestions]);
+  }, [selectedIds, questions, questions.length, page, fetchQuestions]);
 
   return (
     <div style={styles.root}>
@@ -551,9 +575,16 @@ export default function AdminQuestions() {
               type="button"
               style={{
                 ...styles.paginationBtn,
-                ...(selectedIds.length === 0 || bulkDeleting ? styles.paginationBtnDisabled : {}),
+                ...(selectedIds.length === 0 ||
+                bulkDeleting ||
+                selectionIncludesExamQuestion
+                  ? styles.paginationBtnDisabled
+                  : {}),
               }}
-              disabled={selectedIds.length === 0 || bulkDeleting}
+              disabled={selectedIds.length === 0 || bulkDeleting || selectionIncludesExamQuestion}
+              title={
+                selectionIncludesExamQuestion ? QUESTION_IN_EXAM_DELETE_HINT : undefined
+              }
               onClick={handleDeleteSelected}
             >
               {bulkDeleting ? "Đang xóa..." : "Xóa đã chọn"}
@@ -585,8 +616,8 @@ export default function AdminQuestions() {
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(Number(row.id))}
-                      onChange={() => toggleSelectOne(row.id)}
-                      disabled={bulkDeleting}
+                      onChange={() => toggleSelectOne(row.id, row)}
+                      disabled={bulkDeleting || row.in_exam_template}
                     />
                     <span>Chọn câu hỏi #{row.id}</span>
                   </label>
@@ -631,11 +662,13 @@ export default function AdminQuestions() {
                     style={{
                       ...styles.actionBtn,
                       ...styles.actionBtnDanger,
-                      ...(deletingId === Number(row.id) ? styles.actionBtnDisabled : {}),
+                      ...(deletingId === Number(row.id) || row.in_exam_template
+                        ? styles.actionBtnDisabled
+                        : {}),
                     }}
-                    title="Xóa câu hỏi"
+                    title={row.in_exam_template ? QUESTION_IN_EXAM_DELETE_HINT : "Xóa câu hỏi"}
                     onClick={() => handleDeleteQuestion(row)}
-                    disabled={deletingId === Number(row.id)}
+                    disabled={deletingId === Number(row.id) || row.in_exam_template}
                   >
                     <TrashIcon />
                   </button>
@@ -657,7 +690,7 @@ export default function AdminQuestions() {
                     aria-label="Chọn tất cả câu hỏi trang hiện tại"
                     checked={allSelectedOnPage}
                     onChange={toggleSelectAllCurrentPage}
-                    disabled={!currentPageIds.length || bulkDeleting}
+                    disabled={!selectablePageIds.length || bulkDeleting}
                   />
                 </th>
                 <th style={{ ...styles.th, width: 72 }}>ID</th>
@@ -678,8 +711,8 @@ export default function AdminQuestions() {
                         type="checkbox"
                         aria-label={`Chọn câu hỏi ${row.id}`}
                         checked={selectedIds.includes(Number(row.id))}
-                        onChange={() => toggleSelectOne(row.id)}
-                        disabled={bulkDeleting}
+                        onChange={() => toggleSelectOne(row.id, row)}
+                        disabled={bulkDeleting || row.in_exam_template}
                       />
                     </td>
                     <td style={styles.td}>{row.id}</td>
@@ -711,11 +744,13 @@ export default function AdminQuestions() {
                           style={{
                             ...styles.actionBtn,
                             ...styles.actionBtnDanger,
-                            ...(deletingId === Number(row.id) ? styles.actionBtnDisabled : {}),
+                            ...(deletingId === Number(row.id) || row.in_exam_template
+                              ? styles.actionBtnDisabled
+                              : {}),
                           }}
-                          title="Xóa câu hỏi"
+                          title={row.in_exam_template ? QUESTION_IN_EXAM_DELETE_HINT : "Xóa câu hỏi"}
                           onClick={() => handleDeleteQuestion(row)}
-                          disabled={deletingId === Number(row.id)}
+                          disabled={deletingId === Number(row.id) || row.in_exam_template}
                         >
                           <TrashIcon />
                         </button>

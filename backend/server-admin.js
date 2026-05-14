@@ -167,13 +167,21 @@ module.exports = function mountAdminCrud(app, pool) {
         req.query.search != null && String(req.query.search).trim() !== ''
           ? String(req.query.search).trim()
           : '';
+      const rawRole = req.query.role;
+      const roleStr = rawRole != null ? String(rawRole).trim() : '';
+      const roleFilter = roleStr === '0' || roleStr === '1' ? Number(roleStr) : null;
 
+      const where = [];
       const params = [];
-      let whereSql = '';
       if (rawSearch) {
-        whereSql = 'WHERE username LIKE ?';
+        where.push('username LIKE ?');
         params.push(`%${rawSearch}%`);
       }
+      if (roleFilter === 0 || roleFilter === 1) {
+        where.push('role = ?');
+        params.push(roleFilter);
+      }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
       const [[{ cnt }]] = await pool.query(
         `SELECT COUNT(*) AS cnt FROM users ${whereSql}`,
@@ -655,16 +663,29 @@ module.exports = function mountAdminCrud(app, pool) {
       const rawG = req.query.grade_id;
       const gradeId =
         rawG != null && String(rawG).trim() !== '' ? Number(rawG) : null;
+      const rawSt = req.query.status;
+      const statusStr = rawSt != null ? String(rawSt).trim() : '';
+      const statusFilter =
+        statusStr === '0' || statusStr === '1' ? Number(statusStr) : null;
+
       let sql = `
         SELECT t.*, g.name AS grade_name,
           (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = t.id) AS question_count
         FROM exam_templates t
         LEFT JOIN grades g ON g.id = t.grade_id
       `;
+      const where = [];
       const params = [];
       if (gradeId != null && !Number.isNaN(gradeId) && gradeId > 0) {
-        sql += ' WHERE t.grade_id = ?';
+        where.push('t.grade_id = ?');
         params.push(gradeId);
+      }
+      if (statusFilter === 0 || statusFilter === 1) {
+        where.push('t.status = ?');
+        params.push(statusFilter);
+      }
+      if (where.length) {
+        sql += ' WHERE ' + where.join(' AND ');
       }
       sql += ' ORDER BY t.id DESC';
       const [rows] = await pool.query(sql, params);
@@ -741,15 +762,11 @@ module.exports = function mountAdminCrud(app, pool) {
       const tid = result.insertId;
       if (qids.length) {
         const ph = qids.map(() => '?').join(',');
-        const [found] = await conn.query(
-          `SELECT id FROM questions WHERE id IN (${ph}) AND grade_id = ?`,
-          [...qids, gid]
-        );
+        const [found] = await conn.query(`SELECT id FROM questions WHERE id IN (${ph})`, qids);
         if (found.length !== qids.length) {
           await conn.rollback();
           return res.status(400).json({
-            message:
-              'Một hoặc nhiều câu hỏi không tồn tại hoặc không cùng khối (grade_id) với đề.',
+            message: 'Một hoặc nhiều câu hỏi không tồn tại.',
           });
         }
         const values = qids.map((qid) => [tid, qid]);
@@ -810,23 +827,6 @@ module.exports = function mountAdminCrud(app, pool) {
         effectiveGrade = ng;
       }
 
-      if (grade_id !== undefined && Number(grade_id) !== Number(template.grade_id)) {
-        if (question_ids === undefined) {
-          const [[{ cnt }]] = await conn.query(
-            `SELECT COUNT(*) AS cnt FROM exam_template_questions etq
-             JOIN questions q ON q.id = etq.question_id
-             WHERE etq.template_id = ? AND q.grade_id != ?`,
-            [id, effectiveGrade]
-          );
-          if (Number(cnt) > 0) {
-            return res.status(400).json({
-              message:
-                'Không đổi khối khi đề còn câu hỏi khối khác. Hãy cập nhật danh sách câu (question_ids) trước.',
-            });
-          }
-        }
-      }
-
       let durationMinutesForUpdate = null;
       if (duration_time !== undefined && duration_time !== null) {
         try {
@@ -881,15 +881,11 @@ module.exports = function mountAdminCrud(app, pool) {
         ];
         const ph = qids.length ? qids.map(() => '?').join(',') : '';
         if (qids.length) {
-          const [found] = await conn.query(
-            `SELECT id FROM questions WHERE id IN (${ph}) AND grade_id = ?`,
-            [...qids, effectiveGrade]
-          );
+          const [found] = await conn.query(`SELECT id FROM questions WHERE id IN (${ph})`, qids);
           if (found.length !== qids.length) {
             await conn.rollback();
             return res.status(400).json({
-              message:
-                'Một hoặc nhiều câu hỏi không tồn tại hoặc không cùng khối với đề.',
+              message: 'Một hoặc nhiều câu hỏi không tồn tại.',
             });
           }
         }
@@ -971,20 +967,32 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
-  // ---------- CONTESTS (theo gui.sql: name, prize, template_id; khối = exam_templates.grade_id)
+  // ---------- CONTESTS (contests.grade_id + fallback exam_templates.grade_id)
   // status: 0 đã kết thúc, 1 đã lên lịch, 2 đang kích hoạt ----------
   const DEFAULT_CONTEST_DURATION_MINUTES = 30;
   app.get('/api/admin/contests', async (req, res) => {
     try {
       await syncContestStatuses();
+      const rawG = req.query.grade_id;
+      const filterGradeId =
+        rawG != null && String(rawG).trim() !== '' ? Number(rawG) : null;
+      const where = [];
+      const qParams = [];
+      if (filterGradeId != null && !Number.isNaN(filterGradeId) && filterGradeId > 0) {
+        where.push('COALESCE(c.grade_id, t.grade_id) = ?');
+        qParams.push(filterGradeId);
+      }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
       const [rows] = await pool.query(
-        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+        `SELECT c.id, c.name, c.prize, c.template_id, c.grade_id AS contest_grade_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
                 c.duration_time,
-                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+                COALESCE(c.grade_id, t.grade_id) AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
-         INNER JOIN grades g ON g.id = t.grade_id
-         ORDER BY c.start_time DESC, c.id DESC`
+         LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
+         ${whereSql}
+         ORDER BY c.start_time DESC, c.id DESC`,
+        qParams
       );
       res.json(rows);
     } catch (err) {
@@ -998,12 +1006,12 @@ module.exports = function mountAdminCrud(app, pool) {
     try {
       await syncContestStatuses();
       const [rows] = await pool.query(
-        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+        `SELECT c.id, c.name, c.prize, c.template_id, c.grade_id AS contest_grade_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
                 c.duration_time,
-                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+                COALESCE(c.grade_id, t.grade_id) AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
-         INNER JOIN grades g ON g.id = t.grade_id
+         LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
          WHERE c.id = ?`,
         [id]
       );
@@ -1076,18 +1084,18 @@ module.exports = function mountAdminCrud(app, pool) {
       durationTime = Math.min(Math.floor(durationTime), 65535);
 
       const [result] = await pool.query(
-        `INSERT INTO contests (name, template_id, start_time, end_time, status, description, prize, duration_time)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [name, templateId, startD, endD, status, description, prize, durationTime]
+        `INSERT INTO contests (name, template_id, grade_id, start_time, end_time, status, description, prize, duration_time)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, templateId, gradeId, startD, endD, status, description, prize, durationTime]
       );
       const insertId = result.insertId;
       const [rows] = await pool.query(
-        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+        `SELECT c.id, c.name, c.prize, c.template_id, c.grade_id AS contest_grade_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
                 c.duration_time,
-                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+                COALESCE(c.grade_id, t.grade_id) AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
-         INNER JOIN grades g ON g.id = t.grade_id
+         LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
          WHERE c.id = ?`,
         [insertId]
       );
@@ -1107,7 +1115,7 @@ module.exports = function mountAdminCrud(app, pool) {
     try {
       await syncContestStatuses();
       const [existing] = await pool.query(
-        `SELECT c.id, c.template_id, t.grade_id AS grade_id
+        `SELECT c.id, c.template_id, c.grade_id AS contest_grade_id, t.grade_id AS template_grade_id
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
          WHERE c.id = ?`,
@@ -1115,7 +1123,14 @@ module.exports = function mountAdminCrud(app, pool) {
       );
       if (!existing.length) return res.status(404).json({ message: 'Không tìm thấy contest' });
       const row = existing[0];
-      const gradeId = Number(row.grade_id);
+      const contestStoredGrade =
+        row.contest_grade_id != null && row.contest_grade_id !== ''
+          ? Number(row.contest_grade_id)
+          : null;
+      const gradeId =
+        contestStoredGrade != null && !Number.isNaN(contestStoredGrade) && contestStoredGrade > 0
+          ? contestStoredGrade
+          : Number(row.template_grade_id);
 
       const updates = [];
       const params = [];
@@ -1156,6 +1171,8 @@ module.exports = function mountAdminCrud(app, pool) {
         }
         updates.push('template_id = ?');
         params.push(tid);
+        updates.push('grade_id = ?');
+        params.push(Number(templates[0].grade_id));
       }
 
       if (body.start_time !== undefined) {
@@ -1224,12 +1241,12 @@ module.exports = function mountAdminCrud(app, pool) {
       await pool.query(`UPDATE contests SET ${updates.join(', ')} WHERE id = ?`, params);
 
       const [rows] = await pool.query(
-        `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
+        `SELECT c.id, c.name, c.prize, c.template_id, c.grade_id AS contest_grade_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
                 c.duration_time,
-                t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name
+                COALESCE(c.grade_id, t.grade_id) AS grade_id, g.name AS grade_name, t.name AS template_name
          FROM contests c
          INNER JOIN exam_templates t ON t.id = c.template_id
-         INNER JOIN grades g ON g.id = t.grade_id
+         LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
          WHERE c.id = ?`,
         [id]
       );

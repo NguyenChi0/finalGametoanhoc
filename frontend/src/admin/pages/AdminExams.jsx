@@ -51,6 +51,7 @@ export default function AdminExams() {
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [expandedExamId, setExpandedExamId] = useState(null);
   const [questionsByExamId, setQuestionsByExamId] = useState({});
 
@@ -63,10 +64,6 @@ export default function AdminExams() {
         if (cancelled) return;
         const arr = Array.isArray(list) ? list : [];
         setGrades(arr);
-        setGradeId((prev) => {
-          if (prev !== "") return prev;
-          return arr.length ? String(arr[0].id) : "";
-        });
       } catch (err) {
         if (!cancelled) {
           setError(err?.response?.data?.message || err.message || "Không tải được danh sách khối.");
@@ -81,19 +78,16 @@ export default function AdminExams() {
   }, []);
 
   useEffect(() => {
-    if (gradeId === "") {
-      setLoading(false);
-      setExams([]);
-      setQuestionsByExamId({});
-      setExpandedExamId(null);
-      return;
-    }
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const rows = await getAdminExamTemplates({ grade_id: gradeId });
+        const params = {
+          ...(gradeId ? { grade_id: gradeId } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+        };
+        const rows = await getAdminExamTemplates(params);
         if (cancelled) return;
         setExams(Array.isArray(rows) ? rows : []);
         setQuestionsByExamId({});
@@ -110,7 +104,7 @@ export default function AdminExams() {
     return () => {
       cancelled = true;
     };
-  }, [gradeId]);
+  }, [gradeId, statusFilter]);
 
   const selectedGrade = grades.find((g) => String(g.id) === gradeId);
 
@@ -124,13 +118,13 @@ export default function AdminExams() {
   }, [search, exams]);
 
   const totalFormatted = useMemo(() => {
-    if (!gradeId || (loading && exams.length === 0)) return "—";
+    if (loading && exams.length === 0) return "—";
     return filtered.length.toLocaleString("vi-VN");
-  }, [gradeId, loading, exams.length, filtered.length]);
+  }, [loading, exams.length, filtered.length]);
 
   const statLabelText = useMemo(() => {
-    if (selectedGrade) return `Số mẫu đề ${selectedGrade.name}`;
-    return "Số mẫu đề";
+    if (selectedGrade) return `Tổng số mẫu đề ${selectedGrade.name}`;
+    return "Tổng số mẫu đề";
   }, [selectedGrade]);
 
   const toggleExpand = async (row) => {
@@ -244,28 +238,56 @@ export default function AdminExams() {
         </Link>
       </header>
 
-      {/* Session 1 — lọc khối */}
-      <section style={styles.filterCard} aria-label="Lọc theo khối lớp">
-        <label style={styles.filterLabel} htmlFor="admin-exams-grade">
-          Khối lớp
-        </label>
-        <select
-          id="admin-exams-grade"
-          value={gradeId}
-          onChange={(e) => {
-            setGradeId(e.target.value);
-            setSearch("");
-          }}
-          style={styles.filterSelect}
-          disabled={loadingGrades || !grades.length}
-        >
-          <option value="">— Chọn khối lớp —</option>
-          {grades.map((g) => (
-            <option key={g.id} value={String(g.id)}>
-              {g.name}
-            </option>
-          ))}
-        </select>
+      <section style={styles.statCard} aria-label="Thống kê">
+        <div style={styles.statIconWrap}>
+          <DocumentIcon />
+        </div>
+        <div>
+          <p style={styles.statLabel}>{statLabelText}</p>
+          <p style={styles.statNumber}>{totalFormatted}</p>
+        </div>
+      </section>
+
+      {/* Bộ lọc: mặc định tất cả đề thi; có thể thu hẹp theo khối + trạng thái */}
+      <section style={styles.filterCard} aria-label="Bộ lọc mẫu đề">
+        <div style={styles.filterRow}>
+          <label style={styles.filterLabel} htmlFor="admin-exams-grade">
+            Khối lớp
+          </label>
+          <select
+            id="admin-exams-grade"
+            value={gradeId}
+            onChange={(e) => {
+              setGradeId(e.target.value);
+              setSearch("");
+            }}
+            style={styles.filterSelect}
+            disabled={loadingGrades}
+          >
+            <option value="">Tất cả đề thi</option>
+            {grades.map((g) => (
+              <option key={g.id} value={String(g.id)}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={styles.filterRow}>
+          <label style={styles.filterLabel} htmlFor="admin-exams-status">
+            Trạng thái hiển thị
+          </label>
+          <select
+            id="admin-exams-status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={styles.filterSelect}
+            disabled={loadingGrades}
+          >
+            <option value="">Tất cả</option>
+            <option value="0">Không công khai</option>
+            <option value="1">Công khai</option>
+          </select>
+        </div>
       </section>
 
       {loadingGrades && (
@@ -282,22 +304,7 @@ export default function AdminExams() {
         </div>
       )}
 
-      {!gradeId && !loadingGrades && grades.length > 0 && !error && (
-        <p style={styles.muted}>Chọn khối lớp để xem danh sách mẫu đề.</p>
-      )}
-
-      {gradeId && (
-        <>
-          <section style={styles.statCard} aria-label="Thống kê">
-            <div style={styles.statIconWrap}>
-              <DocumentIcon />
-            </div>
-            <div>
-              <p style={styles.statLabel}>{statLabelText}</p>
-              <p style={styles.statNumber}>{totalFormatted}</p>
-            </div>
-          </section>
-
+      <>
           <div style={styles.toolbar}>
             <div style={styles.searchWrap}>
               <input
@@ -532,8 +539,7 @@ export default function AdminExams() {
               )}
             </div>
           )}
-        </>
-      )}
+      </>
     </div>
   );
 }
@@ -621,7 +627,7 @@ const styles = {
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16,
-    marginBottom: 20,
+    marginBottom: 24,
     flexWrap: "wrap",
   },
   btnPrimary: {
@@ -666,16 +672,22 @@ const styles = {
   },
   filterCard: {
     display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "stretch",
     gap: 12,
     padding: "14px 16px",
     marginBottom: 24,
     background: "#ffffff",
     border: "1px solid #d0d7de",
-    borderRadius: 10,
     maxWidth: 480,
     boxSizing: "border-box",
+  },
+  filterRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
   },
   filterLabel: {
     fontSize: "0.9rem",

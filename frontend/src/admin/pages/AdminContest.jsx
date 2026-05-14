@@ -121,6 +121,7 @@ function formatContestSchedule(startsAt, endsAt) {
 
 export default function AdminContest() {
   const isNarrow = useMediaQuery("(max-width: 768px)");
+  const [listGradeFilter, setListGradeFilter] = useState("");
   const [statusId, setStatusId] = useState("all");
   const [search, setSearch] = useState("");
   const [expandedContestId, setExpandedContestId] = useState(null);
@@ -157,13 +158,24 @@ export default function AdminContest() {
   const [newDurationMinutes, setNewDurationMinutes] = useState("30");
 
   const selectedStatus = STATUS_OPTIONS.find((item) => item.id === statusId);
+  const selectedListGrade = useMemo(
+    () =>
+      listGradeFilter
+        ? grades.find((g) => String(g.id) === String(listGradeFilter))
+        : null,
+    [listGradeFilter, grades]
+  );
 
   const loadAll = useCallback(async () => {
     setListLoading(true);
     setError(null);
     try {
+      const contestParams =
+        listGradeFilter && String(listGradeFilter).trim() !== ""
+          ? { grade_id: listGradeFilter }
+          : {};
       const [cRows, tRows, gRows] = await Promise.all([
-        getAdminContests(),
+        getAdminContests(contestParams),
         getAdminExamTemplates(),
         getAdminGrades(),
       ]);
@@ -183,7 +195,7 @@ export default function AdminContest() {
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [listGradeFilter]);
 
   useEffect(() => {
     loadAll();
@@ -409,11 +421,16 @@ export default function AdminContest() {
   }, [listLoading, contests.length, filtered.length]);
 
   const statLabelText = useMemo(() => {
-    if (selectedStatus && selectedStatus.id !== "all") {
-      return `Số cuộc thi · ${selectedStatus.name}`;
+    const parts = [];
+    if (selectedListGrade) {
+      parts.push(selectedListGrade.name || `Khối ${selectedListGrade.id}`);
     }
-    return "Số cuộc thi";
-  }, [selectedStatus]);
+    if (selectedStatus && selectedStatus.id !== "all") {
+      parts.push(selectedStatus.name);
+    }
+    if (parts.length) return `Tổng số cuộc thi · ${parts.join(" · ")}`;
+    return "Tổng số cuộc thi";
+  }, [selectedListGrade, selectedStatus]);
 
   const toggleExpand = (contest) => {
     const id = String(contest.id);
@@ -550,24 +567,6 @@ export default function AdminContest() {
         </div>
       )}
 
-      <section style={styles.filterCard} aria-label="Lọc trạng thái cuộc thi">
-        <label style={styles.filterLabel} htmlFor="admin-contest-status">
-          Trạng thái
-        </label>
-        <select
-          id="admin-contest-status"
-          value={statusId}
-          onChange={(e) => setStatusId(e.target.value)}
-          style={styles.filterSelect}
-        >
-          {STATUS_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </section>
-
       <section style={styles.statCard} aria-label="Thống kê">
         <div style={styles.statIconWrap}>
           <DocumentIcon />
@@ -575,6 +574,48 @@ export default function AdminContest() {
         <div>
           <p style={styles.statLabel}>{statLabelText}</p>
           <p style={styles.statNumber}>{totalFormatted}</p>
+        </div>
+      </section>
+
+      <section style={styles.filterCard} aria-label="Lọc khối và trạng thái cuộc thi">
+        <div style={styles.filterRow}>
+          <label style={styles.filterLabel} htmlFor="admin-contest-grade">
+            Khối lớp
+          </label>
+          <select
+            id="admin-contest-grade"
+            value={listGradeFilter}
+            onChange={(e) => {
+              setListGradeFilter(e.target.value);
+              setSearch("");
+            }}
+            style={styles.filterSelect}
+            disabled={listLoading && !grades.length}
+          >
+            <option value="">Tất cả khối</option>
+            {grades.map((g) => (
+              <option key={g.id} value={String(g.id)}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={styles.filterRow}>
+          <label style={styles.filterLabel} htmlFor="admin-contest-status">
+            Trạng thái
+          </label>
+          <select
+            id="admin-contest-status"
+            value={statusId}
+            onChange={(e) => setStatusId(e.target.value)}
+            style={styles.filterSelect}
+          >
+            {STATUS_OPTIONS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
 
@@ -603,7 +644,9 @@ export default function AdminContest() {
               {search.trim()
                 ? `Không có kết quả phù hợp với “${search}”.`
                 : contests.length === 0
-                  ? "Chưa có cuộc thi nào."
+                  ? listGradeFilter
+                    ? "Không có cuộc thi cho khối đã chọn."
+                    : "Chưa có cuộc thi nào."
                   : "Không có cuộc thi khớp bộ lọc."}
             </div>
           ) : (
@@ -718,7 +761,9 @@ export default function AdminContest() {
                     {search.trim()
                       ? `Không có kết quả phù hợp với “${search}”.`
                       : contests.length === 0
-                        ? "Chưa có cuộc thi nào"
+                        ? listGradeFilter
+                          ? "Không có cuộc thi cho khối đã chọn."
+                          : "Chưa có cuộc thi nào"
                         : "Không có cuộc thi khớp bộ lọc."}
                   </td>
                 </tr>
@@ -969,7 +1014,7 @@ const styles = {
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16,
-    marginBottom: 20,
+    marginBottom: 24,
     flexWrap: "wrap",
   },
   /* Đồng bộ với AdminExams / các trang admin khác */
@@ -1030,16 +1075,22 @@ const styles = {
   },
   filterCard: {
     display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "stretch",
     gap: 12,
     padding: "14px 16px",
     marginBottom: 24,
     background: "#ffffff",
     border: "1px solid #d0d7de",
-    borderRadius: 10,
     maxWidth: 480,
     boxSizing: "border-box",
+  },
+  filterRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
   },
   filterLabel: {
     fontSize: "0.9rem",

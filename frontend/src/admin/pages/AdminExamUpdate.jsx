@@ -35,6 +35,9 @@ export default function AdminExamUpdate() {
   const [saving, setSaving] = useState(false);
   const [initError, setInitError] = useState(null);
 
+  /** Tối đa số câu trả về mỗi lần (danh sách + API). */
+  const QUESTION_POOL_LIMIT = 200;
+
   useEffect(() => {
     if (!draft?.id) {
       setExamId(null);
@@ -137,8 +140,43 @@ export default function AdminExamUpdate() {
   }, [titleId]);
 
   useEffect(() => {
+    const q = search.trim();
+    if (q) {
+      let cancelled = false;
+      setQuestionsLoading(true);
+      const timer = setTimeout(async () => {
+        try {
+          const res = await getQuestions({
+            search: q,
+            limit: QUESTION_POOL_LIMIT,
+          });
+          if (cancelled) return;
+          const raw = Array.isArray(res?.data) ? res.data : [];
+          setQuestionPool(
+            raw.map((row) => ({
+              id: Number(row.id),
+              text: row.question_text || "",
+              detail:
+                row.hierarchy_path ||
+                [row.grade_name, row.type_name, row.lesson_name].filter(Boolean).join(" · ") ||
+                "",
+            }))
+          );
+        } catch {
+          if (!cancelled) setQuestionPool([]);
+        } finally {
+          if (!cancelled) setQuestionsLoading(false);
+        }
+      }, 320);
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }
+
     if (templateGradeId == null) {
       setQuestionPool([]);
+      setQuestionsLoading(false);
       return;
     }
     let cancelled = false;
@@ -149,18 +187,17 @@ export default function AdminExamUpdate() {
           grade_id: String(templateGradeId),
           type_id: titleId || undefined,
           lesson_id: lessonId || undefined,
-          search: search.trim() || undefined,
-          limit: 500,
+          limit: QUESTION_POOL_LIMIT,
         });
         if (cancelled) return;
         const raw = Array.isArray(res?.data) ? res.data : [];
         setQuestionPool(
-          raw.map((q) => ({
-            id: Number(q.id),
-            text: q.question_text || "",
+          raw.map((row) => ({
+            id: Number(row.id),
+            text: row.question_text || "",
             detail:
-              q.hierarchy_path ||
-              [q.type_name, q.lesson_name].filter(Boolean).join(" · ") ||
+              row.hierarchy_path ||
+              [row.grade_name, row.type_name, row.lesson_name].filter(Boolean).join(" · ") ||
               "",
           }))
         );
@@ -364,7 +401,8 @@ export default function AdminExamUpdate() {
         <div style={styles.filterHeader}>
           <h2 style={styles.sectionTitle}>Bộ lọc câu hỏi</h2>
           <p style={styles.sectionSubtitle}>
-            Lọc câu hỏi theo chủ đề / bài học (cùng khối với đề). Dùng tìm kiếm để thu hẹp danh sách.
+            Lọc theo khối của đề / chủ đề / bài — tối đa {QUESTION_POOL_LIMIT} câu. Có chữ trong ô tìm:
+            tra toàn bộ thư viện (tối đa {QUESTION_POOL_LIMIT} kết quả).
           </p>
         </div>
 
@@ -385,6 +423,7 @@ export default function AdminExamUpdate() {
               value={titleId}
               onChange={(e) => setTitleId(e.target.value)}
               style={styles.select}
+              disabled={templateGradeId == null}
             >
               {titleOptions.map((title) => (
                 <option key={title.id || "all-topics"} value={title.id}>
@@ -422,7 +461,7 @@ export default function AdminExamUpdate() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Nhập nội dung câu hỏi..."
+              placeholder="Để trống: lọc theo chủ đề / bài (khối đề). Có chữ: tìm toàn bộ câu hỏi…"
               style={styles.searchInput}
             />
           </div>

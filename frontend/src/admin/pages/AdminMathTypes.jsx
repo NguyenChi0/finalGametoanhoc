@@ -270,7 +270,7 @@ export default function AdminMathTypes() {
   const handleDelete = async (row) => {
     if (
       !window.confirm(
-        `Xóa chủ đề "${row.name}" (ID ${row.id})?\n\nCác bài học thuộc chủ đề sẽ bị xóa theo nếu không còn câu hỏi tham chiếu. Nếu còn câu hỏi gắn chủ đề này, hệ thống sẽ không cho xóa.`
+        `Xóa chủ đề "${row.name}" (ID ${row.id})?\n\nCác bài học thuộc chủ đề sẽ bị xóa theo nếu không còn câu hỏi tham chiếu. Nếu còn câu hỏi gắn chủ đề này, chủ đề sẽ không thể bị xóa.`
       )
     ) {
       return;
@@ -826,7 +826,7 @@ export default function AdminMathTypes() {
 
       {!filterGradeId && hasGradeOptions && !loadingGrades && (
         <p style={styles.hintBox}>
-          Chọn một khối lớp để xem và quản lý các chủ đề tương ứng.
+          Chọn một khối lớp để quản lý các chủ đề.
         </p>
       )}
 
@@ -1097,7 +1097,6 @@ const styles = {
     padding: "14px 16px",
     background: "#fff",
     border: "1px solid #d0d7de",
-    borderRadius: 10,
     maxWidth: 480,
   },
   filterLabel: {

@@ -37,7 +37,7 @@ const gameLabels = {
   game2: "Diệt ruồi",
   game3: "Phi tiêu",
   game4: "Vượt chướng ngại vật",
-  game5: "Tìm người nói thật",
+  game5: "Finding Dory",
   game6: "Chém hoa quả",
   game7: "Nhà thám hiểm tài ba",
   game8: "Bài kiểm tra",

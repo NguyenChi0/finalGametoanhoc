@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { getGrades, getTypes, getLessons, createQuestion } from "../../api";
 
 const initialAnswers = ["", "", "", ""];
@@ -19,7 +19,6 @@ function useMediaQuery(query) {
 }
 
 export default function AdminQuestionCreate() {
-  const navigate = useNavigate();
   const isNarrow = useMediaQuery("(max-width: 768px)");
   const [grades, setGrades] = useState([]);
   const [types, setTypes] = useState([]);
@@ -244,13 +243,9 @@ export default function AdminQuestionCreate() {
         ...(pathOnly ? { question_image_path: pathOnly } : {}),
       });
 
-      setQuestionText("");
-      setQuestionImageFile(null);
-      setQuestionImage("");
-      setQuestionImagePreview("");
-      setAnswers(initialAnswers);
-      setCorrectIndex(0);
-      setSuccessMessage("Đã lưu câu hỏi. Bạn có thể tiếp tục nhập câu hỏi mới.");
+      setSuccessMessage(
+        "Đã lưu câu hỏi"
+      );
     } catch (err) {
       const msg =
         err?.response?.data?.message ||

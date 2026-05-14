@@ -1,6 +1,6 @@
 // Game 3: đáp án trên bóng bay trượt ngang; phi tiêu dưới bắn lên; sai → explode, đúng → pop
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 const BALLOON_SRC = [
@@ -626,7 +626,11 @@ export default function Game3({ payload, onLessonComplete }) {
         <div style={styles.questionInSquare}>
           <div style={styles.questionTextCompact}>{currentQuestion.question_text}</div>
           {currentQuestion.question_image && (
-            <img src={currentQuestion.question_image} alt="" style={styles.questionImageCompact} />
+            <img
+              src={questionImageUrl(currentQuestion.question_image) || currentQuestion.question_image}
+              alt=""
+              style={styles.questionImageCompact}
+            />
           )}
         </div>
 
@@ -666,7 +670,10 @@ export default function Game3({ payload, onLessonComplete }) {
                               {answer.text ? (
                                 answer.text
                               ) : answer.image ? (
-                                <img src={answer.image} alt="" />
+                                <img
+                                  src={questionImageUrl(answer.image) || answer.image}
+                                  alt=""
+                                />
                               ) : (
                                 "—"
                               )}

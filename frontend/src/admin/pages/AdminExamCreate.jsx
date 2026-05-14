@@ -28,6 +28,9 @@ export default function AdminExamCreate() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
+  /** Tối đa số câu trả về mỗi lần (danh sách + API). */
+  const QUESTION_POOL_LIMIT = 200;
+
   useEffect(() => {
     (async () => {
       try {
@@ -85,13 +88,16 @@ export default function AdminExamCreate() {
     setQuestionsLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await getQuestions({
-          grade_id: gradeId,
-          type_id: titleId || undefined,
-          lesson_id: lessonId || undefined,
-          search: search.trim() || undefined,
-          limit: 500,
-        });
+        const q = search.trim();
+        const params = q
+          ? { search: q, limit: QUESTION_POOL_LIMIT }
+          : {
+              grade_id: gradeId,
+              type_id: titleId || undefined,
+              lesson_id: lessonId || undefined,
+              limit: QUESTION_POOL_LIMIT,
+            };
+        const res = await getQuestions(params);
         if (cancelled) return;
         const raw = Array.isArray(res?.data) ? res.data : [];
         setQuestionPool(
@@ -100,7 +106,7 @@ export default function AdminExamCreate() {
             text: q.question_text || "",
             detail:
               q.hierarchy_path ||
-              [q.type_name, q.lesson_name].filter(Boolean).join(" · ") ||
+              [q.grade_name, q.type_name, q.lesson_name].filter(Boolean).join(" · ") ||
               "",
           }))
         );
@@ -292,7 +298,8 @@ export default function AdminExamCreate() {
         <div style={styles.filterHeader}>
           <h2 style={styles.sectionTitle}>Bộ lọc câu hỏi</h2>
           <p style={styles.sectionSubtitle}>
-            Chọn lớp, chủ đề, bài học và tìm kiếm để lọc danh sách câu hỏi.
+            Lọc theo Lớp / chủ đề / bài — tối đa {QUESTION_POOL_LIMIT} câu. Có chữ trong ô tìm: tra toàn bộ
+            thư viện (tối đa {QUESTION_POOL_LIMIT} kết quả).
           </p>
         </div>
 
@@ -325,6 +332,7 @@ export default function AdminExamCreate() {
               value={titleId}
               onChange={(e) => setTitleId(e.target.value)}
               style={styles.select}
+              disabled={!gradeId}
             >
               {titleOptions.map((title) => (
                 <option key={title.id || "all-topics"} value={title.id}>
@@ -362,7 +370,7 @@ export default function AdminExamCreate() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Nhập nội dung câu hỏi..."
+              placeholder="Để trống: lọc theo Lớp / chủ đề / bài. Có chữ: tìm toàn bộ câu hỏi…"
               style={styles.searchInput}
             />
           </div>

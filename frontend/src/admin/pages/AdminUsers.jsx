@@ -103,6 +103,8 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  /** "" = tất cả; "0" | "1" — lọc theo role (API). */
+  const [roleFilter, setRoleFilter] = useState("");
   /** Đồng bộ API — lọc toàn bảng users trên server */
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -138,6 +140,7 @@ export default function AdminUsers() {
       const offset = (page - 1) * USERS_PAGE_SIZE;
       const params = { limit: USERS_PAGE_SIZE, offset };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (roleFilter) params.role = roleFilter;
       const res = await getAdminUsers(params);
       const list = Array.isArray(res?.data) ? res.data : [];
       setUsers(list);
@@ -151,7 +154,7 @@ export default function AdminUsers() {
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch]);
+  }, [page, debouncedSearch, roleFilter]);
 
   useEffect(() => {
     loadUsers();
@@ -167,7 +170,7 @@ export default function AdminUsers() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, roleFilter]);
 
   const totalFormatted = useMemo(() => {
     if (loading && users.length === 0 && !error) return "—";
@@ -362,6 +365,22 @@ export default function AdminUsers() {
       </section>
 
       <div style={styles.toolbar}>
+        <div style={styles.roleFilterWrap}>
+          <label htmlFor="admin-users-role-filter" style={styles.roleFilterLabel}>
+            Vai trò
+          </label>
+          <select
+            id="admin-users-role-filter"
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            style={styles.roleSelect}
+            aria-label="Lọc theo vai trò"
+          >
+            <option value="">Tất cả</option>
+            <option value="0">Người chơi</option>
+            <option value="1">Quản trị</option>
+          </select>
+        </div>
         <div style={styles.searchWrap}>
           <input
             type="search"
@@ -384,8 +403,10 @@ export default function AdminUsers() {
 
       {!loading && totalDb === 0 && !error && (
         <p style={styles.muted}>
-          {debouncedSearch
-            ? `Không có user khớp “${debouncedSearch}”.`
+          {debouncedSearch || roleFilter
+            ? `Không có user khớp bộ lọc${debouncedSearch ? ` (“${debouncedSearch}”)` : ""}${
+                roleFilter ? ` — vai trò: ${roleLabel(Number(roleFilter))}` : ""
+              }.`
             : "Chưa có user nào."}
         </p>
       )}
@@ -850,6 +871,28 @@ const styles = {
     gap: 16,
     marginBottom: 24,
     flexWrap: "wrap",
+  },
+  roleFilterWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
+  roleFilterLabel: {
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    color: "#24292f",
+  },
+  roleSelect: {
+    minWidth: 160,
+    padding: "10px 12px",
+    fontSize: "0.95rem",
+    borderRadius: 8,
+    border: "1px solid #d0d7de",
+    background: "#fff",
+    color: "#24292f",
+    fontFamily: "inherit",
+    cursor: "pointer",
   },
   statCard: {
     display: "flex",

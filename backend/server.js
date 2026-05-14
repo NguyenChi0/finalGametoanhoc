@@ -360,7 +360,8 @@ app.get('/api/questions', async (req, res) => {
            NULLIF(TRIM(g.name), ''),
            NULLIF(TRIM(t.name), ''),
            NULLIF(TRIM(l.name), '')
-         )) AS hierarchy_path
+         )) AS hierarchy_path,
+         (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.question_id = q.id) AS exam_template_ref_count
   FROM questions q
   LEFT JOIN grades g ON g.id = q.grade_id
   LEFT JOIN types t ON t.id = q.type_id
@@ -428,6 +429,7 @@ app.get('/api/questions', async (req, res) => {
         question_text: r.question_text,
         question_image: r.question_image,
         answers: buildAnswers(r),
+        in_exam_template: Number(r.exam_template_ref_count) > 0,
       };
     });
 
@@ -816,6 +818,17 @@ app.delete('/api/questions/:id', authenticateToken, requireAdminRole, async (req
     );
     if (!existing) {
       return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
+    }
+
+    const [[refRow]] = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM exam_template_questions WHERE question_id = ?',
+      [id]
+    );
+    if (Number(refRow?.cnt ?? 0) > 0) {
+      return res.status(409).json({
+        message:
+          'Không thể xóa vì câu hỏi đang được sử dụng trong mẫu đề. Hãy gỡ câu hỏi khỏi đề trong Quản lý exams trước.',
+      });
     }
 
     const [result] = await pool.query('DELETE FROM questions WHERE id = ?', [id]);
@@ -1261,13 +1274,13 @@ app.get('/api/contests', authenticateToken, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
               c.duration_time,
-              t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name,
+              COALESCE(c.grade_id, t.grade_id) AS grade_id, g.name AS grade_name, t.name AS template_name,
               (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count,
               uc.score AS my_score,
               CASE WHEN uc.id IS NOT NULL THEN 1 ELSE 0 END AS completed
        FROM contests c
        INNER JOIN exam_templates t ON t.id = c.template_id
-       INNER JOIN grades g ON g.id = t.grade_id
+       LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
        LEFT JOIN user_contests uc ON uc.contest_id = c.id AND uc.user_id = ?
        ORDER BY c.start_time DESC, c.id DESC`,
       [userId]
@@ -1295,13 +1308,13 @@ app.get('/api/contests/:id', authenticateToken, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
               c.duration_time,
-              t.grade_id AS grade_id, g.name AS grade_name, t.name AS template_name,
+              COALESCE(c.grade_id, t.grade_id) AS grade_id, g.name AS grade_name, t.name AS template_name,
               (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count,
               uc.score AS my_score,
               CASE WHEN uc.id IS NOT NULL THEN 1 ELSE 0 END AS completed
        FROM contests c
        INNER JOIN exam_templates t ON t.id = c.template_id
-       INNER JOIN grades g ON g.id = t.grade_id
+       LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
        LEFT JOIN user_contests uc ON uc.contest_id = c.id AND uc.user_id = ?
        WHERE c.id = ?`,
       [userId, id]
@@ -1309,7 +1322,26 @@ app.get('/api/contests/:id', authenticateToken, async (req, res) => {
     if (!rows.length) {
       return res.status(404).json({ message: 'Kh\u00F4ng t\u00ECm th\u1EA5y cu\u1ED9c thi' });
     }
-    res.json(shapePublicContestRow(rows[0]));
+    const row = rows[0];
+    const templateId = row.template_id;
+    const [qrows] = await pool.query(
+      `SELECT q.*
+       FROM exam_template_questions etq
+       JOIN questions q ON q.id = etq.question_id
+       WHERE etq.template_id = ?
+       ORDER BY etq.id ASC`,
+      [templateId]
+    );
+    const questions = qrows.map((r) => ({
+      id: r.id,
+      grade_id: r.grade_id,
+      type_id: r.type_id,
+      lesson_id: r.lesson_id,
+      question_text: r.question_text,
+      question_image: r.question_image,
+      answers: buildAnswers(r),
+    }));
+    res.json(shapePublicContestRow({ ...row, questions }));
   } catch (err) {
     console.error('Error GET /api/contests/:id:', err);
     res.status(500).json({ message: 'L\u1ED7i khi l\u1EA5y cu\u1ED9c thi' });

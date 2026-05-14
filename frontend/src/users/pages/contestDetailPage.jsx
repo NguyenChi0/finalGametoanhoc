@@ -1,44 +1,44 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { getContestById, submitContestScore } from "../../api";
+import { API_ORIGIN, getContestById, submitContestScore } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
-function buildSampleQuestions(count) {
-  const n = Math.max(1, Math.min(Number(count) || 10, 100));
-  const qs = [];
-  for (let i = 1; i <= n; i++) {
-    const a = Math.floor(Math.random() * 10) + 1;
-    const b = Math.floor(Math.random() * 10) + 1;
-    qs.push({
-      id: i,
-      question: `${a} + ${b} = ?`,
-      correctAnswer: a + b,
-    });
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return qs;
+  return a;
 }
 
-function getOptions(correctAnswer) {
-  const options = new Set();
-  options.add(correctAnswer);
-  options.add(correctAnswer + 1);
-  options.add(correctAnswer - 1);
-  options.add(correctAnswer + 2);
-  let validOptions = Array.from(options).filter((val) => val >= 0 && val <= 20);
-  while (validOptions.length < 4) {
-    let newVal = correctAnswer + validOptions.length;
-    if (newVal >= 0 && newVal <= 20 && !validOptions.includes(newVal)) {
-      validOptions.push(newVal);
-    } else {
-      newVal = correctAnswer - validOptions.length;
-      if (newVal >= 0 && newVal <= 20 && !validOptions.includes(newVal)) {
-        validOptions.push(newVal);
-      } else {
-        validOptions.push(correctAnswer + 3);
-      }
-    }
-  }
-  return validOptions.sort(() => Math.random() - 0.5);
+function staticAssetUrl(path) {
+  if (path == null || String(path).trim() === "") return "";
+  const s = String(path).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const origin = API_ORIGIN.replace(/\/$/, "");
+  return s.startsWith("/") ? `${origin}${s}` : `${origin}/${s}`;
+}
+
+/** Chuẩn hóa câu từ API contest/exam → UI trắc nghiệm (giống ExamDetailPage). */
+function mapApiQuestionsToQuiz(rawList) {
+  if (!Array.isArray(rawList)) return [];
+  return rawList
+    .map((q) => {
+      const answers = Array.isArray(q.answers) ? q.answers : [];
+      const correct = answers.find((a) => a.correct);
+      const correctAnswerId = correct?.id ?? null;
+      if (!correctAnswerId || answers.length === 0) return null;
+      const options = shuffle(answers);
+      return {
+        id: q.id,
+        question: q.question_text?.trim() || `Câu hỏi #${q.id}`,
+        question_image: q.question_image || null,
+        options,
+        correctAnswerId,
+      };
+    })
+    .filter(Boolean);
 }
 
 export default function ContestDetailPage() {
@@ -62,7 +62,6 @@ export default function ContestDetailPage() {
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
-  const [options, setOptions] = useState([]);
 
   const questionsRef = useRef(questions);
   const answersRef = useRef(answers);
@@ -86,7 +85,7 @@ export default function ContestDetailPage() {
     const ans = answersRef.current;
     const totalQ = qs.length || 1;
     const correctCount = qs.reduce(
-      (acc, q) => acc + (ans[q.id] === q.correctAnswer ? 1 : 0),
+      (acc, q) => acc + (ans[q.id] === q.correctAnswerId ? 1 : 0),
       0
     );
     setScore(correctCount);
@@ -130,9 +129,8 @@ export default function ContestDetailPage() {
           return;
         }
         setAlreadyCompleted(false);
-        const qn = Number(c.question_count) || 10;
         const durationMin = Number(c.exam_duration_minutes) || 30;
-        setQuestions(buildSampleQuestions(qn));
+        setQuestions(mapApiQuestionsToQuiz(c.questions || []));
         setTimeLeft(durationMin * 60);
         setCurrentQuestion(0);
         setAnswers({});
@@ -161,13 +159,6 @@ export default function ContestDetailPage() {
   }, [contestId]);
 
   useEffect(() => {
-    const currentQ = questions[currentQuestion];
-    if (currentQ) {
-      setOptions(getOptions(currentQ.correctAnswer));
-    }
-  }, [currentQuestion, questions]);
-
-  useEffect(() => {
     if (submitted || timeLeft <= 0 || contestLoading || questions.length === 0) {
       return undefined;
     }
@@ -189,12 +180,12 @@ export default function ContestDetailPage() {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
-  const handleAnswerChange = (value) => {
+  const handleAnswerChange = (answerId) => {
     const q = questions[currentQuestion];
     if (!q) return;
     setAnswers({
       ...answers,
-      [q.id]: value,
+      [q.id]: answerId,
     });
   };
 
@@ -515,6 +506,18 @@ export default function ContestDetailPage() {
         }}
       >
         <main>
+          <style>{`
+            .contest-detail-answer-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 12px;
+            }
+            @media (max-width: 640px) {
+              .contest-detail-answer-grid {
+                grid-template-columns: 1fr;
+              }
+            }
+          `}</style>
           {contest && (
             <p
               style={{
@@ -542,7 +545,6 @@ export default function ContestDetailPage() {
               gap: 8,
             }}
           >
-            {/* Khu vực nút số 1-20 - dùng flex wrap, tự động xuống dòng */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
@@ -553,13 +555,14 @@ export default function ContestDetailPage() {
                   marginBottom: "4px",
                 }}
               >
-                {questions.map((_, idx) => (
+                {questions.map((q, idx) => (
                   <button
-                    key={idx}
+                    key={q.id}
+                    type="button"
                     onClick={() => setCurrentQuestion(idx)}
                     style={numberButtonStyle(
                       idx === currentQuestion,
-                      answers[idx + 1] !== undefined
+                      answers[q.id] !== undefined
                     )}
                   >
                     {idx + 1}
@@ -602,45 +605,73 @@ export default function ContestDetailPage() {
           >
             <h2
               style={{
-                marginBottom: 28,
+                marginBottom: 16,
                 color: "#0f4c75",
                 fontSize: 28,
                 textAlign: "center",
+                lineHeight: 1.35,
               }}
             >
               {currentQ.question}
             </h2>
 
+            {currentQ.question_image && (
+              <div style={{ marginBottom: 24, textAlign: "center" }}>
+                <img
+                  src={staticAssetUrl(currentQ.question_image)}
+                  alt=""
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: 280,
+                    objectFit: "contain",
+                    borderRadius: 12,
+                  }}
+                />
+              </div>
+            )}
+
             <div style={{ marginBottom: 32 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
-                {options.map((opt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleAnswerChange(opt)}
-                    style={{
-                      padding: "12px 16px",
-                      backgroundColor:
-                        currentAnswer === opt ? "#0f4c75" : "#f0f6fa",
-                      color: currentAnswer === opt ? "#fff" : "#0f4c75",
-                      border:
-                        currentAnswer === opt
+              <div className="contest-detail-answer-grid">
+                {currentQ.options.map((opt) => {
+                  const selected = currentAnswer === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleAnswerChange(opt.id)}
+                      style={{
+                        padding: "12px 16px",
+                        backgroundColor: selected ? "#0f4c75" : "#f0f6fa",
+                        color: selected ? "#fff" : "#0f4c75",
+                        border: selected
                           ? "2px solid #0f4c75"
                           : "2px solid #d0dfe8",
-                      borderRadius: 40,
-                      fontSize: 18,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {opt}
-                  </button>
-                ))}
+                        borderRadius: 40,
+                        fontSize: 18,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        minHeight: 48,
+                      }}
+                    >
+                      {opt.text && <span>{opt.text}</span>}
+                      {opt.image && (
+                        <img
+                          src={staticAssetUrl(opt.image)}
+                          alt=""
+                          style={{
+                            maxHeight: 44,
+                            maxWidth: "100%",
+                            objectFit: "contain",
+                          }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -654,6 +685,7 @@ export default function ContestDetailPage() {
               }}
             >
               <button
+                type="button"
                 onClick={handlePrev}
                 disabled={currentQuestion === 0}
                 style={{
@@ -670,6 +702,7 @@ export default function ContestDetailPage() {
               </button>
               {currentQuestion === questions.length - 1 ? (
                 <button
+                  type="button"
                   onClick={handleSubmit}
                   style={{
                     padding: "10px 32px",
@@ -685,6 +718,7 @@ export default function ContestDetailPage() {
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={handleNext}
                   style={{
                     padding: "10px 24px",

@@ -1,1 +1,0 @@
-chỉ đọc các context được add vào, khi không cần đến thì không cần dò các context khác, 
