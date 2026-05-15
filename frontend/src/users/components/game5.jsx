@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 const gameShellStyle = {
   width: "100%",
@@ -288,7 +289,7 @@ export default function Game5({ payload, onLessonComplete }) {
   }
 
   const sel = selected[currentQuestion.id];
-  const qImg = currentQuestion.question_image
+  const qImg = currentQuestion?.question_image
     ? questionImageUrl(currentQuestion.question_image) || null
     : null;
 
@@ -490,7 +491,7 @@ export default function Game5({ payload, onLessonComplete }) {
           <div className="game5-left-inner">
             <div className="game5-qbox">Trả lời câu hỏi sau: {currentQuestion.question_text}</div>
             {qImg && (
-              <img src={qImg} alt="" className="game5-qimg" />
+              <GameQuestionImageZoom src={qImg} thumbClassName="game5-qimg" alt="" />
             )}
           </div>
         </div>
@@ -524,7 +525,7 @@ export default function Game5({ payload, onLessonComplete }) {
                       {a.text ||
                         (a.image ? (
                           <img
-                            src={a.image}
+                            src={questionImageUrl(a.image) || undefined}
                             alt=""
                             style={{ maxWidth: "min(96px, 26vw)" }}
                           />

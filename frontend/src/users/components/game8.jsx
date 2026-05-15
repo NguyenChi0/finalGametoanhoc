@@ -1,6 +1,7 @@
 // src/components/games/game8.jsx
 import React, { useMemo, useState } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -583,10 +584,10 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                   <strong>Câu {globalIndex + 1}:</strong> {q.question_text}
                 </div>
                 {q.question_image && (
-                  <img
-                    src={q.question_image}
+                  <GameQuestionImageZoom
+                    src={questionImageUrl(q.question_image) || undefined}
                     alt="Hình câu hỏi"
-                    style={{ maxWidth: "200px", margin: "10px 0" }}
+                    thumbStyle={{ maxWidth: "200px", margin: "10px 0" }}
                   />
                 )}
                 <div style={answersStyle}>
@@ -619,7 +620,7 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                         <span>{a.text || (a.image ? "Xem hình" : "")}</span>
                         {a.image && (
                           <img
-                            src={a.image}
+                            src={questionImageUrl(a.image) || undefined}
                             alt=""
                             style={{ maxWidth: "100px", marginLeft: "10px" }}
                           />

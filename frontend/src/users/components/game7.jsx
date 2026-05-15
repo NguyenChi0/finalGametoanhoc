@@ -1,7 +1,8 @@
 // src/components/games/game7.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   const questions = payload?.questions || [];
@@ -575,19 +576,14 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
             </div>
             
             {currentQuestion.question_image && (
-              <img
-                src={
-                  currentQuestion.question_image.startsWith("http")
-                    ? currentQuestion.question_image
-                    : `http://210.245.52.119/gametoanhoc${currentQuestion.question_image}`
-                }
-                alt=""
-                style={{
+              <GameQuestionImageZoom
+                src={questionImageUrl(currentQuestion.question_image) || undefined}
+                thumbStyle={{
                   maxWidth: "100%",
                   maxHeight: "150px",
                   display: "block",
                   margin: "0 auto 10px",
-                  borderRadius: "8px"
+                  borderRadius: "8px",
                 }}
               />
             )}

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -535,22 +536,17 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
             {currentQ.question_text}
           </div>
           {currentQ.question_image && (
-  <img
-    src={
-      currentQ.question_image.startsWith("http")
-        ? currentQ.question_image
-        : `http://210.245.52.119/gametoanhoc${currentQ.question_image}`
-    }
-    alt=""
-    style={{
-      maxWidth: "100%",
-      maxHeight: 150,
-      display: "block",
-      margin: "16px auto 0",
-      borderRadius: 8
-    }}
-  />
-)}
+            <GameQuestionImageZoom
+              src={questionImageUrl(currentQ.question_image) || undefined}
+              thumbStyle={{
+                maxWidth: "100%",
+                maxHeight: 150,
+                display: "block",
+                margin: "16px auto 0",
+                borderRadius: 8,
+              }}
+            />
+          )}
 
         </div>
       )}
@@ -591,7 +587,7 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
                 minWidth: 120
               }}
             >
-              {laneLabels[idx]}. {ans.text || (ans.image ? <img src={ans.image} alt="" style={{ maxHeight: 30, verticalAlign: "middle" }} /> : "—")}
+              {laneLabels[idx]}. {ans.text || (ans.image ? <img src={questionImageUrl(ans.image) || undefined} alt="" style={{ maxHeight: 30, verticalAlign: "middle" }} /> : "—")}
             </div>
           ))}
 

@@ -1,7 +1,8 @@
 // src/components/games/game9.jsx
 import React, { useMemo, useState, useRef, useEffect } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -406,14 +407,10 @@ export default function Game1({ payload, onLessonComplete }) {
           {currentQuestion.question_text}
         </div>
         {currentQuestion.question_image && (
-          <img
-            src={
-              currentQuestion.question_image.startsWith("http")
-                ? currentQuestion.question_image
-                : `http://210.245.52.119/gametoanhoc${currentQuestion.question_image}`
-            }
+          <GameQuestionImageZoom
+            src={questionImageUrl(currentQuestion.question_image) || undefined}
             alt="Câu hỏi"
-            style={{
+            thumbStyle={{
               maxWidth: "100%",
               maxHeight: "min(38vh, 260px)",
               display: "block",

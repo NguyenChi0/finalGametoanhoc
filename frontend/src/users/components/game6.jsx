@@ -1,7 +1,8 @@
 // src/components/games/game6.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import api from "../../api";
+import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -337,18 +338,16 @@ export default function Game1({ payload, onLessonComplete }) {
     window.location.href = "/gametoanhoc";
   }
 
-  const questionImage =
+  const questionImageRaw =
     currentQuestion?.image ||
     currentQuestion?.question_image ||
     currentQuestion?.question_img ||
     currentQuestion?.questionImage ||
     null;
 
-  const questionImgSrc =
-    questionImage &&
-    (questionImage.startsWith("http")
-      ? questionImage
-      : `http://210.245.52.119/gametoanhoc${questionImage}`);
+  const questionImgSrc = questionImageRaw
+    ? questionImageUrl(questionImageRaw) || null
+    : null;
 
   if (!gameStarted && !gameEnded) {
     if (qs.length === 0) {
@@ -670,10 +669,10 @@ export default function Game1({ payload, onLessonComplete }) {
                     alignItems: "center",
                   }}
                 >
-                  <img
+                  <GameQuestionImageZoom
                     src={questionImgSrc}
                     alt="question"
-                    style={{
+                    thumbStyle={{
                       width: "100%",
                       maxHeight: "min(220px, 38vh)",
                       objectFit: "contain",

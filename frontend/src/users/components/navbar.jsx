@@ -65,7 +65,7 @@ export default function Navbar() {
           justify-content: space-between;
           align-items: center;
           padding: 10px 16px;
-          background: #0f4c75;
+          background: #6c7ee1;
           color: #fff;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
           position: relative;
@@ -284,6 +284,9 @@ export default function Navbar() {
             <Link to="/" style={linkBase}>
               Trang chủ
             </Link>
+            <Link to="/lessons" style={linkBase}>
+              Bài học
+            </Link>
             {user && (
               <Link to="/contest" style={linkBase}>
                 Cuộc thi
@@ -396,6 +399,9 @@ export default function Navbar() {
       >
         <Link to="/" role="menuitem" onClick={() => setMobileOpen(false)}>
           Trang chủ
+        </Link>
+        <Link to="/lessons" role="menuitem" onClick={() => setMobileOpen(false)}>
+          Bài học
         </Link>
         {user && (
           <Link to="/contest" role="menuitem" onClick={() => setMobileOpen(false)}>

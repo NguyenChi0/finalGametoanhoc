@@ -3,8 +3,8 @@ import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from 
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { sendLessonResultToKilovia, getKiloviaContext } from "../lib/kiloviaBridge";
 import { publicUrl } from "../../lib/publicUrl";
-
-const SESSION_KEY = "game_play_state_v1";
+import { GAME_LABELS } from "../lib/gameInterfaces";
+import { SESSION_KEY } from "../lib/playSession";
 
 const gameLazyMap = {
   game1: lazy(() => import("../components/game1")),
@@ -31,20 +31,6 @@ function getKiloviaFromSearch(search) {
     childCode: childCode || null,
   };
 }
-
-const gameLabels = {
-  game1: "Đường lên đỉnh olympia",
-  game2: "Diệt ruồi",
-  game3: "Phi tiêu",
-  game4: "Vượt chướng ngại vật",
-  game5: "Finding Dory",
-  game6: "Chém hoa quả",
-  game7: "Nhà thám hiểm tài ba",
-  game8: "Bài kiểm tra",
-  game9: "Dẫn thỏ về hang",
-  game10: "Xạ thủ đỉnh cao",
-  game11: "Đố vui nhanh tay",
-};
 
 function shuffleArray(arr) {
   const a = Array.isArray(arr) ? arr.slice() : [];
@@ -161,7 +147,7 @@ export default function GamePage() {
   const onLessonComplete = payload?.kilovia ? handleLessonComplete : undefined;
 
   const displayName =
-    payload?.game?.name || gameLabels[gameId] || gameId;
+    payload?.game?.name || GAME_LABELS[gameId] || gameId;
 
   const pageBg = `${publicUrl}/component-images/home-background.png`;
 

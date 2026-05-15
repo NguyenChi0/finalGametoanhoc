@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -542,10 +543,13 @@ export default function Game1({ payload, onLessonComplete }) {
 
           {currentQuestion.question_image && (
             <div style={{ textAlign: "center", marginBottom: "20px" }}>
-              <img
+              <GameQuestionImageZoom
                 src={questionImageUrl(currentQuestion.question_image) || undefined}
                 alt="minh họa"
-                style={{
+                onThumbError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+                thumbStyle={{
                   maxWidth: "100%",
                   maxHeight: "120px",
                   width: "auto",
@@ -553,8 +557,8 @@ export default function Game1({ payload, onLessonComplete }) {
                   objectFit: "contain",
                   borderRadius: "12px",
                   border: "1px solid gold",
+                  margin: "0 auto",
                 }}
-                onError={(e) => (e.target.style.display = "none")}
               />
             </div>
           )}

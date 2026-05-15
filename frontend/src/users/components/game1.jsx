@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -470,7 +471,9 @@ export default function Game1({ payload, onLessonComplete }) {
     );
   }
 
-  const questionImageSrc = questionImageUrl(currentQuestion.question_image) || null;
+  const questionImageSrc = currentQuestion.question_image
+    ? questionImageUrl(currentQuestion.question_image) || null
+    : null;
 
   return (
     <div style={{ ...gameShellStyle, display: "flex", flexDirection: "column" }}>
@@ -656,16 +659,14 @@ export default function Game1({ payload, onLessonComplete }) {
               </div>
 
               {questionImageSrc && (
-                <img
-                  className="game1-question-img"
+                <GameQuestionImageZoom
                   src={questionImageSrc}
-                  alt="Minh họa câu hỏi"
-                  onError={(e) => {
+                  thumbClassName="game1-question-img"
+                  onThumbError={(e) => {
                     e.currentTarget.onerror = null;
                     e.currentTarget.style.display = "none";
                   }}
-                  style={{
-                    maxWidth: "100%",
+                  thumbStyle={{
                     maxHeight: "min(50vh, 300px)",
                     objectFit: "contain",
                     backgroundColor: "white",

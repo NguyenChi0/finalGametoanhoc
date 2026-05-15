@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import Navbar from "./users/components/navbar";
 
 const Home = lazy(() => import("./users/pages/home"));
+const LessonPage = lazy(() => import("./users/pages/lessonPage"));
 const Login = lazy(() => import("./users/pages/login"));
 const Register = lazy(() => import("./users/pages/register"));
 const ForgotPassword = lazy(() => import("./users/pages/forgotPassword"));
@@ -12,6 +13,7 @@ const ContestDetailPage = lazy(() => import("./users/pages/contestDetailPage"));
 const Exam = lazy(() => import("./users/pages/Exam"));
 const ExamDetailPage = lazy(() => import("./users/pages/ExamDetailPage"));
 const GamePage = lazy(() => import("./users/pages/gamepage"));
+const PreGameSetUp = lazy(() => import("./users/pages/preGameSetUp"));
 const Profile = lazy(() => import("./users/pages/profile"));
 const Shop = lazy(() => import("./users/pages/shop"));
 const AdminShell = lazy(() => import("./admin/AdminShell"));
@@ -41,6 +43,7 @@ function AppShell() {
       <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/lessons" element={<LessonPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -48,6 +51,7 @@ function AppShell() {
           <Route path="/contest/:contestId" element={<ContestDetailPage />} />
           <Route path="/exam" element={<Exam />} />
           <Route path="/exam/:examId" element={<ExamDetailPage />} />
+          <Route path="/play-setup" element={<PreGameSetUp />} />
           <Route path="/game/:gameId" element={<GamePage />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile/:username" element={<Profile />} />

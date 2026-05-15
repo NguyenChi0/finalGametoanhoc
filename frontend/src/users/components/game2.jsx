@@ -1,6 +1,7 @@
 // src/components/games/game2.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import api, { questionImageUrl } from "../../api";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import { publicUrl } from "../../lib/publicUrl";
 
 export default function Game1({ payload, onLessonComplete }) {
@@ -627,26 +628,24 @@ const [, forceRender] = useState(0); // chỉ để render
 
           {/* Ảnh câu hỏi - SỬA DÙNG getImageSrc */}
           {currentQuestion.question_image && (
-            <img
-  src={questionImageUrl(currentQuestion.question_image) || undefined}
-  alt="Minh họa câu hỏi"
-  onError={(e) => {
-    console.error(`Không thể tải ảnh: ${currentQuestion.question_image}`);
-    e.currentTarget.onerror = null;
-    e.currentTarget.style.display = "none";
-  }}
-  style={{
-    maxWidth: "35%",
-    maxHeight: "200px",
-    borderRadius: 8,
-    objectFit: "contain",
-    marginTop: "10px",
-    border: "2px solid #310808",
-    backgroundColor: "white",
-    padding: "5px"
-  }}
-/>
-
+            <GameQuestionImageZoom
+              src={questionImageUrl(currentQuestion.question_image) || undefined}
+              onThumbError={(e) => {
+                console.error(`Không thể tải ảnh: ${currentQuestion.question_image}`);
+                e.currentTarget.onerror = null;
+                e.currentTarget.style.display = "none";
+              }}
+              thumbStyle={{
+                maxWidth: "35%",
+                maxHeight: "200px",
+                borderRadius: 8,
+                objectFit: "contain",
+                marginTop: "10px",
+                border: "2px solid #310808",
+                backgroundColor: "white",
+                padding: "5px",
+              }}
+            />
           )}
         </div>
       )}
