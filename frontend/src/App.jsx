@@ -2,6 +2,7 @@
 import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import Navbar from "./users/components/navbar";
+import ScrollToTopButton from "./users/components/ScrollToTopButton";
 
 const Home = lazy(() => import("./users/pages/home"));
 const LessonPage = lazy(() => import("./users/pages/lessonPage"));
@@ -59,6 +60,7 @@ function AppShell() {
           <Route path="/admin/*" element={<AdminShell />} />
         </Routes>
       </Suspense>
+      {!hideUserNavbar && <ScrollToTopButton />}
     </>
   );
 }

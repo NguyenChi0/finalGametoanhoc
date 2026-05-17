@@ -1,7 +1,19 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Navigate, useParams } from "react-router-dom";
-import { API_ORIGIN, getContestById, submitContestScore } from "../../api";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
+import {
+  API_ORIGIN,
+  getContestById,
+  submitContestScore,
+  submitContestScoreKeepalive,
+} from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import ContestTop3Leaderboard from "../components/ContestTop3Leaderboard";
+
+const CONTEST_EXIT_CONFIRM_MSG =
+  "Bạn có chắc muốn thoát cuộc thi?\n\n" +
+  "• Bài làm sẽ KHÔNG được tính điểm\n" +
+  "• Vẫn tính là đã tham gia 1 lần và không được làm lại\n\n" +
+  "Chọn OK để thoát, Hủy để tiếp tục làm bài.";
 
 function shuffle(arr) {
   const a = [...arr];
@@ -43,6 +55,8 @@ function mapApiQuestionsToQuiz(rawList) {
 
 export default function ContestDetailPage() {
   const { contestId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const user = JSON.parse(localStorage.getItem("user") || "null");
 
   if (!user) {
@@ -66,7 +80,9 @@ export default function ContestDetailPage() {
   const questionsRef = useRef(questions);
   const answersRef = useRef(answers);
   const timeLeftRef = useRef(timeLeft);
+  const contestRef = useRef(contest);
   const isFinalizingRef = useRef(false);
+  const exitRecordedRef = useRef(false);
 
   useEffect(() => {
     questionsRef.current = questions;
@@ -77,6 +93,139 @@ export default function ContestDetailPage() {
   useEffect(() => {
     timeLeftRef.current = timeLeft;
   }, [timeLeft]);
+  useEffect(() => {
+    contestRef.current = contest;
+  }, [contest]);
+
+  const getSolvedSeconds = useCallback(() => {
+    const durationSeconds =
+      Math.max(1, Math.floor(Number(contestRef.current?.exam_duration_minutes) || 30)) *
+      60;
+    return Math.max(0, durationSeconds - Math.max(0, Number(timeLeftRef.current) || 0));
+  }, []);
+
+  const isQuizInProgress = useMemo(
+    () =>
+      !contestLoading &&
+      !alreadyCompleted &&
+      !submitted &&
+      questions.length > 0 &&
+      !contestErr,
+    [contestLoading, alreadyCompleted, submitted, questions.length, contestErr]
+  );
+
+  /** Thoát sớm: lưu 0 điểm — vẫn chiếm 1 lượt làm bài trên server. */
+  const abandonContest = useCallback(async () => {
+    if (exitRecordedRef.current) return true;
+    if (isFinalizingRef.current) return false;
+    isFinalizingRef.current = true;
+    const cid = Number(contestId);
+    if (!Number.isFinite(cid) || cid <= 0) {
+      isFinalizingRef.current = false;
+      return false;
+    }
+    try {
+      await submitContestScore(cid, { score: 0, times: getSolvedSeconds() });
+      exitRecordedRef.current = true;
+      setSubmitted(true);
+      setScore(0);
+      setSaveResultOk(true);
+      setSaveResultError("");
+      return true;
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        exitRecordedRef.current = true;
+        setSubmitted(true);
+        setScore(0);
+        return true;
+      }
+      console.error(err);
+      isFinalizingRef.current = false;
+      return false;
+    }
+  }, [contestId, getSolvedSeconds]);
+
+  const confirmAndAbandon = useCallback(async () => {
+    if (!window.confirm(CONTEST_EXIT_CONFIRM_MSG)) return false;
+    return abandonContest();
+  }, [abandonContest]);
+
+  /** BrowserRouter không hỗ trợ useBlocker — chặn back + link nội bộ. */
+  useEffect(() => {
+    if (!isQuizInProgress) return undefined;
+
+    const contestPath = `${location.pathname}${location.search}${location.hash}`;
+    window.history.pushState({ contestQuizGuard: true }, "", contestPath);
+
+    const onPopState = () => {
+      window.history.pushState({ contestQuizGuard: true }, "", contestPath);
+      void (async () => {
+        const ok = await confirmAndAbandon();
+        if (ok) navigate("/contest", { replace: true });
+      })();
+    };
+
+    const onDocumentClick = (e) => {
+      const anchor = e.target?.closest?.("a[href]");
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const rawHref = anchor.getAttribute("href");
+      if (!rawHref || rawHref.startsWith("#")) return;
+
+      let targetUrl;
+      try {
+        targetUrl = new URL(rawHref, window.location.origin);
+      } catch {
+        return;
+      }
+      if (targetUrl.origin !== window.location.origin) return;
+      const targetPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+      if (targetPath === contestPath) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      void (async () => {
+        const ok = await confirmAndAbandon();
+        if (ok) navigate(targetPath);
+      })();
+    };
+
+    window.addEventListener("popstate", onPopState);
+    document.addEventListener("click", onDocumentClick, true);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      document.removeEventListener("click", onDocumentClick, true);
+    };
+  }, [isQuizInProgress, location.pathname, location.search, location.hash, confirmAndAbandon, navigate]);
+
+  useEffect(() => {
+    if (!isQuizInProgress) return undefined;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const onPageHide = () => {
+      if (exitRecordedRef.current || isFinalizingRef.current) return;
+      exitRecordedRef.current = true;
+      submitContestScoreKeepalive(Number(contestId), {
+        score: 0,
+        times: getSolvedSeconds(),
+      });
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [isQuizInProgress, contestId, getSolvedSeconds]);
+
+  const handleRequestExit = useCallback(async () => {
+    const ok = await confirmAndAbandon();
+    if (ok) navigate("/contest", { replace: true });
+    else if (!exitRecordedRef.current) {
+      window.alert("Không lưu được trạng thái thoát. Vui lòng thử lại hoặc nộp bài.");
+    }
+  }, [confirmAndAbandon, navigate]);
 
   const finalizeQuiz = useCallback(async () => {
     if (isFinalizingRef.current) return;
@@ -98,6 +247,7 @@ export default function ContestDetailPage() {
     const solvedSeconds = Math.max(0, durationSeconds - Math.max(0, Number(timeLeftRef.current) || 0));
     try {
       await submitContestScore(cid, { score: correctCount, times: solvedSeconds });
+      exitRecordedRef.current = true;
       setSaveResultOk(true);
     } catch (err) {
       console.error(err);
@@ -139,6 +289,7 @@ export default function ContestDetailPage() {
         isFinalizingRef.current = false;
         setSaveResultError("");
         setSaveResultOk(false);
+        exitRecordedRef.current = false;
       })
       .catch((err) => {
         console.error(err);
@@ -368,6 +519,11 @@ export default function ContestDetailPage() {
                   }}
                 />
               </div>
+              <ContestTop3Leaderboard
+                contestId={contest.id}
+                questionCount={totalQ}
+                defaultOpen
+              />
               <button
                 type="button"
                 onClick={() => window.history.back()}
@@ -379,6 +535,7 @@ export default function ContestDetailPage() {
                   color: "white",
                   fontWeight: 600,
                   cursor: "pointer",
+                  marginTop: 16,
                 }}
               >
                 Quay lại
@@ -466,6 +623,11 @@ export default function ContestDetailPage() {
               {saveResultError && (
                 <p style={{ color: "#c62828", marginTop: 12 }}>{saveResultError}</p>
               )}
+              <ContestTop3Leaderboard
+                contestId={contestId}
+                questionCount={totalQ}
+                defaultOpen
+              />
               <button
                 type="button"
                 onClick={() => window.history.back()}
@@ -519,16 +681,45 @@ export default function ContestDetailPage() {
             }
           `}</style>
           {contest && (
-            <p
+            <div
               style={{
-                color: "#0f4c75",
-                fontWeight: 600,
-                margin: "0 0 12px 0",
-                fontSize: 17,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 12,
               }}
             >
-              {contest.grade_name} — {contest.name}
-            </p>
+              <p
+                style={{
+                  color: "#0f4c75",
+                  fontWeight: 600,
+                  margin: 0,
+                  fontSize: 17,
+                  flex: "1 1 200px",
+                }}
+              >
+                {contest.grade_name} — {contest.name}
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleRequestExit()}
+                style={{
+                  flexShrink: 0,
+                  padding: "8px 18px",
+                  backgroundColor: "#fff",
+                  color: "#c41c3b",
+                  border: "2px solid #e8a0a8",
+                  borderRadius: 40,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: "pointer",
+                }}
+              >
+                Thoát cuộc thi
+              </button>
+            </div>
           )}
           {/* Header: các nút câu hỏi và timer cùng dòng */}
           <div

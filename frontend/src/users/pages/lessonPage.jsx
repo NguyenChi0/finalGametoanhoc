@@ -14,7 +14,12 @@ import {
   questionImageUrl,
   externalLoginChild,
 } from "../../api";
-import { readPregamePayload, persistPregamePayload } from "../lib/playSession";
+import {
+  readPregamePayload,
+  persistPregamePayload,
+  persistLastLessonSelection,
+  readLastLessonSelection,
+} from "../lib/playSession";
 import {
   getKiloviaContext,
   setKiloviaContextFromMessage,
@@ -464,8 +469,10 @@ export default function LessonPage() {
   const [lastChosenLessonId, setLastChosenLessonId] = useState(null);
   const [revealedTopicIds, setRevealedTopicIds] = useState(() => new Set());
   const topicNodeRefs = useRef(new Map());
+  const lastLessonChipRef = useRef(null);
   const restoreFromPregameDone = useRef(false);
   const initialGradeAutoDone = useRef(false);
+  const scrollToLastLessonPending = useRef(false);
 
   const [viewportW, setViewportW] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 1024
@@ -488,17 +495,37 @@ export default function LessonPage() {
 
   useLayoutEffect(() => {
     if (expandedTypeId == null) return;
-    const el = topicNodeRefs.current.get(String(expandedTypeId));
-    if (!el) return;
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const scrollBehavior = reduced ? "auto" : "smooth";
+
+    if (scrollToLastLessonPending.current && lastChosenLessonId != null) {
+      const scrollToChip = () => {
+        const chip = lastLessonChipRef.current;
+        if (!chip) return false;
+        scrollToLastLessonPending.current = false;
+        chip.scrollIntoView({
+          behavior: scrollBehavior,
+          block: "center",
+          inline: "nearest",
+        });
+        return true;
+      };
+      if (scrollToChip()) return undefined;
+      const t = window.setTimeout(() => scrollToChip(), 480);
+      return () => window.clearTimeout(t);
+    }
+
+    const el = topicNodeRefs.current.get(String(expandedTypeId));
+    if (!el) return undefined;
     el.scrollIntoView({
-      behavior: reduced ? "auto" : "smooth",
+      behavior: scrollBehavior,
       block: "start",
       inline: "nearest",
     });
-  }, [expandedTypeId]);
+    return undefined;
+  }, [expandedTypeId, lastChosenLessonId]);
 
   const gradeTypes = selectedGrade ? cache.types[selectedGrade] : null;
 
@@ -615,8 +642,28 @@ export default function LessonPage() {
       initialGradeAutoDone.current = true;
       void (async () => {
         await handleSelectGrade(gid, { restoreTypeId: tid });
-        if (lid != null) setLastChosenLessonId(lid);
+        if (lid != null) {
+          scrollToLastLessonPending.current = true;
+          setLastChosenLessonId(lid);
+        }
         restoreFromPregameDone.current = true;
+      })();
+      return;
+    }
+
+    const saved = readLastLessonSelection();
+    const canRestoreLast =
+      saved != null &&
+      grades.some((g) => String(g.id) === String(saved.gradeId));
+
+    if (canRestoreLast) {
+      initialGradeAutoDone.current = true;
+      void (async () => {
+        await handleSelectGrade(saved.gradeId, {
+          restoreTypeId: saved.typeId,
+        });
+        scrollToLastLessonPending.current = true;
+        setLastChosenLessonId(saved.lessonId);
       })();
       return;
     }
@@ -661,21 +708,33 @@ export default function LessonPage() {
 
     setLastChosenLessonId(lessonId);
 
+    const typeName =
+      cache.types[gradeId]?.find((t) => String(t.id) === String(typeId))
+        ?.name || null;
+    const lessonName =
+      cache.lessons[typeId]?.find((row) => String(row.id) === String(lessonId))
+        ?.name || null;
+    const gradeName =
+      grades.find((g) => String(g.id) === String(gradeId))?.name || null;
+
+    persistLastLessonSelection({
+      gradeId,
+      typeId,
+      lessonId,
+      gradeName,
+      typeName,
+      lessonName,
+    });
+
     const payload = {
       grade: { id: gradeId },
       type: {
         id: typeId,
-        name:
-          cache.types[gradeId]?.find(
-            (t) => String(t.id) === String(typeId)
-          )?.name || null,
+        name: typeName,
       },
       lesson: {
         id: lessonId,
-        name:
-          cache.lessons[typeId]?.find(
-            (row) => String(row.id) === String(lessonId)
-          )?.name || null,
+        name: lessonName,
       },
       questions: shuffledQuestions,
       user: currentUser,
@@ -755,19 +814,19 @@ export default function LessonPage() {
       )}
 
       {/* Danh sách lớp — hàng ngang dạng mũi tên nối nhau */}
-      <div style={{ marginBottom: 36 }}>
+      <div className="choose-lesson-grade-panel" style={{ marginBottom: 36 }}>
         <div
           className="choose-lesson-grade-heading"
           style={{
             fontWeight: 700,
-            fontSize: "1.05rem",
+            fontSize: "1.9rem",
             marginBottom: 20,
             color: CL.ink,
             fontFamily: "inherit",
             textAlign: "center",
           }}
         >
-          Chọn khối lớp bạn muốn học nhé 
+          Bạn đang tìm kiếm bài học lớp nào?
         </div>
         <div
           style={{
@@ -778,6 +837,7 @@ export default function LessonPage() {
             width: "100%",
             maxWidth: "100%",
             fontFamily: "inherit",
+            fontSize: "1.6rem",
           }}
         >
           {chunkArray(grades, lessonMapMetrics.gradesPerRow).map((rowGrades, rowIndex) => (
@@ -804,7 +864,9 @@ export default function LessonPage() {
                     key={g.id}
                     type="button"
                     onClick={() => handleSelectGrade(g.id)}
-                    className="grade-chevron-btn"
+                    className={`grade-chevron-btn${
+                      selectedGrade === g.id ? " grade-chevron-btn--selected" : ""
+                    }`}
                     style={{
                       position: "relative",
                       zIndex: index + 1,
@@ -819,11 +881,6 @@ export default function LessonPage() {
                       marginLeft:
                         index === 0 ? 0 : lessonMapMetrics.gradeOverlap,
                       padding: lessonMapMetrics.gradePadding,
-                      background:
-                        selectedGrade === g.id
-                          ? `linear-gradient(135deg, ${CL.periwinkle} 0%, ${CL.lavender} 100%)`
-                          : "#ffffff",
-                      color: selectedGrade === g.id ? "#fff" : CL.ink,
                       border: "none",
                       cursor: "pointer",
                       fontWeight: 700,
@@ -835,24 +892,13 @@ export default function LessonPage() {
                       textAlign: "center",
                       clipPath: GRADE_CHEVRON_CLIP,
                       WebkitClipPath: GRADE_CHEVRON_CLIP,
-                      boxShadow:
-                        selectedGrade === g.id
-                          ? `0 4px 16px rgba(108, 126, 225, 0.45)`
-                          : "0 2px 8px rgba(108, 126, 225, 0.12)",
-                      transition:
-                        "transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease",
                       fontFamily: "inherit",
+                      animationDelay: `${
+                        (rowIndex * lessonMapMetrics.gradesPerRow + index) * 0.055
+                      }s`,
                     }}
                   >
-                    <span
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        maxWidth: "100%",
-                        minWidth: 0,
-                      }}
-                    >
+                    <span className="grade-chevron-btn-label">
                       {g.name}
                     </span>
                   </button>
@@ -866,6 +912,106 @@ export default function LessonPage() {
       <style>{`
         .choose-lesson-root {
           -webkit-tap-highlight-color: transparent;
+          --grade-ease: cubic-bezier(0.33, 1, 0.68, 1);
+          --grade-duration: 0.52s;
+        }
+        @keyframes chooseLessonGradePanelIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes gradeChevronBtnIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes gradeColorFlashSweep {
+          0% {
+            background-position: -20% 50%;
+            opacity: 0;
+          }
+          10% {
+            opacity: 1;
+          }
+          90% {
+            opacity: 1;
+          }
+          100% {
+            background-position: 120% 50%;
+            opacity: 0;
+          }
+        }
+        .choose-lesson-grade-panel {
+          animation: chooseLessonGradePanelIn 0.5s ease both;
+        }
+        .choose-lesson-grade-heading {
+          transition: opacity var(--grade-duration) var(--grade-ease);
+        }
+        .grade-chevron-btn {
+          overflow: hidden;
+          background: #ffffff;
+          color: var(--cl-ink);
+          box-shadow: 0 2px 8px rgba(108, 126, 225, 0.12);
+          animation: gradeChevronBtnIn 0.45s ease backwards;
+          transition:
+            color var(--grade-duration) var(--grade-ease),
+            box-shadow var(--grade-duration) var(--grade-ease);
+        }
+        /* Lớp màu gradient — fade mượt */
+        .grade-chevron-btn::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          background: linear-gradient(
+            135deg,
+            var(--cl-periwinkle) 0%,
+            var(--cl-lavender) 100%
+          );
+          opacity: 0;
+          transition: opacity var(--grade-duration) var(--grade-ease);
+        }
+        /* Vệt sáng flashback — phủ cả ô, lướt trái → phải */
+        .grade-chevron-btn::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+          opacity: 0;
+          background: linear-gradient(
+            105deg,
+            transparent 0%,
+            transparent 38%,
+            rgba(255, 255, 255, 0.22) 44%,
+            rgba(255, 255, 255, 0.78) 50%,
+            rgba(255, 230, 252, 0.65) 56%,
+            transparent 62%,
+            transparent 100%
+          );
+          background-size: 220% 100%;
+          background-position: -20% 50%;
+          background-repeat: no-repeat;
+        }
+        .grade-chevron-btn-label {
+          position: relative;
+          z-index: 2;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 100%;
+          min-width: 0;
+          transition: color var(--grade-duration) var(--grade-ease);
+        }
+        .grade-chevron-btn--selected::before,
+        .grade-chevron-btn:hover::before {
+          opacity: 1;
+        }
+        .grade-chevron-btn:hover::after,
+        .grade-chevron-btn--selected::after {
+          animation: gradeColorFlashSweep 0.85s var(--grade-ease) forwards;
+        }
+        .grade-chevron-btn--selected {
+          color: #fff;
+          box-shadow: 0 4px 18px rgba(108, 126, 225, 0.42);
         }
         @media (max-width: 520px) {
           .choose-lesson-root {
@@ -889,11 +1035,25 @@ export default function LessonPage() {
           margin-right: auto;
         }
         .grade-chevron-btn:hover {
-          background: linear-gradient(135deg, var(--cl-lavender) 0%, var(--cl-periwinkle) 100%) !important;
-          color: white !important;
-          transform: translateY(-1px);
-          box-shadow: 0 6px 18px rgba(198, 136, 235, 0.45) !important;
+          color: #fff !important;
+          box-shadow: 0 6px 20px rgba(198, 136, 235, 0.45) !important;
           z-index: 40 !important;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .choose-lesson-grade-panel,
+          .grade-chevron-btn {
+            animation: none !important;
+          }
+          .grade-chevron-btn,
+          .grade-chevron-btn::before,
+          .grade-chevron-btn-label {
+            transition-duration: 0.01s !important;
+          }
+          .grade-chevron-btn::after {
+            animation: none !important;
+            opacity: 0 !important;
+            background-position: -20% 50% !important;
+          }
         }
 
         .lesson-map-root {
@@ -1351,6 +1511,7 @@ export default function LessonPage() {
                           <button
                             key={o.id}
                             type="button"
+                            ref={isLastPicked ? lastLessonChipRef : undefined}
                             className={`lesson-map-lesson-chip lesson-map-lesson-chip--reveal${
                               isLastPicked ? " lesson-map-lesson-chip--last-picked" : ""
                             }`}

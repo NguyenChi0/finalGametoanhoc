@@ -109,6 +109,40 @@ export const submitContestScore = async (contestId, { score, times }) => {
   return res.data;
 };
 
+/** Top 3 điểm cao nhất trong một cuộc thi (trang học sinh). */
+export const getContestLeaderboard = async (contestId) => {
+  const res = await api.get(`/contests/${contestId}/leaderboard`);
+  return res.data;
+};
+
+/**
+ * Gửi kết quả khi đóng tab (best-effort) — dùng khi thoát đột ngột khỏi trang làm bài.
+ */
+export function submitContestScoreKeepalive(contestId, { score, times }) {
+  const cid = Number(contestId);
+  if (!Number.isFinite(cid) || cid <= 0) return;
+  const token = localStorage.getItem("token");
+  const base = String(API_BASE).replace(/\/$/, "");
+  const url = `${base}/contests/${cid}/submit`;
+  const body = JSON.stringify({
+    score: Math.max(0, Math.floor(Number(score) || 0)),
+    times: Math.max(0, Math.floor(Number(times) || 0)),
+  });
+  try {
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* bỏ qua */
+  }
+}
+
 // ==========================
 // Exams (exam_templates) - user
 // ==========================

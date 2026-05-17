@@ -119,6 +119,13 @@ function formatContestSchedule(startsAt, endsAt) {
   return `${s} → ${e}`;
 }
 
+function formatContestDurationSeconds(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
 export default function AdminContest() {
   const isNarrow = useMediaQuery("(max-width: 768px)");
   const [listGradeFilter, setListGradeFilter] = useState("");
@@ -705,7 +712,7 @@ export default function AdminContest() {
                 </div>
                 <div style={styles.cardExamWrap}>
                   {renderExamAssignment(contest, { marginTop: 0 })}
-                </div>
+                  </div>
                 <div style={styles.cardActions}>
                   <button
                     type="button"
@@ -847,7 +854,7 @@ export default function AdminContest() {
                             <div style={styles.nestedPanel}>
                               <div style={styles.nestedHeader} />
                               {renderExamAssignment(contest)}
-                            </div>
+                              </div>
                           </td>
                         </tr>
                       )}

@@ -1348,6 +1348,65 @@ app.get('/api/contests/:id', authenticateToken, async (req, res) => {
   }
 });
 
+/** Top 3 điểm cao nhất trong cuộc thi (học sinh đã đăng nhập). */
+app.get('/api/contests/:id/leaderboard', authenticateToken, async (req, res) => {
+  const id = Number(req.params.id);
+  const userId = Number(req.auth?.sub);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(401).json({ message: 'Token kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ message: 'Cu\u1ED9c thi kh\u00F4ng h\u1EE3p l\u1EC7' });
+  }
+  try {
+    await syncContestJobs();
+    const [cRows] = await pool.query(
+      `SELECT c.id, c.name, c.template_id, c.start_time, c.end_time,
+              (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count
+       FROM contests c
+       WHERE c.id = ?
+       LIMIT 1`,
+      [id]
+    );
+    if (!cRows.length) {
+      return res.status(404).json({ message: 'Kh\u00F4ng t\u00ECm th\u1EA5y cu\u1ED9c thi' });
+    }
+    const contest = cRows[0];
+    const effectiveStatus = computeContestStatusByTime(contest.start_time, contest.end_time);
+    if (effectiveStatus === CONTEST_STATUS_SCHEDULED) {
+      return res.status(403).json({
+        message: 'Cu\u1ED9c thi ch\u01B0a \u0111\u1EBFn th\u1EDDi gian b\u1EAFt \u0111\u1EA7u',
+      });
+    }
+    const [rows] = await pool.query(
+      `SELECT uc.user_id, u.username, uc.score, uc.times, uc.created_at
+       FROM user_contests uc
+       INNER JOIN users u ON u.id = uc.user_id
+       WHERE uc.contest_id = ?
+       ORDER BY uc.score DESC, uc.times ASC, uc.id ASC
+       LIMIT 3`,
+      [id]
+    );
+    const leaderboard = rows.map((row, index) => ({
+      rank: index + 1,
+      user_id: row.user_id,
+      username: row.username,
+      score: Number(row.score) || 0,
+      times: Number(row.times) || 0,
+      submitted_at: row.created_at,
+    }));
+    return res.json({
+      contest_id: contest.id,
+      contest_name: contest.name,
+      question_count: Number(contest.question_count) || 0,
+      leaderboard,
+    });
+  } catch (err) {
+    console.error('Error GET /api/contests/:id/leaderboard:', err);
+    return res.status(500).json({ message: 'L\u1ED7i khi l\u1EA5y b\u1EA3ng x\u1EBFp h\u1EA1ng' });
+  }
+});
+
 app.post('/api/contests/:id/submit', authenticateToken, async (req, res) => {
   const contestId = Number(req.params.id);
   const userId = Number(req.auth?.sub);

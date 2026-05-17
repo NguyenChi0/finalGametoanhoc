@@ -1022,6 +1022,51 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /** Top 3 điểm cao nhất trong một cuộc thi (user_contests). */
+  app.get('/api/admin/contests/:id/leaderboard', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [cRows] = await pool.query(
+        `SELECT c.id, c.name, c.template_id,
+                (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count
+         FROM contests c
+         WHERE c.id = ?
+         LIMIT 1`,
+        [id]
+      );
+      if (!cRows.length) {
+        return res.status(404).json({ message: 'Không tìm thấy contest' });
+      }
+      const contest = cRows[0];
+      const [rows] = await pool.query(
+        `SELECT uc.user_id, u.username, uc.score, uc.times, uc.created_at
+         FROM user_contests uc
+         INNER JOIN users u ON u.id = uc.user_id
+         WHERE uc.contest_id = ?
+         ORDER BY uc.score DESC, uc.times ASC, uc.id ASC
+         LIMIT 3`,
+        [id]
+      );
+      const leaderboard = rows.map((row, index) => ({
+        rank: index + 1,
+        user_id: row.user_id,
+        username: row.username,
+        score: Number(row.score) || 0,
+        times: Number(row.times) || 0,
+        submitted_at: row.created_at,
+      }));
+      res.json({
+        contest_id: contest.id,
+        contest_name: contest.name,
+        question_count: Number(contest.question_count) || 0,
+        leaderboard,
+      });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy bảng xếp hạng cuộc thi');
+    }
+  });
+
   function parseContestDateTime(v) {
     if (v == null || v === '') return null;
     const d = v instanceof Date ? v : new Date(v);

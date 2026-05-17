@@ -6,8 +6,11 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const btnRef = useRef(null);
+  const userMenuDesktopRef = useRef(null);
+  const userBtnDesktopRef = useRef(null);
 
   const user = JSON.parse(localStorage.getItem("user") || "null");
 
@@ -15,11 +18,18 @@ export default function Navbar() {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     setMobileOpen(false);
+    setUserMenuOpen(false);
     navigate("/login");
+  };
+
+  const closeMenus = () => {
+    setMobileOpen(false);
+    setUserMenuOpen(false);
   };
 
   useEffect(() => {
     setMobileOpen(false);
+    setUserMenuOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -42,6 +52,25 @@ export default function Navbar() {
   }, [mobileOpen]);
 
   useEffect(() => {
+    if (!userMenuOpen) return;
+    const onDown = (e) => {
+      if (
+        userMenuDesktopRef.current?.contains(e.target) ||
+        userBtnDesktopRef.current?.contains(e.target)
+      ) {
+        return;
+      }
+      setUserMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [userMenuOpen]);
+
+  useEffect(() => {
     if (mobileOpen) {
       const prev = document.body.style.overflow;
       document.body.style.overflow = "hidden";
@@ -51,51 +80,212 @@ export default function Navbar() {
     }
   }, [mobileOpen]);
 
-  const linkBase = {
-    color: "#fff",
-    textDecoration: "none",
-    fontWeight: 600,
-  };
+  const navLinks = (
+    <>
+      <Link to="/" onClick={closeMenus}>
+        Trang chủ
+      </Link>
+      <Link to="/lessons" onClick={closeMenus}>
+        Bài học
+      </Link>
+      {user && (
+        <Link to="/contest" onClick={closeMenus}>
+          Cuộc thi
+        </Link>
+      )}
+      {user && (
+        <Link to="/exam" onClick={closeMenus}>
+          Đề thi
+        </Link>
+      )}
+      {user && (
+        <Link to="/shop" onClick={closeMenus}>
+          Cửa hàng
+        </Link>
+      )}
+      {user && isAdminUser(user) && (
+        <Link to="/admin" onClick={closeMenus}>
+          Quản trị
+        </Link>
+      )}
+    </>
+  );
+
+  const userMenuLabel = user?.username
+    ? `Xin chào, ${user.username}`
+    : "Tài khoản";
+
+  const renderUserMenu = (menuRef) => (
+    <div
+      ref={menuRef}
+      className={`navbar-user-menu ${userMenuOpen ? "visible" : ""}`}
+      role="menu"
+    >
+      {!user ? (
+        <>
+          <Link to="/login" role="menuitem" onClick={closeMenus}>
+            Đăng nhập
+          </Link>
+          <Link to="/register" role="menuitem" onClick={closeMenus}>
+            Đăng ký
+          </Link>
+        </>
+      ) : (
+        <>
+          <Link to="/profile" role="menuitem" onClick={closeMenus}>
+            Trang cá nhân
+          </Link>
+          <button type="button" className="logout" role="menuitem" onClick={handleLogout}>
+            Đăng xuất
+          </button>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <>
       <style>{`
         .navbar-root {
           display: flex;
-          justify-content: space-between;
           align-items: center;
           padding: 10px 16px;
           background: #6c7ee1;
           color: #fff;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
           position: relative;
-          /* Trên overlay: tránh tap “xuyên” xuống nút 3 gạch (ghost click mở lại menu). */
           z-index: 1100;
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow-x: clip;
         }
         .navbar-desktop {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
           align-items: center;
-          justify-content: space-between;
           width: 100%;
           gap: 12px;
         }
-        .navbar-desktop-left,
-        .navbar-desktop-right {
+        .navbar-desktop-spacer {
+          min-width: 0;
+        }
+        .navbar-desktop-center {
           display: flex;
           align-items: center;
+          justify-content: center;
           flex-wrap: wrap;
-          gap: 8px 12px;
+          gap: 4px 8px;
         }
-        .navbar-desktop a {
+        .navbar-desktop-center a,
+        .navbar-desktop-right a {
           color: #fff;
           text-decoration: none;
           font-weight: 600;
           padding: 6px 10px;
           border-radius: 8px;
           transition: background 0.2s;
+          white-space: nowrap;
         }
-        .navbar-desktop a:hover {
+        .navbar-desktop-center a:hover,
+        .navbar-desktop-right a:hover {
           background: rgba(255, 255, 255, 0.15);
+        }
+        .navbar-desktop-right {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          position: relative;
+          min-width: 0;
+          max-width: 100%;
+        }
+        .navbar-user-trigger {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          color: #fff;
+          font-weight: 600;
+          font-size: 0.95rem;
+          cursor: pointer;
+          font-family: inherit;
+          max-width: 100%;
+          transition: background 0.2s;
+        }
+        .navbar-user-trigger:hover,
+        .navbar-user-trigger.open {
+          background: rgba(255, 255, 255, 0.15);
+        }
+        .navbar-user-trigger-label {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
+          flex: 1;
+        }
+        .navbar-desktop-right .navbar-user-trigger {
+          max-width: min(200px, 42vw);
+        }
+        .navbar-user-chevron {
+          font-size: 0.7rem;
+          opacity: 0.9;
+          flex-shrink: 0;
+        }
+        .navbar-user-menu {
+          display: none;
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          left: auto;
+          width: min(220px, calc(100vw - 32px));
+          max-width: min(220px, calc(100vw - 32px));
+          min-width: 0;
+          box-sizing: border-box;
+          background: #0b5067;
+          border-radius: 12px;
+          padding: 6px;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          z-index: 1200;
+          flex-direction: column;
+          gap: 2px;
+          animation: navbarSlide 0.18s ease;
+          overflow: hidden;
+        }
+        .navbar-user-menu.visible {
+          display: flex;
+        }
+        .navbar-user-menu a,
+        .navbar-user-menu button {
+          display: block;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+          text-align: left;
+          padding: 12px 14px;
+          border-radius: 10px;
+          border: none;
+          background: transparent;
+          color: #fff;
+          font-size: 0.95rem;
+          font-weight: 600;
+          text-decoration: none;
+          cursor: pointer;
+          font-family: inherit;
+          transition: background 0.2s;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .navbar-user-menu a:hover,
+        .navbar-user-menu button:hover {
+          background: rgba(255, 255, 255, 0.12);
+        }
+        .navbar-user-menu .logout {
+          color: #ffb4b4;
         }
         .navbar-mobile-bar {
           display: none;
@@ -255,7 +445,7 @@ export default function Navbar() {
         @keyframes navbarSlide {
           from {
             opacity: 0;
-            transform: translateY(-8px);
+            transform: translateY(-6px);
           }
           to {
             opacity: 1;
@@ -280,70 +470,27 @@ export default function Navbar() {
 
       <nav className="navbar-root">
         <div className="navbar-desktop">
-          <div className="navbar-desktop-left">
-            <Link to="/" style={linkBase}>
-              Trang chủ
-            </Link>
-            <Link to="/lessons" style={linkBase}>
-              Bài học
-            </Link>
-            {user && (
-              <Link to="/contest" style={linkBase}>
-                Cuộc thi
-              </Link>
-            )}
-            {user && (
-              <Link to="/exam" style={linkBase}>
-                Đề thi
-              </Link>
-            )}
-            {user && (
-              <Link to="/shop" style={linkBase}>
-                Cửa hàng
-              </Link>
-            )}
-            {user && isAdminUser(user) && (
-              <Link to="/admin" style={linkBase}>
-                Quản trị
-              </Link>
-            )}
-          </div>
+          <div className="navbar-desktop-spacer" aria-hidden />
+          <div className="navbar-desktop-center">{navLinks}</div>
           <div className="navbar-desktop-right">
-            {!user ? (
-              <>
-                <Link to="/login" style={linkBase}>
-                  Đăng nhập
-                </Link>
-                <Link to="/register" style={linkBase}>
-                  Đăng ký
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link to="/profile" style={linkBase}>
-                  Trang cá nhân
-                </Link>
-                <span style={{ opacity: 0.95, fontSize: "0.95rem" }}>
-                  Xin chào, {user.username}!
-                </span>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  style={{
-                    background: "#c82333",
-                    color: "#fff",
-                    border: "none",
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Đăng xuất
-                </button>
-              </>
-            )}
+            <button
+              ref={userBtnDesktopRef}
+              type="button"
+              className={`navbar-user-trigger ${userMenuOpen ? "open" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setUserMenuOpen((v) => !v);
+                setMobileOpen(false);
+              }}
+              aria-expanded={userMenuOpen}
+              aria-haspopup="menu"
+            >
+              <span className="navbar-user-trigger-label">{userMenuLabel}</span>
+              <span className="navbar-user-chevron" aria-hidden>
+                {userMenuOpen ? "▲" : "▼"}
+              </span>
+            </button>
+            {renderUserMenu(userMenuDesktopRef)}
           </div>
         </div>
 
@@ -370,6 +517,7 @@ export default function Navbar() {
             onClick={(e) => {
               e.stopPropagation();
               setMobileOpen((v) => !v);
+              setUserMenuOpen(false);
             }}
             aria-expanded={mobileOpen}
             aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
@@ -397,39 +545,14 @@ export default function Navbar() {
         className={`navbar-mobile-panel ${mobileOpen ? "visible" : ""}`}
         role="menu"
       >
-        <Link to="/" role="menuitem" onClick={() => setMobileOpen(false)}>
-          Trang chủ
-        </Link>
-        <Link to="/lessons" role="menuitem" onClick={() => setMobileOpen(false)}>
-          Bài học
-        </Link>
-        {user && (
-          <Link to="/contest" role="menuitem" onClick={() => setMobileOpen(false)}>
-            Cuộc thi
-          </Link>
-        )}
-        {user && (
-          <Link to="/exam" role="menuitem" onClick={() => setMobileOpen(false)}>
-            Đề thi
-          </Link>
-        )}
-        {user && (
-          <Link to="/shop" role="menuitem" onClick={() => setMobileOpen(false)}>
-            Cửa hàng
-          </Link>
-        )}
-        {user && isAdminUser(user) && (
-          <Link to="/admin" role="menuitem" onClick={() => setMobileOpen(false)}>
-            Quản trị
-          </Link>
-        )}
+        {navLinks}
         <div className="nav-divider" />
         {!user ? (
           <>
-            <Link to="/login" role="menuitem" onClick={() => setMobileOpen(false)}>
+            <Link to="/login" role="menuitem" onClick={closeMenus}>
               Đăng nhập
             </Link>
-            <Link to="/register" role="menuitem" onClick={() => setMobileOpen(false)}>
+            <Link to="/register" role="menuitem" onClick={closeMenus}>
               Đăng ký
             </Link>
           </>
@@ -438,7 +561,7 @@ export default function Navbar() {
             {user.username && (
               <div className="nav-user">👤 {user.username}</div>
             )}
-            <Link to="/profile" role="menuitem" onClick={() => setMobileOpen(false)}>
+            <Link to="/profile" role="menuitem" onClick={closeMenus}>
               Trang cá nhân
             </Link>
             <button

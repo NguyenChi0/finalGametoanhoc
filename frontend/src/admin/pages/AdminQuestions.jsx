@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   getGrades,
@@ -8,6 +8,10 @@ import {
   getHierarchyLabels,
   deleteQuestion,
 } from "../../api";
+import {
+  persistAdminQuestionsFilter,
+  readAdminQuestionsFilter,
+} from "../lib/adminQuestionsFilter";
 
 /** Số câu hỏi tối đa mỗi trang (đồng bộ với API limit). */
 const QUESTIONS_PAGE_SIZE = 10;
@@ -115,21 +119,28 @@ function formatHierarchyLine(row, lookup) {
 export default function AdminQuestions() {
   const navigate = useNavigate();
   const isNarrow = useMediaQuery("(max-width: 768px)");
+  const savedFiltersRef = useRef(readAdminQuestionsFilter());
+  const savedFilters = savedFiltersRef.current;
+  const skipPageResetOnMount = useRef(Boolean(savedFilters));
   const [grades, setGrades] = useState([]);
   const [types, setTypes] = useState([]);
   const [lessons, setLessons] = useState([]);
-  const [gradeId, setGradeId] = useState("");
-  const [typeId, setTypeId] = useState("");
-  const [lessonId, setLessonId] = useState("");
+  const [gradeId, setGradeId] = useState(() => savedFilters?.gradeId ?? "");
+  const [typeId, setTypeId] = useState(() => savedFilters?.typeId ?? "");
+  const [lessonId, setLessonId] = useState(() => savedFilters?.lessonId ?? "");
   const [questions, setQuestions] = useState([]);
   const [totalDb, setTotalDb] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingFilters, setLoadingFilters] = useState(false);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(() => savedFilters?.searchTerm ?? "");
   /** Đồng bộ API sau debounce — tránh gọi server mỗi ký tự. */
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState(() =>
+    (savedFilters?.searchTerm ?? "").trim()
+  );
+  const [isFilterOpen, setIsFilterOpen] = useState(() =>
+    Boolean(savedFilters?.isFilterOpen)
+  );
   const [allTypes, setAllTypes] = useState([]);
   const [allLessons, setAllLessons] = useState([]);
   const [deletingId, setDeletingId] = useState(null);
@@ -220,7 +231,7 @@ export default function AdminQuestions() {
     };
   }, [typeId]);
 
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => savedFilters?.page ?? 1);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -230,8 +241,34 @@ export default function AdminQuestions() {
   }, [searchTerm]);
 
   useEffect(() => {
+    if (skipPageResetOnMount.current) {
+      skipPageResetOnMount.current = false;
+      return;
+    }
     setPage(1);
   }, [gradeId, typeId, lessonId, debouncedSearch]);
+
+  useEffect(() => {
+    persistAdminQuestionsFilter({
+      gradeId,
+      typeId,
+      lessonId,
+      searchTerm,
+      page,
+      isFilterOpen,
+    });
+  }, [gradeId, typeId, lessonId, searchTerm, page, isFilterOpen]);
+
+  const persistFiltersNow = useCallback(() => {
+    persistAdminQuestionsFilter({
+      gradeId,
+      typeId,
+      lessonId,
+      searchTerm,
+      page,
+      isFilterOpen,
+    });
+  }, [gradeId, typeId, lessonId, searchTerm, page, isFilterOpen]);
 
   const fetchQuestions = useCallback(async () => {
     setLoading(true);
@@ -339,6 +376,17 @@ export default function AdminQuestions() {
     () => ({ gradeById, typeById, lessonById }),
     [gradeById, typeById, lessonById]
   );
+
+  const openQuestionEdit = useCallback(
+    (row) => {
+      persistFiltersNow();
+      navigate("/admin/questions/edit", {
+        state: { draft: buildQuestionEditDraft(row, draftLookup) },
+      });
+    },
+    [navigate, persistFiltersNow, draftLookup]
+  );
+
   /** Chỉ câu có thể xóa hàng loạt — câu đã gắn mẫu đề không được chọn. */
   const selectablePageIds = useMemo(
     () =>
@@ -649,11 +697,7 @@ export default function AdminQuestions() {
                     type="button"
                     style={styles.actionBtn}
                     title="Chỉnh sửa câu hỏi"
-                    onClick={() =>
-                      navigate("/admin/questions/edit", {
-                        state: { draft: buildQuestionEditDraft(row, draftLookup) },
-                      })
-                    }
+                    onClick={() => openQuestionEdit(row)}
                   >
                     <PencilIcon />
                   </button>
@@ -731,11 +775,7 @@ export default function AdminQuestions() {
                           type="button"
                           style={styles.actionBtn}
                           title="Chỉnh sửa câu hỏi"
-                          onClick={() =>
-                            navigate("/admin/questions/edit", {
-                              state: { draft: buildQuestionEditDraft(row, draftLookup) },
-                            })
-                          }
+                          onClick={() => openQuestionEdit(row)}
                         >
                           <PencilIcon />
                         </button>

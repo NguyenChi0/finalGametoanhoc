@@ -48,14 +48,13 @@ export default function Home() {
           <section
             style={{
               textAlign: "center",
-              background: "rgba(255,255,255,0.92)",
               borderRadius: 20,
               padding: "28px 24px",
               width: "100%",
               maxWidth: 560,
-              boxShadow: "0 8px 32px rgba(74, 80, 128, 0.12)",
             }}
           >
+            {/*
             <h1
               style={{
                 margin: "0 0 12px",
@@ -83,11 +82,8 @@ export default function Home() {
             >
               Chọn bài học
             </Link>
+          */}
           </section>
-
-          <div style={{ width: "100%" }}>
-            <Leaderboard />
-          </div>
         </div>
       </div>
     </div>

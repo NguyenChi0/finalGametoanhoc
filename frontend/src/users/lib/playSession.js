@@ -1,5 +1,56 @@
 export const SESSION_KEY = "game_play_state_v1";
 export const PREGAME_SESSION_KEY = "game_pregame_state_v1";
+export const LAST_LESSON_KEY = "lesson_last_selection_v1";
+
+function isValidLastLessonSelection(data) {
+  return (
+    data &&
+    typeof data === "object" &&
+    data.gradeId != null &&
+    data.typeId != null &&
+    data.lessonId != null
+  );
+}
+
+/** Lưu bài học vừa chọn (localStorage — sống sau khi tắt trình duyệt). */
+export function persistLastLessonSelection({
+  gradeId,
+  typeId,
+  lessonId,
+  gradeName = null,
+  typeName = null,
+  lessonName = null,
+}) {
+  if (gradeId == null || typeId == null || lessonId == null) return;
+  try {
+    localStorage.setItem(
+      LAST_LESSON_KEY,
+      JSON.stringify({
+        gradeId,
+        typeId,
+        lessonId,
+        gradeName,
+        typeName,
+        lessonName,
+        ts: Date.now(),
+      })
+    );
+  } catch (e) {
+    console.warn("Không lưu được bài học gần nhất:", e);
+  }
+}
+
+export function readLastLessonSelection() {
+  try {
+    const raw = localStorage.getItem(LAST_LESSON_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return isValidLastLessonSelection(parsed) ? parsed : null;
+  } catch (e) {
+    console.warn("Lỗi đọc bài học gần nhất:", e);
+    return null;
+  }
+}
 
 export function persistPlayState(gameId, payload) {
   try {
