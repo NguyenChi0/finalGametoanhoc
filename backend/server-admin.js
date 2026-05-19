@@ -13,6 +13,146 @@ const bcrypt = require('bcryptjs');
 const ITEMS_IMAGES_DIR = path.join(__dirname, 'items-images');
 fs.mkdirSync(ITEMS_IMAGES_DIR, { recursive: true });
 
+const TYPES_IMAGES_DIR = path.join(__dirname, 'types-images');
+fs.mkdirSync(TYPES_IMAGES_DIR, { recursive: true });
+
+const LESSONS_IMAGES_DIR = path.join(__dirname, 'lessons-images');
+fs.mkdirSync(LESSONS_IMAGES_DIR, { recursive: true });
+
+const GRADES_IMAGES_DIR = path.join(__dirname, 'grades-images');
+fs.mkdirSync(GRADES_IMAGES_DIR, { recursive: true });
+
+function makeImageFilename(file) {
+  const extRaw = path.extname(file.originalname || '').toLowerCase();
+  let suffix = '.png';
+  if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(extRaw)) {
+    suffix = extRaw === '.jpeg' ? '.jpg' : extRaw;
+  } else if (file.mimetype === 'image/jpeg') suffix = '.jpg';
+  else if (file.mimetype === 'image/png') suffix = '.png';
+  else if (file.mimetype === 'image/gif') suffix = '.gif';
+  else if (file.mimetype === 'image/webp') suffix = '.webp';
+  return `${crypto.randomUUID()}${suffix}`;
+}
+
+const typeImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, TYPES_IMAGES_DIR),
+  filename: (req, file, cb) => cb(null, makeImageFilename(file)),
+});
+
+const lessonImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, LESSONS_IMAGES_DIR),
+  filename: (req, file, cb) => cb(null, makeImageFilename(file)),
+});
+
+const gradeImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, GRADES_IMAGES_DIR),
+  filename: (req, file, cb) => cb(null, makeImageFilename(file)),
+});
+
+const imageUploadFilter = (req, file, cb) => {
+  if (/^image\/(jpeg|png|gif|webp)$/i.test(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Chỉ chấp nhận ảnh JPG, PNG, GIF hoặc WebP'));
+  }
+};
+
+const uploadTypeImage = multer({
+  storage: typeImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: imageUploadFilter,
+});
+
+const uploadLessonImage = multer({
+  storage: lessonImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: imageUploadFilter,
+});
+
+const uploadGradeImage = multer({
+  storage: gradeImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: imageUploadFilter,
+});
+
+function normalizeTypeImagePath(raw) {
+  if (raw == null || String(raw).trim() === '') return null;
+  const s = String(raw).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('/types-images/')) return s;
+  if (s.startsWith('/curriculum-images/')) {
+    return s.replace('/curriculum-images/', '/types-images/');
+  }
+  if (s.startsWith('/lessons-images/')) return s;
+  if (s.startsWith('/')) return s;
+  return `/types-images/${s.replace(/^\/+/, '')}`;
+}
+
+function normalizeLessonImagePath(raw) {
+  if (raw == null || String(raw).trim() === '') return null;
+  const s = String(raw).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('/lessons-images/')) return s;
+  if (s.startsWith('/curriculum-images/')) {
+    return s.replace('/curriculum-images/', '/lessons-images/');
+  }
+  if (s.startsWith('/types-images/')) return s;
+  if (s.startsWith('/')) return s;
+  return `/lessons-images/${s.replace(/^\/+/, '')}`;
+}
+
+function unlinkTypeImageFile(link) {
+  if (link == null || String(link).trim() === '') return;
+  const s = String(link).trim();
+  if (/^https?:\/\//i.test(s)) return;
+  let base = s;
+  if (base.startsWith('/types-images/')) {
+    base = base.slice('/types-images/'.length);
+  } else if (base.startsWith('/curriculum-images/')) {
+    base = base.slice('/curriculum-images/'.length);
+  } else return;
+  const safe = path.basename(base);
+  if (!safe || safe === '.' || safe === '..') return;
+  fs.unlink(path.join(TYPES_IMAGES_DIR, safe), () => {});
+}
+
+function unlinkLessonImageFile(link) {
+  if (link == null || String(link).trim() === '') return;
+  const s = String(link).trim();
+  if (/^https?:\/\//i.test(s)) return;
+  let base = s;
+  if (base.startsWith('/lessons-images/')) {
+    base = base.slice('/lessons-images/'.length);
+  } else if (base.startsWith('/curriculum-images/')) {
+    base = base.slice('/curriculum-images/'.length);
+  } else return;
+  const safe = path.basename(base);
+  if (!safe || safe === '.' || safe === '..') return;
+  fs.unlink(path.join(LESSONS_IMAGES_DIR, safe), () => {});
+}
+
+function normalizeGradeImagePath(raw) {
+  if (raw == null || String(raw).trim() === '') return null;
+  const s = String(raw).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('/grades-images/')) return s;
+  if (s.startsWith('/')) return s;
+  return `/grades-images/${s.replace(/^\/+/, '')}`;
+}
+
+function unlinkGradeImageFile(link) {
+  if (link == null || String(link).trim() === '') return;
+  const s = String(link).trim();
+  if (/^https?:\/\//i.test(s)) return;
+  let base = s;
+  if (base.startsWith('/grades-images/')) {
+    base = base.slice('/grades-images/'.length);
+  } else return;
+  const safe = path.basename(base);
+  if (!safe || safe === '.' || safe === '..') return;
+  fs.unlink(path.join(GRADES_IMAGES_DIR, safe), () => {});
+}
+
 const itemImageStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, ITEMS_IMAGES_DIR),
   filename: (req, file, cb) => {
@@ -125,10 +265,44 @@ function normalizeExamTemplateDurationMinutes(raw, { required = false } = {}) {
   return n;
 }
 
+function parseSortOrder(raw, { required = false } = {}) {
+  if (raw === undefined || raw === null || raw === '') {
+    if (required) {
+      const e = new Error('sort_order không hợp lệ');
+      e.statusCode = 400;
+      throw e;
+    }
+    return null;
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    const e = new Error('sort_order phải là số nguyên >= 0');
+    e.statusCode = 400;
+    throw e;
+  }
+  return n;
+}
+
 module.exports = function mountAdminCrud(app, pool) {
   const CONTEST_STATUS_ENDED = 0;
   const CONTEST_STATUS_SCHEDULED = 1;
   const CONTEST_STATUS_ACTIVE = 2;
+
+  async function nextTypeSortOrder(gradeId) {
+    const [[row]] = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM types WHERE grade_id = ?',
+      [gradeId]
+    );
+    return Number(row?.next_order) || 1;
+  }
+
+  async function nextLessonSortOrder(typeId) {
+    const [[row]] = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM lessons WHERE type_id = ?',
+      [typeId]
+    );
+    return Number(row?.next_order) || 1;
+  }
 
   async function syncContestStatuses() {
     await pool.query(
@@ -369,13 +543,14 @@ module.exports = function mountAdminCrud(app, pool) {
 
   app.post('/api/admin/grades', async (req, res) => {
     try {
-      const { id, name, description } = req.body || {};
+      const { id, name, description, image } = req.body || {};
       if (id == null || !name) {
         return res.status(400).json({ message: 'id và name là bắt buộc' });
       }
+      const imagePath = image !== undefined ? normalizeGradeImagePath(image) : null;
       await pool.query(
-        'INSERT INTO grades (id, name, description) VALUES (?, ?, ?)',
-        [Number(id), String(name).trim(), description != null ? description : null]
+        'INSERT INTO grades (id, name, description, image) VALUES (?, ?, ?, ?)',
+        [Number(id), String(name).trim(), description != null ? description : null, imagePath]
       );
       const [rows] = await pool.query('SELECT * FROM grades WHERE id = ?', [Number(id)]);
       res.status(201).json(rows[0]);
@@ -391,7 +566,7 @@ module.exports = function mountAdminCrud(app, pool) {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ message: 'id không hợp lệ' });
     try {
-      const { name, description } = req.body || {};
+      const { name, description, image } = req.body || {};
       const updates = [];
       const params = [];
       if (name != null) {
@@ -401,6 +576,16 @@ module.exports = function mountAdminCrud(app, pool) {
       if (description !== undefined) {
         updates.push('description = ?');
         params.push(description);
+      }
+      if (image !== undefined) {
+        const [prevRows] = await pool.query('SELECT image FROM grades WHERE id = ?', [id]);
+        const prevImage = prevRows[0]?.image;
+        const nextImage = normalizeGradeImagePath(image);
+        updates.push('image = ?');
+        params.push(nextImage);
+        if (prevImage && prevImage !== nextImage) {
+          unlinkGradeImageFile(prevImage);
+        }
       }
       if (!updates.length) {
         const [rows] = await pool.query('SELECT * FROM grades WHERE id = ?', [id]);
@@ -437,6 +622,39 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  app.post('/api/admin/grades-images', uploadGradeImage.single('image'), (req, res) => {
+    try {
+      if (!req.file || !req.file.filename) {
+        return res.status(400).json({ message: 'Cần file ảnh (field: image)' });
+      }
+      res.status(201).json({ image: `/grades-images/${req.file.filename}` });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi tải ảnh khối lớp');
+    }
+  });
+
+  app.post('/api/admin/types-images', uploadTypeImage.single('image'), (req, res) => {
+    try {
+      if (!req.file || !req.file.filename) {
+        return res.status(400).json({ message: 'Cần file ảnh (field: image)' });
+      }
+      res.status(201).json({ image: `/types-images/${req.file.filename}` });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi tải ảnh chủ đề');
+    }
+  });
+
+  app.post('/api/admin/lessons-images', uploadLessonImage.single('image'), (req, res) => {
+    try {
+      if (!req.file || !req.file.filename) {
+        return res.status(400).json({ message: 'Cần file ảnh (field: image)' });
+      }
+      res.status(201).json({ image: `/lessons-images/${req.file.filename}` });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi tải ảnh bài học');
+    }
+  });
+
   // ---------- TYPES (chủ đề / dạng toán) ----------
   app.get('/api/admin/types', async (req, res) => {
     try {
@@ -447,7 +665,7 @@ module.exports = function mountAdminCrud(app, pool) {
         sql += ' WHERE grade_id = ?';
         params.push(gradeId);
       }
-      sql += ' ORDER BY grade_id, id';
+      sql += ' ORDER BY grade_id, sort_order ASC, id ASC';
       const [rows] = await pool.query(sql, params);
       res.json(rows);
     } catch (err) {
@@ -469,14 +687,18 @@ module.exports = function mountAdminCrud(app, pool) {
 
   app.post('/api/admin/types', async (req, res) => {
     try {
-      const { grade_id, name, description } = req.body || {};
+      const { grade_id, name, description, image, sort_order: sortOrderRaw } = req.body || {};
       const gid = Number(grade_id);
       if (!gid || !name) {
         return res.status(400).json({ message: 'grade_id và name là bắt buộc' });
       }
+      const parsedSort = parseSortOrder(sortOrderRaw);
+      const sortOrder = parsedSort != null ? parsedSort : await nextTypeSortOrder(gid);
+      const imagePath =
+        image !== undefined ? normalizeTypeImagePath(image) : null;
       const [result] = await pool.query(
-        'INSERT INTO types (grade_id, name, description) VALUES (?, ?, ?)',
-        [gid, String(name).trim(), description != null ? description : null]
+        'INSERT INTO types (grade_id, name, description, image, sort_order) VALUES (?, ?, ?, ?, ?)',
+        [gid, String(name).trim(), description != null ? description : null, imagePath, sortOrder]
       );
       const [rows] = await pool.query('SELECT * FROM types WHERE id = ?', [result.insertId]);
       res.status(201).json(rows[0]);
@@ -494,7 +716,7 @@ module.exports = function mountAdminCrud(app, pool) {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
     try {
-      const { grade_id, name, description } = req.body || {};
+      const { grade_id, name, description, image, sort_order: sortOrderRaw } = req.body || {};
       const updates = [];
       const params = [];
       if (grade_id != null) {
@@ -508,6 +730,14 @@ module.exports = function mountAdminCrud(app, pool) {
       if (description !== undefined) {
         updates.push('description = ?');
         params.push(description);
+      }
+      if (image !== undefined) {
+        updates.push('image = ?');
+        params.push(normalizeTypeImagePath(image));
+      }
+      if (sortOrderRaw !== undefined) {
+        updates.push('sort_order = ?');
+        params.push(parseSortOrder(sortOrderRaw, { required: true }));
       }
       if (!updates.length) {
         const [rows] = await pool.query('SELECT * FROM types WHERE id = ?', [id]);
@@ -559,7 +789,7 @@ module.exports = function mountAdminCrud(app, pool) {
         sql += ' WHERE type_id = ?';
         params.push(typeId);
       }
-      sql += ' ORDER BY type_id, id';
+      sql += ' ORDER BY type_id, sort_order ASC, id ASC';
       const [rows] = await pool.query(sql, params);
       res.json(rows);
     } catch (err) {
@@ -581,14 +811,18 @@ module.exports = function mountAdminCrud(app, pool) {
 
   app.post('/api/admin/lessons', async (req, res) => {
     try {
-      const { type_id, name } = req.body || {};
+      const { type_id, name, image, sort_order: sortOrderRaw } = req.body || {};
       const tid = Number(type_id);
       if (!tid || !name) {
         return res.status(400).json({ message: 'type_id và name là bắt buộc' });
       }
+      const parsedSort = parseSortOrder(sortOrderRaw);
+      const sortOrder = parsedSort != null ? parsedSort : await nextLessonSortOrder(tid);
+      const imagePath =
+        image !== undefined ? normalizeLessonImagePath(image) : null;
       const [result] = await pool.query(
-        'INSERT INTO lessons (type_id, name) VALUES (?, ?)',
-        [tid, String(name).trim()]
+        'INSERT INTO lessons (type_id, name, image, sort_order) VALUES (?, ?, ?, ?)',
+        [tid, String(name).trim(), imagePath, sortOrder]
       );
       const [rows] = await pool.query('SELECT * FROM lessons WHERE id = ?', [result.insertId]);
       res.status(201).json(rows[0]);
@@ -606,7 +840,7 @@ module.exports = function mountAdminCrud(app, pool) {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
     try {
-      const { type_id, name } = req.body || {};
+      const { type_id, name, image, sort_order: sortOrderRaw } = req.body || {};
       const updates = [];
       const params = [];
       if (type_id != null) {
@@ -616,6 +850,14 @@ module.exports = function mountAdminCrud(app, pool) {
       if (name != null) {
         updates.push('name = ?');
         params.push(String(name).trim());
+      }
+      if (image !== undefined) {
+        updates.push('image = ?');
+        params.push(normalizeLessonImagePath(image));
+      }
+      if (sortOrderRaw !== undefined) {
+        updates.push('sort_order = ?');
+        params.push(parseSortOrder(sortOrderRaw, { required: true }));
       }
       if (!updates.length) {
         const [rows] = await pool.query('SELECT * FROM lessons WHERE id = ?', [id]);

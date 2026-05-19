@@ -35,7 +35,7 @@ function staticAssetUrl(path) {
 /** Chuẩn hóa câu từ API contest/exam → UI trắc nghiệm (giống ExamDetailPage). */
 function mapApiQuestionsToQuiz(rawList) {
   if (!Array.isArray(rawList)) return [];
-  return rawList
+  const mapped = rawList
     .map((q) => {
       const answers = Array.isArray(q.answers) ? q.answers : [];
       const correct = answers.find((a) => a.correct);
@@ -51,6 +51,7 @@ function mapApiQuestionsToQuiz(rawList) {
       };
     })
     .filter(Boolean);
+  return shuffle(mapped);
 }
 
 export default function ContestDetailPage() {
@@ -721,70 +722,6 @@ export default function ContestDetailPage() {
               </button>
             </div>
           )}
-          {/* Header: các nút câu hỏi và timer cùng dòng */}
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 16,
-              padding: "10px 12px",
-              marginBottom: 20,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 8,
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  justifyContent: "flex-start",
-                  alignItems: "center",
-                  marginBottom: "4px",
-                }}
-              >
-                {questions.map((q, idx) => (
-                  <button
-                    key={q.id}
-                    type="button"
-                    onClick={() => setCurrentQuestion(idx)}
-                    style={numberButtonStyle(
-                      idx === currentQuestion,
-                      answers[q.id] !== undefined
-                    )}
-                  >
-                    {idx + 1}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Timer - nằm cùng dòng */}
-            <div
-              style={{
-                textAlign: "center",
-                padding: "6px 14px",
-                backgroundColor: timeLeft < 300 ? "#ffe6e6" : "#e8f1f5",
-                borderRadius: 12,
-                minWidth: 90,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: timeLeft < 300 ? "#c41c3b" : "#0f4c75",
-                }}
-              >
-                {formatTime(timeLeft)}
-              </div>
-              <div style={{ fontSize: 11, color: "#666" }}>Thời gian</div>
-            </div>
-          </div>
-
           {/* Câu hỏi và đáp án */}
           <section
             style={{
@@ -792,6 +729,7 @@ export default function ContestDetailPage() {
               borderRadius: 16,
               padding: "28px 24px",
               boxShadow: "0 10px 36px rgba(0,0,0,0.08)",
+              marginBottom: 20,
             }}
           >
             <h2
@@ -926,6 +864,72 @@ export default function ContestDetailPage() {
               )}
             </div>
           </section>
+
+          {/* Header: các nút câu hỏi và timer cùng dòng */}
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 16,
+              padding: "10px 12px",
+              marginBottom: 20,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  justifyContent: "flex-start",
+                  alignItems: "center",
+                  marginBottom: "4px",
+                }}
+              >
+                {questions.map((q, idx) => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => setCurrentQuestion(idx)}
+                    style={numberButtonStyle(
+                      idx === currentQuestion,
+                      answers[q.id] !== undefined
+                    )}
+                  >
+                    {idx + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Timer - nằm cùng dòng */}
+            <div
+              style={{
+                textAlign: "center",
+                padding: "6px 14px",
+                backgroundColor: timeLeft < 300 ? "#ffe6e6" : "#e8f1f5",
+                borderRadius: 12,
+                minWidth: 90,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 700,
+                  color: timeLeft < 300 ? "#c41c3b" : "#0f4c75",
+                }}
+              >
+                {formatTime(timeLeft)}
+              </div>
+              <div style={{ fontSize: 11, color: "#666" }}>Thời gian</div>
+            </div>
+          </div>
+
+
         </main>
       </div>
     </div>

@@ -4,6 +4,7 @@ import React, {
   useLayoutEffect,
   useRef,
   useMemo,
+  useCallback,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -12,6 +13,9 @@ import {
   getLessons,
   getQuestions,
   questionImageUrl,
+  typeImageUrl,
+  lessonImageUrl,
+  gradeImageUrl,
   externalLoginChild,
 } from "../../api";
 import {
@@ -41,6 +45,7 @@ function isAllowedOrigin(origin) {
 }
 
 const PAGE_BG = `${publicUrl}/component-images/home-background.png`;
+const TYPE_TOPIC_BG = `${publicUrl}/component-images/types-background.png`;
 
 const LESSON_CHIP_BG_IMAGES = [
   `${publicUrl}/component-images/imgLessonType1.png`,
@@ -56,6 +61,15 @@ function lessonChipBackgroundUrl(lessonId) {
     hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
   }
   return LESSON_CHIP_BG_IMAGES[hash % LESSON_CHIP_BG_IMAGES.length];
+}
+
+function lessonDisplayImageUrl(lesson) {
+  const custom = lesson?.image ? lessonImageUrl(lesson.image) : "";
+  return custom || lessonChipBackgroundUrl(lesson?.id);
+}
+
+function typeDisplayImageUrl(typeRow) {
+  return typeRow?.image ? typeImageUrl(typeRow.image) : "";
 }
 
 /** Bảng màu UI (periwinkle → sky → peach → pink → lavender) */
@@ -90,7 +104,7 @@ const GRADE_CHEVRON_CLIP =
 const LESSON_CHIP_SIZE_PX = 200;
 
 /** Đường kính vòng chủ đề desktop (px) — đổi một chỗ, layout tự tính bán kính. */
-const TOPIC_CIRCLE_SIZE_PX = 200;
+const TOPIC_CIRCLE_SIZE_PX = 260;
 /** Nửa đường kính vòng chủ đề trong SVG (px) */
 const SPINE_TOPIC_R = TOPIC_CIRCLE_SIZE_PX / 2;
 
@@ -230,9 +244,9 @@ function getLessonMapMetrics(innerWidth) {
       clusterPadBottom: 14,
       lessonGapBelowType: 0,
       lessonRowGap: -44,
-      topicLayoutR: 70,
-      topicCssPx: 140,
-      typeFontRem: 0.82,
+      topicLayoutR: 90,
+      topicCssPx: 180,
+      typeFontRem: 1.62,
       typeBorderPx: 5,
       clusterMaxWidth: clusterMax,
     };
@@ -251,9 +265,9 @@ function getLessonMapMetrics(innerWidth) {
       clusterPadBottom: 16,
       lessonGapBelowType: 0,
       lessonRowGap: -48,
-      topicLayoutR: 78,
-      topicCssPx: 156,
-      typeFontRem: 0.88,
+      topicLayoutR: 100,
+      topicCssPx: 200,
+      typeFontRem: 1.72,
       typeBorderPx: 5,
       clusterMaxWidth: clusterMax,
     };
@@ -272,9 +286,9 @@ function getLessonMapMetrics(innerWidth) {
       clusterPadBottom: 18,
       lessonGapBelowType: 3,
       lessonRowGap: -54,
-      topicLayoutR: 88,
-      topicCssPx: 176,
-      typeFontRem: 0.92,
+      topicLayoutR: 114,
+      topicCssPx: 228,
+      typeFontRem: 1.85,
       typeBorderPx: 6,
       clusterMaxWidth: clusterMax,
     };
@@ -293,9 +307,9 @@ function getLessonMapMetrics(innerWidth) {
       clusterPadBottom: 20,
       lessonGapBelowType: 4,
       lessonRowGap: -56,
-      topicLayoutR: 96,
-      topicCssPx: 192,
-      typeFontRem: 0.98,
+      topicLayoutR: 124,
+      topicCssPx: 248,
+      typeFontRem: 1.95,
       typeBorderPx: 7,
       clusterMaxWidth: clusterMax,
     };
@@ -315,7 +329,7 @@ function getLessonMapMetrics(innerWidth) {
     lessonRowGap: SPINE_LESSON_ROW_GAP,
     topicLayoutR: SPINE_TOPIC_R,
     topicCssPx: TOPIC_CIRCLE_SIZE_PX,
-    typeFontRem: 1.05,
+    typeFontRem: 2.1,
     typeBorderPx: 8,
     clusterMaxWidth: clusterMax,
   };
@@ -409,6 +423,202 @@ function withResolvedQuestionMedia(q) {
   };
 }
 
+function filterCurriculumRows(types, lessonsMap, query) {
+  const list = Array.isArray(types) ? types : [];
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) {
+    return list.map((t) => ({
+      type: t,
+      lessons: [...(lessonsMap[t.id] || [])],
+    }));
+  }
+  const rows = [];
+  for (const t of list) {
+    const lessons = [...(lessonsMap[t.id] || [])];
+    const topicMatch = [t.id, t.name]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(q);
+    const matchedLessons = lessons.filter((l) =>
+      [l.id, l.name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+    if (topicMatch) {
+      rows.push({ type: t, lessons });
+    } else if (matchedLessons.length > 0) {
+      rows.push({ type: t, lessons: matchedLessons });
+    }
+  }
+  return rows;
+}
+
+function SummarySearchIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2.2" />
+      <path
+        d="M20 20l-4-4"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function LessonCurriculumSummary({
+  gradeName,
+  types,
+  lessonsMap,
+  expandedTypeId,
+  lastChosenLessonId,
+  onTopicClick,
+  onLessonClick,
+}) {
+  const list = Array.isArray(types) ? types : [];
+  const [search, setSearch] = useState("");
+  const filteredRows = useMemo(
+    () => filterCurriculumRows(list, lessonsMap, search),
+    [list, lessonsMap, search]
+  );
+  const hasSearch = search.trim().length > 0;
+
+  return (
+    <aside
+      className="lesson-curriculum-summary"
+      aria-label="Tóm tắt chủ đề và bài học"
+    >
+      <h2 className="lesson-curriculum-summary__title">Tóm tắt</h2>
+      {gradeName ? (
+        <p className="lesson-curriculum-summary__grade">{gradeName}</p>
+      ) : null}
+      {list.length === 0 ? (
+        <p className="lesson-curriculum-summary__muted">Chưa có chủ đề cho khối này.</p>
+      ) : (
+        <>
+          <form
+            className="lesson-curriculum-summary__search"
+            role="search"
+            onSubmit={(e) => e.preventDefault()}
+          >
+            <input
+              type="search"
+              className="lesson-curriculum-summary__search-input"
+              placeholder="Tìm chủ đề hoặc bài học…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Tìm trong danh sách chủ đề và bài học"
+            />
+            <button
+              type="submit"
+              className="lesson-curriculum-summary__search-btn"
+              aria-label="Tìm kiếm"
+              title="Tìm kiếm"
+            >
+              <SummarySearchIcon />
+            </button>
+            {hasSearch ? (
+              <button
+                type="button"
+                className="lesson-curriculum-summary__search-clear"
+                onClick={() => setSearch("")}
+                aria-label="Xóa từ khóa tìm kiếm"
+              >
+                ×
+              </button>
+            ) : null}
+          </form>
+          <div className="lesson-curriculum-summary__scroll">
+            {filteredRows.length === 0 ? (
+              <p className="lesson-curriculum-summary__muted">
+                Không tìm thấy kết quả cho &ldquo;{search.trim()}&rdquo;.
+              </p>
+            ) : (
+          <table className="lesson-curriculum-summary__table">
+            <thead>
+              <tr>
+                <th scope="col">TT</th>
+                <th scope="col">Chủ đề / Bài học</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map(({ type: t, lessons }, topicIdx) => {
+                const topicOpen =
+                  expandedTypeId != null &&
+                  String(expandedTypeId) === String(t.id);
+                return (
+                  <React.Fragment key={t.id}>
+                    <tr
+                      className={`lesson-curriculum-summary__topic${
+                        topicOpen ? " is-open" : ""
+                      }`}
+                    >
+                      <td>{topicIdx + 1}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="lesson-curriculum-summary__btn"
+                          onClick={() => onTopicClick(t.id)}
+                          aria-expanded={topicOpen}
+                        >
+                          <span>{t.name}</span>
+                        </button>
+                      </td>
+                    </tr>
+                    {lessons.length === 0 ? (
+                      <tr className="lesson-curriculum-summary__empty-row">
+                        <td />
+                        <td>
+                          <span className="lesson-curriculum-summary__empty">
+                            Chưa có bài học
+                          </span>
+                        </td>
+                      </tr>
+                    ) : (
+                      lessons.map((lesson, lessonIdx) => {
+                        const isLast =
+                          lastChosenLessonId != null &&
+                          String(lastChosenLessonId) === String(lesson.id);
+                        return (
+                          <tr
+                            key={lesson.id}
+                            className={`lesson-curriculum-summary__lesson${
+                              isLast ? " is-last" : ""
+                            }`}
+                          >
+                            <td>
+                              {topicIdx + 1}.{lessonIdx + 1}
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="lesson-curriculum-summary__btn lesson-curriculum-summary__btn--lesson"
+                                onClick={() => onLessonClick(t.id, lesson.id)}
+                              >
+                                <span>{lesson.name}</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+            )}
+          </div>
+        </>
+      )}
+    </aside>
+  );
+}
+
 export default function LessonPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -469,7 +679,8 @@ export default function LessonPage() {
   const [lastChosenLessonId, setLastChosenLessonId] = useState(null);
   const [revealedTopicIds, setRevealedTopicIds] = useState(() => new Set());
   const topicNodeRefs = useRef(new Map());
-  const lastLessonChipRef = useRef(null);
+  const lessonChipRefs = useRef(new Map());
+  const lessonMapRootRef = useRef(null);
   const restoreFromPregameDone = useRef(false);
   const initialGradeAutoDone = useRef(false);
   const scrollToLastLessonPending = useRef(false);
@@ -502,7 +713,7 @@ export default function LessonPage() {
 
     if (scrollToLastLessonPending.current && lastChosenLessonId != null) {
       const scrollToChip = () => {
-        const chip = lastLessonChipRef.current;
+        const chip = lessonChipRefs.current.get(String(lastChosenLessonId));
         if (!chip) return false;
         scrollToLastLessonPending.current = false;
         chip.scrollIntoView({
@@ -708,12 +919,13 @@ export default function LessonPage() {
 
     setLastChosenLessonId(lessonId);
 
-    const typeName =
-      cache.types[gradeId]?.find((t) => String(t.id) === String(typeId))
-        ?.name || null;
-    const lessonName =
-      cache.lessons[typeId]?.find((row) => String(row.id) === String(lessonId))
-        ?.name || null;
+    const typeRow =
+      cache.types[gradeId]?.find((t) => String(t.id) === String(typeId)) || null;
+    const lessonRow =
+      cache.lessons[typeId]?.find((row) => String(row.id) === String(lessonId)) ||
+      null;
+    const typeName = typeRow?.name || null;
+    const lessonName = lessonRow?.name || null;
     const gradeName =
       grades.find((g) => String(g.id) === String(gradeId))?.name || null;
 
@@ -731,10 +943,12 @@ export default function LessonPage() {
       type: {
         id: typeId,
         name: typeName,
+        image: typeRow?.image ?? null,
       },
       lesson: {
         id: lessonId,
         name: lessonName,
+        image: lessonRow?.image ?? null,
       },
       questions: shuffledQuestions,
       user: currentUser,
@@ -752,6 +966,83 @@ export default function LessonPage() {
       prev != null && String(prev) === String(typeId) ? null : typeId
     );
   };
+
+  const scrollMapIntoView = useCallback(() => {
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    lessonMapRootRef.current?.scrollIntoView({
+      behavior: reduced ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }, []);
+
+  const revealTopicOnMap = useCallback((typeId) => {
+    const id = String(typeId);
+    setRevealedTopicIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleSummaryTopicClick = (typeId) => {
+    const id = String(typeId);
+    const isOpen =
+      expandedTypeId != null && String(expandedTypeId) === id;
+    scrollMapIntoView();
+    revealTopicOnMap(typeId);
+    if (!isOpen) {
+      setExpandedTypeId(typeId);
+      requestAnimationFrame(() => {
+        topicNodeRefs.current
+          .get(id)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    } else {
+      toggleType(typeId);
+    }
+  };
+
+  const handleSummaryLessonClick = (typeId, lessonId) => {
+    const tid = String(typeId);
+    const lid = String(lessonId);
+    const needsExpand =
+      expandedTypeId == null || String(expandedTypeId) !== tid;
+
+    scrollMapIntoView();
+    revealTopicOnMap(typeId);
+    setLastChosenLessonId(lessonId);
+
+    if (needsExpand) {
+      scrollToLastLessonPending.current = true;
+      setExpandedTypeId(typeId);
+      return;
+    }
+
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const scrollBehavior = reduced ? "auto" : "smooth";
+
+    requestAnimationFrame(() => {
+      topicNodeRefs.current
+        .get(tid)
+        ?.scrollIntoView({ behavior: scrollBehavior, block: "center" });
+      const chip = lessonChipRefs.current.get(lid);
+      chip?.scrollIntoView({
+        behavior: scrollBehavior,
+        block: "center",
+        inline: "nearest",
+      });
+    });
+  };
+
+  const selectedGradeName = useMemo(
+    () => grades.find((g) => String(g.id) === String(selectedGrade))?.name,
+    [grades, selectedGrade]
+  );
 
   return (
     <div style={{ position: "relative", minHeight: "100vh" }}>
@@ -788,7 +1079,7 @@ export default function LessonPage() {
       style={{
         position: "relative",
         width: "100%",
-        maxWidth: 1180,
+        maxWidth: 1600,
         margin: "0 auto",
         padding: "12px 12px 40px",
         borderRadius: 12,
@@ -859,6 +1150,7 @@ export default function LessonPage() {
               }}
             >
               {rowGrades.map((g, index) => {
+                const gradeBg = g.image ? gradeImageUrl(g.image) : "";
                 return (
                   <button
                     key={g.id}
@@ -866,7 +1158,7 @@ export default function LessonPage() {
                     onClick={() => handleSelectGrade(g.id)}
                     className={`grade-chevron-btn${
                       selectedGrade === g.id ? " grade-chevron-btn--selected" : ""
-                    }`}
+                    }${gradeBg ? " grade-chevron-btn--has-image" : ""}`}
                     style={{
                       position: "relative",
                       zIndex: index + 1,
@@ -896,6 +1188,14 @@ export default function LessonPage() {
                       animationDelay: `${
                         (rowIndex * lessonMapMetrics.gradesPerRow + index) * 0.055
                       }s`,
+                      ...(gradeBg
+                        ? {
+                            backgroundImage: `linear-gradient(rgba(0,0,0,0.38), rgba(0,0,0,0.38)), url(${gradeBg})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            color: "#fff",
+                          }
+                        : {}),
                     }}
                   >
                     <span className="grade-chevron-btn-label">
@@ -954,6 +1254,13 @@ export default function LessonPage() {
           transition:
             color var(--grade-duration) var(--grade-ease),
             box-shadow var(--grade-duration) var(--grade-ease);
+        }
+        .grade-chevron-btn--has-image::before {
+          opacity: 0 !important;
+        }
+        .grade-chevron-btn--has-image.grade-chevron-btn--selected,
+        .grade-chevron-btn--has-image:hover {
+          color: #fff;
         }
         /* Lớp màu gradient — fade mượt */
         .grade-chevron-btn::before {
@@ -1056,6 +1363,236 @@ export default function LessonPage() {
           }
         }
 
+        .lesson-page-map-layout {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 20px;
+          width: 100%;
+          max-width: min(1520px, 100%);
+          margin: 16px auto 0;
+          box-sizing: border-box;
+        }
+        @media (min-width: 960px) {
+          .lesson-page-map-layout {
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 24px;
+          }
+        }
+        .lesson-curriculum-summary {
+          flex: 0 0 auto;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
+          padding: 16px 14px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.92);
+          border: 2px solid rgba(146, 185, 227, 0.55);
+          box-shadow: 0 8px 28px rgba(74, 80, 128, 0.1);
+          font-family: inherit;
+          color: var(--cl-ink);
+        }
+        @media (min-width: 960px) {
+          .lesson-curriculum-summary {
+            width: min(400px, 40vw);
+            position: sticky;
+            top: 20px;
+            max-height: calc(100vh - 48px);
+            display: flex;
+            flex-direction: column;
+          }
+        }
+        .lesson-curriculum-summary__title {
+          margin: 0 0 6px;
+          font-size: clamp(0.95rem, 2.5vw, 1.08rem);
+          font-weight: 800;
+          color: var(--cl-periwinkle);
+          line-height: 1.3;
+        }
+        .lesson-curriculum-summary__grade {
+          margin: 0 0 10px;
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: var(--cl-ink-muted);
+        }
+        .lesson-curriculum-summary__search {
+          display: flex;
+          align-items: stretch;
+          gap: 6px;
+          margin-bottom: 8px;
+          position: relative;
+        }
+        .lesson-curriculum-summary__search-input {
+          flex: 1 1 auto;
+          min-width: 0;
+          padding: 9px 36px 9px 12px;
+          border: 2px solid rgba(146, 185, 227, 0.65);
+          border-radius: 10px;
+          font-size: 0.86rem;
+          font-family: inherit;
+          color: var(--cl-ink);
+          background: #fff;
+          box-sizing: border-box;
+        }
+        .lesson-curriculum-summary__search-input:focus {
+          outline: none;
+          border-color: var(--cl-periwinkle);
+          box-shadow: 0 0 0 3px rgba(108, 126, 225, 0.2);
+        }
+        .lesson-curriculum-summary__search-btn {
+          flex: 0 0 auto;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 42px;
+          padding: 0;
+          border: none;
+          border-radius: 10px;
+          background: linear-gradient(
+            135deg,
+            var(--cl-periwinkle) 0%,
+            var(--cl-lavender) 100%
+          );
+          color: #fff;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .lesson-curriculum-summary__search-btn:hover {
+          filter: brightness(1.06);
+        }
+        .lesson-curriculum-summary__search-clear {
+          position: absolute;
+          right: 50px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 26px;
+          height: 26px;
+          padding: 0;
+          border: none;
+          border-radius: 50%;
+          background: rgba(107, 112, 153, 0.15);
+          color: var(--cl-ink-muted);
+          font-size: 1.1rem;
+          line-height: 1;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .lesson-curriculum-summary__muted {
+          margin: 0;
+          font-size: 0.9rem;
+          color: var(--cl-ink-muted);
+          font-style: italic;
+        }
+        .lesson-curriculum-summary__scroll {
+          overflow: auto;
+          flex: 1 1 auto;
+          min-height: 0;
+          -webkit-overflow-scrolling: touch;
+        }
+        @media (max-width: 959px) {
+          .lesson-curriculum-summary__scroll {
+            max-height: min(42vh, 360px);
+          }
+        }
+        .lesson-curriculum-summary__table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.84rem;
+          line-height: 1.35;
+        }
+        .lesson-curriculum-summary__table th {
+          position: sticky;
+          top: 0;
+          z-index: 1;
+          text-align: left;
+          font-weight: 700;
+          font-size: 0.78rem;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: var(--cl-ink-muted);
+          padding: 8px 8px 10px;
+          background: rgba(255, 255, 255, 0.98);
+          border-bottom: 2px solid rgba(146, 185, 227, 0.45);
+        }
+        .lesson-curriculum-summary__table th:first-child {
+          width: 52px;
+          text-align: center;
+        }
+        .lesson-curriculum-summary__table td {
+          vertical-align: top;
+          padding: 7px 8px;
+          border-bottom: 1px solid rgba(146, 185, 227, 0.22);
+        }
+        .lesson-curriculum-summary__table td:first-child {
+          text-align: center;
+          font-weight: 700;
+          color: var(--cl-ink-muted);
+          white-space: nowrap;
+        }
+        .lesson-curriculum-summary__topic td {
+          background: rgba(198, 136, 235, 0.08);
+        }
+        .lesson-curriculum-summary__topic.is-open td {
+          background: rgba(198, 136, 235, 0.18);
+        }
+        .lesson-curriculum-summary__topic .lesson-curriculum-summary__btn {
+          font-weight: 800;
+          color: var(--cl-ink);
+        }
+        .lesson-curriculum-summary__lesson td:first-child {
+          font-size: 0.78rem;
+          font-weight: 600;
+        }
+        .lesson-curriculum-summary__lesson.is-last td {
+          background: rgba(251, 162, 208, 0.2);
+        }
+        .lesson-curriculum-summary__empty-row td {
+          padding-top: 2px;
+          padding-bottom: 10px;
+        }
+        .lesson-curriculum-summary__empty {
+          font-size: 0.82rem;
+          color: var(--cl-ink-muted);
+          font-style: italic;
+          padding-left: 4px;
+        }
+        .lesson-curriculum-summary__btn {
+          display: flex;
+          align-items: center;
+          width: 100%;
+          margin: 0;
+          padding: 2px 0;
+          border: none;
+          background: transparent;
+          text-align: left;
+          font: inherit;
+          color: inherit;
+          cursor: pointer;
+          font-family: inherit;
+          word-break: break-word;
+        }
+        .lesson-curriculum-summary__btn--lesson {
+          font-weight: 600;
+          color: var(--cl-ink-muted);
+        }
+        .lesson-curriculum-summary__btn:hover,
+        .lesson-curriculum-summary__btn:focus-visible {
+          color: var(--cl-periwinkle);
+          outline: none;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .lesson-curriculum-summary__lesson.is-last .lesson-curriculum-summary__btn--lesson {
+          color: var(--cl-ink);
+          font-weight: 700;
+        }
+        .lesson-page-map-layout .lesson-map-root {
+          flex: 1 1 auto;
+          min-width: 0;
+          margin-top: 0;
+          max-width: none;
+        }
         .lesson-map-root {
           margin-top: 16px;
           padding: 0;
@@ -1303,16 +1840,15 @@ export default function LessonPage() {
         }
         .lesson-map-type {
           flex-shrink: 0;
-          width: var(--lesson-topic-px, 200px);
-          height: var(--lesson-topic-px, 200px);
-          border-radius: 50%;
+          width: var(--lesson-topic-px, 260px);
+          height: var(--lesson-topic-px, 260px);
+          border-radius: 16px;
           border: var(--lesson-topic-border, 7px) solid var(--cl-pink);
-          background: linear-gradient(
-            145deg,
-            #ffffff 0%,
-            #f5f0ff 45%,
-            #e8f2fc 100%
-          );
+          background-color: #f5f0e8;
+          background-image: url('${TYPE_TOPIC_BG}');
+          background-size: contain;
+          background-position: center;
+          background-repeat: no-repeat;
           color: var(--cl-ink);
           display: flex;
           align-items: center;
@@ -1321,7 +1857,7 @@ export default function LessonPage() {
           font-weight: 800;
           font-size: var(--lesson-topic-font, 1rem);
           line-height: 1.25;
-          padding: clamp(8px, 2vw, 14px);
+          padding: clamp(18px, 5vw, 28px);
           box-sizing: border-box;
           box-shadow: 0 16px 40px rgba(108, 126, 225, 0.28);
           cursor: default;
@@ -1332,7 +1868,18 @@ export default function LessonPage() {
           box-shadow: 0 10px 28px rgba(198, 136, 235, 0.38);
           transform: scale(1.02);
         }
+        .lesson-map-type--has-image {
+          padding: 0;
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+        }
         .lesson-map-type-text {
+          font-family: 'SVN Bublont', sans-serif;
+          font-weight: 400;
+          font-synthesis: none;
+          font-size: 1em;
+          line-height: 1.2;
           display: -webkit-box;
           -webkit-line-clamp: 4;
           -webkit-box-orient: vertical;
@@ -1353,7 +1900,7 @@ export default function LessonPage() {
           background-size: 100% 100%;
           color: var(--cl-ink);
           font-weight: 700;
-          font-size: clamp(0.78rem, 2.6vw, 0.96rem);
+          font-size: clamp(1.28rem, 4.6vw, 1.72rem);
           line-height: 1.35;
           text-align: center;
           cursor: pointer;
@@ -1367,6 +1914,9 @@ export default function LessonPage() {
           overflow: hidden;
         }
         .lesson-map-lesson-chip-label {
+          font-family: 'SVN Bublont', sans-serif;
+          font-weight: 400;
+          font-synthesis: none;
           flex: 0 1 auto;
           max-height: 100%;
           min-height: 0;
@@ -1380,8 +1930,8 @@ export default function LessonPage() {
           align-items: center;
           justify-content: center;
           text-align: center;
-          font-size: clamp(0.72rem, 2.8vw, 1.08rem);
-          font-weight: 700;
+          font-size: clamp(1.35rem, 5.2vw, 1.95rem);
+          font-weight: 400;
           color: var(--cl-ink);
           text-shadow:
             0 1px 2px rgba(255, 255, 255, 0.95),
@@ -1412,18 +1962,24 @@ export default function LessonPage() {
         }
       `}</style>
 
-      {/* Bản đồ xương sống: trục dọc + chủ đề (vòng) + bài học hai bên */}
+      {/* Bản đồ xương sống: trục dọc + chủ đề (ô bo góc) + bài học hai bên */}
       {selectedGrade && cache.types[selectedGrade] && (
-        <div className="lesson-map-root">
+        <div className="lesson-page-map-layout">
+          <LessonCurriculumSummary
+            gradeName={selectedGradeName}
+            types={cache.types[selectedGrade] || []}
+            lessonsMap={cache.lessons}
+            expandedTypeId={expandedTypeId}
+            lastChosenLessonId={lastChosenLessonId}
+            onTopicClick={handleSummaryTopicClick}
+            onLessonClick={handleSummaryLessonClick}
+          />
+          <div className="lesson-map-root" ref={lessonMapRootRef}>
           <p className="lesson-map-title">Lộ trình bài học</p>
           <div className="lesson-map-shell">
             <div className="lesson-map-track" key={String(selectedGrade)}>
-              {[...(cache.types[selectedGrade] || [])]
-                .sort((a, b) => Number(a.id) - Number(b.id))
-                .map((t) => {
-                const lessons = [...(cache.lessons[t.id] || [])].sort(
-                  (a, b) => Number(a.id) - Number(b.id)
-                );
+              {[...(cache.types[selectedGrade] || [])].map((t) => {
+                const lessons = [...(cache.lessons[t.id] || [])];
                 const layout = getSpineClusterLayout(lessons, lessonMapMetrics);
                 const open = isTypeExpanded(t);
                 const svgLines = buildSpineClusterSvgLines(layout, lessons.length);
@@ -1431,6 +1987,7 @@ export default function LessonPage() {
                   svgLines,
                   lessons.length
                 );
+                const typeImg = typeDisplayImageUrl(t);
 
                 return (
                   <div
@@ -1453,9 +2010,19 @@ export default function LessonPage() {
                       onClick={() => toggleType(t.id)}
                       aria-expanded={open}
                       aria-controls={`lesson-hub-${t.id}`}
+                      aria-label={t.name}
                     >
-                      <div className="lesson-map-type">
-                        <span className="lesson-map-type-text">{t.name}</span>
+                      <div
+                        className={`lesson-map-type${
+                          typeImg ? " lesson-map-type--has-image" : ""
+                        }`}
+                        style={
+                          typeImg ? { backgroundImage: `url(${typeImg})` } : undefined
+                        }
+                      >
+                        {!typeImg && (
+                          <span className="lesson-map-type-text">{t.name}</span>
+                        )}
                       </div>
                     </button>
                     {open && (
@@ -1511,7 +2078,11 @@ export default function LessonPage() {
                           <button
                             key={o.id}
                             type="button"
-                            ref={isLastPicked ? lastLessonChipRef : undefined}
+                            ref={(el) => {
+                              const k = String(o.id);
+                              if (el) lessonChipRefs.current.set(k, el);
+                              else lessonChipRefs.current.delete(k);
+                            }}
                             className={`lesson-map-lesson-chip lesson-map-lesson-chip--reveal${
                               isLastPicked ? " lesson-map-lesson-chip--last-picked" : ""
                             }`}
@@ -1524,7 +2095,7 @@ export default function LessonPage() {
                               maxWidth: layout.lessonSize,
                               maxHeight: layout.lessonSize,
                               animationDelay: `${chipDelays[i] ?? 0}s`,
-                              backgroundImage: `url(${lessonChipBackgroundUrl(o.id)})`,
+                              backgroundImage: `url(${lessonDisplayImageUrl(o)})`,
                             }}
                             title={o.name}
                             onClick={() =>
@@ -1556,6 +2127,7 @@ export default function LessonPage() {
                 );
               })}
             </div>
+          </div>
           </div>
         </div>
       )}

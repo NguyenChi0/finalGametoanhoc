@@ -11,8 +11,29 @@ import {
   updateAdminLesson,
   deleteAdminLesson,
 } from "../../api";
+import CurriculumImageField from "../components/CurriculumImageField";
 
 const MOBILE_MAX_PX = 767;
+
+function reorderIds(ids, fromId, toId) {
+  const from = ids.findIndex((id) => String(id) === String(fromId));
+  const to = ids.findIndex((id) => String(id) === String(toId));
+  if (from < 0 || to < 0 || from === to) return ids;
+  const next = [...ids];
+  const [removed] = next.splice(from, 1);
+  next.splice(to, 0, removed);
+  return next;
+}
+
+function orderMatchesBaseline(currentIds, baselineIds) {
+  if (!currentIds || currentIds.length !== baselineIds.length) return true;
+  return currentIds.every((id, i) => String(id) === String(baselineIds[i]));
+}
+
+function applyIdOrder(items, orderedIds) {
+  const byId = new Map(items.map((item) => [String(item.id), item]));
+  return orderedIds.map((id) => byId.get(String(id))).filter(Boolean);
+}
 
 /** Bảng trên desktop; thẻ dọc trên mobile. */
 function useIsDesktopLayout() {
@@ -49,6 +70,7 @@ export default function AdminMathTypes() {
   const [editId, setEditId] = useState(null);
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
+  const [formImage, setFormImage] = useState("");
   const [formError, setFormError] = useState(null);
   const [savingForm, setSavingForm] = useState(false);
   const [deletingTypeId, setDeletingTypeId] = useState(null);
@@ -59,9 +81,18 @@ export default function AdminMathTypes() {
   const [opForTypeId, setOpForTypeId] = useState(null);
   const [opForTypeName, setOpForTypeName] = useState("");
   const [opName, setOpName] = useState("");
+  const [opFormImage, setOpFormImage] = useState("");
   const [opFormError, setOpFormError] = useState(null);
   const [savingOp, setSavingOp] = useState(false);
   const [deletingLessonId, setDeletingLessonId] = useState(null);
+
+  const [draftTypeIds, setDraftTypeIds] = useState(null);
+  const [draftLessonIdsByType, setDraftLessonIdsByType] = useState({});
+  const [dragTypeId, setDragTypeId] = useState(null);
+  const [dragLesson, setDragLesson] = useState(null);
+  const [dragOverTypeId, setDragOverTypeId] = useState(null);
+  const [dragOverLessonKey, setDragOverLessonKey] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
 
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [blockModalText, setBlockModalText] = useState("");
@@ -95,10 +126,10 @@ export default function AdminMathTypes() {
     if (!filterGradeId) {
       setTypes([]);
       setLoadingTypes(false);
-      return;
+      return [];
     }
     const gid = Number(filterGradeId);
-    if (!Number.isFinite(gid)) return;
+    if (!Number.isFinite(gid)) return [];
 
     setLoadingTypes(true);
     setError(null);
@@ -106,18 +137,18 @@ export default function AdminMathTypes() {
       const raw = await getAdminTypes({ grade_id: gid });
       const list = Array.isArray(raw) ? raw : [];
       const g = grades.find((x) => Number(x.id) === gid);
-      const gradeName = g?.name || `Lớp #${gid}`;
-      setTypes(
-        list.map((t) => ({
-          ...t,
-          grade_id: t.grade_id != null ? Number(t.grade_id) : gid,
-          gradeName,
-          description:
-            t.description == null || String(t.description).trim() === ""
-              ? ""
-              : String(t.description).trim(),
-        }))
-      );
+      const gradeName = g?.name || `Lộp #${gid}`;
+      const mapped = list.map((t) => ({
+        ...t,
+        grade_id: t.grade_id != null ? Number(t.grade_id) : gid,
+        gradeName,
+        description:
+          t.description == null || String(t.description).trim() === ""
+            ? ""
+            : String(t.description).trim(),
+      }));
+      setTypes(mapped);
+      return mapped;
     } catch (e) {
       const msg =
         e?.response?.data?.message ||
@@ -125,6 +156,7 @@ export default function AdminMathTypes() {
         "Không tải được chủ đề cho khối đã chọn.";
       setError(msg);
       setTypes([]);
+      return [];
     } finally {
       setLoadingTypes(false);
     }
@@ -149,6 +181,10 @@ export default function AdminMathTypes() {
     setOpForTypeId(null);
     setOpForTypeName("");
     setOpName("");
+    setDraftTypeIds(null);
+    setDraftLessonIdsByType({});
+    setDragTypeId(null);
+    setDragLesson(null);
   }, [filterGradeId]);
 
   const loadLessonsForType = useCallback(async (typeRow) => {
@@ -185,17 +221,55 @@ export default function AdminMathTypes() {
     loadLessonsForType(t);
   };
 
+  const typeIdsBaseline = useMemo(() => types.map((t) => t.id), [types]);
+
+  const orderedTypes = useMemo(() => {
+    const ids = draftTypeIds ?? typeIdsBaseline;
+    return applyIdOrder(types, ids);
+  }, [types, draftTypeIds, typeIdsBaseline]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return types;
-    return types.filter((t) => {
+    if (!q) return orderedTypes;
+    return orderedTypes.filter((t) => {
       const blob = [t.id, t.name, t.description].filter(Boolean).join(" ").toLowerCase();
       return blob.includes(q);
     });
-  }, [types, search]);
+  }, [orderedTypes, search]);
+
+  const canReorder = !search.trim();
+
+  const hasTypeOrderChanges = useMemo(
+    () =>
+      draftTypeIds != null && !orderMatchesBaseline(draftTypeIds, typeIdsBaseline),
+    [draftTypeIds, typeIdsBaseline]
+  );
+
+  const hasLessonOrderChanges = useMemo(() => {
+    return Object.entries(draftLessonIdsByType).some(([tid, ids]) => {
+      const base = lessonsByTypeId[tid];
+      if (!Array.isArray(base)) return false;
+      const baseline = base.map((o) => o.id);
+      return !orderMatchesBaseline(ids, baseline);
+    });
+  }, [draftLessonIdsByType, lessonsByTypeId]);
+
+  const hasPendingOrderChanges = hasTypeOrderChanges || hasLessonOrderChanges;
+
+  const getLessonsForType = useCallback(
+    (typeRow) => {
+      const tid = String(typeRow.id);
+      const base = lessonsByTypeId[tid];
+      if (!Array.isArray(base)) return base;
+      const baseline = base.map((o) => o.id);
+      const ids = draftLessonIdsByType[tid] ?? baseline;
+      return applyIdOrder(base, ids);
+    },
+    [lessonsByTypeId, draftLessonIdsByType]
+  );
 
   const totalFormatted = useMemo(() => {
-    if (!filterGradeId || (loadingTypes && types.length === 0)) return "—";
+    if (!filterGradeId || (loadingTypes && types.length === 0)) return "";
     return filtered.length.toLocaleString("vi-VN");
   }, [filterGradeId, loadingTypes, types.length, filtered.length]);
 
@@ -208,6 +282,7 @@ export default function AdminMathTypes() {
     setEditId(row.id);
     setFormName(row.name);
     setFormDesc(row.description || "");
+    setFormImage(row.image || "");
     setFormError(null);
     setEditOpen(true);
     setCreateOpen(false);
@@ -218,6 +293,7 @@ export default function AdminMathTypes() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormImage("");
     setFormError(null);
     setCreateOpen(true);
     setEditOpen(true);
@@ -229,6 +305,7 @@ export default function AdminMathTypes() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormImage("");
     setFormError(null);
   };
 
@@ -239,6 +316,7 @@ export default function AdminMathTypes() {
     if (!name || !Number.isFinite(gid)) return;
 
     const desc = formDesc.trim();
+    const imageVal = formImage.trim();
     setFormError(null);
     setSavingForm(true);
     try {
@@ -247,11 +325,13 @@ export default function AdminMathTypes() {
           grade_id: gid,
           name,
           description: desc || null,
+          image: imageVal || null,
         });
       } else if (editId != null) {
         await updateAdminType(editId, {
           name,
           description: desc,
+          image: imageVal || null,
         });
       }
       setExpandedTypeId(null);
@@ -308,6 +388,7 @@ export default function AdminMathTypes() {
     setOpCreate(true);
     setOpEditId(null);
     setOpName("");
+    setOpFormImage("");
     setOpFormError(null);
     setOpModalOpen(true);
   };
@@ -318,6 +399,7 @@ export default function AdminMathTypes() {
     setOpCreate(false);
     setOpEditId(op.id);
     setOpName(op.name);
+    setOpFormImage(op.image || "");
     setOpFormError(null);
     setOpModalOpen(true);
   };
@@ -329,6 +411,7 @@ export default function AdminMathTypes() {
     setOpForTypeId(null);
     setOpForTypeName("");
     setOpName("");
+    setOpFormImage("");
     setOpFormError(null);
   };
 
@@ -345,10 +428,15 @@ export default function AdminMathTypes() {
         setOpFormError("Không tìm thấy chủ đề.");
         return;
       }
+      const imageVal = opFormImage.trim();
       if (opCreate) {
-        await createAdminLesson({ type_id: opForTypeId, name });
+        await createAdminLesson({
+          type_id: opForTypeId,
+          name,
+          image: imageVal || null,
+        });
       } else if (opEditId != null) {
-        await updateAdminLesson(opEditId, { name });
+        await updateAdminLesson(opEditId, { name, image: imageVal || null });
       }
       await loadLessonsForType(typeRow);
       closeOpModal();
@@ -358,6 +446,137 @@ export default function AdminMathTypes() {
       );
     } finally {
       setSavingOp(false);
+    }
+  };
+
+  const handleTypeDragStart = (e, typeId) => {
+    if (!canReorder) {
+      e.preventDefault();
+      return;
+    }
+    e.stopPropagation();
+    setDragTypeId(typeId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(typeId));
+  };
+
+  const handleTypeDragOver = (e, typeId) => {
+    if (!canReorder || dragTypeId == null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverTypeId(typeId);
+  };
+
+  const handleTypeDrop = (e, targetId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!canReorder || dragTypeId == null) return;
+    const currentIds = draftTypeIds ?? typeIdsBaseline;
+    setDraftTypeIds(reorderIds(currentIds, dragTypeId, targetId));
+    setDragTypeId(null);
+    setDragOverTypeId(null);
+  };
+
+  const handleTypeDragEnd = () => {
+    setDragTypeId(null);
+    setDragOverTypeId(null);
+  };
+
+  const handleLessonDragStart = (e, typeRow, lessonId) => {
+    if (!canReorder) {
+      e.preventDefault();
+      return;
+    }
+    e.stopPropagation();
+    setDragLesson({ typeId: String(typeRow.id), lessonId });
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(lessonId));
+  };
+
+  const handleLessonDragOver = (e, typeRow, lessonId) => {
+    if (!canReorder || !dragLesson || String(dragLesson.typeId) !== String(typeRow.id)) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverLessonKey(`${typeRow.id}:${lessonId}`);
+  };
+
+  const handleLessonDrop = (e, typeRow, targetLessonId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!canReorder || !dragLesson || String(dragLesson.typeId) !== String(typeRow.id)) {
+      return;
+    }
+    const tid = String(typeRow.id);
+    const base = lessonsByTypeId[tid];
+    if (!Array.isArray(base)) return;
+    const baseline = base.map((o) => o.id);
+    const currentIds = draftLessonIdsByType[tid] ?? baseline;
+    setDraftLessonIdsByType((prev) => ({
+      ...prev,
+      [tid]: reorderIds(currentIds, dragLesson.lessonId, targetLessonId),
+    }));
+    setDragLesson(null);
+    setDragOverLessonKey(null);
+  };
+
+  const handleLessonDragEnd = () => {
+    setDragLesson(null);
+    setDragOverLessonKey(null);
+  };
+
+  const cancelOrderChanges = async () => {
+    const lessonTids = new Set(Object.keys(draftLessonIdsByType));
+    if (expandedTypeId) lessonTids.add(expandedTypeId);
+    setDraftTypeIds(null);
+    setDraftLessonIdsByType({});
+    setDragTypeId(null);
+    setDragLesson(null);
+    const list = await reloadTypes();
+    for (const tid of lessonTids) {
+      const row = list.find((x) => String(x.id) === tid);
+      if (row) await loadLessonsForType(row);
+    }
+  };
+
+  const saveOrderChanges = async () => {
+    setSavingOrder(true);
+    setError(null);
+    try {
+      if (hasTypeOrderChanges && draftTypeIds) {
+        await Promise.all(
+          draftTypeIds.map((id, idx) =>
+            updateAdminType(id, { sort_order: (idx + 1) * 10 })
+          )
+        );
+      }
+      for (const [tid, ids] of Object.entries(draftLessonIdsByType)) {
+        const base = lessonsByTypeId[tid];
+        if (!Array.isArray(base)) continue;
+        const baseline = base.map((o) => o.id);
+        if (orderMatchesBaseline(ids, baseline)) continue;
+        await Promise.all(
+          ids.map((id, idx) =>
+            updateAdminLesson(id, { sort_order: (idx + 1) * 10 })
+          )
+        );
+      }
+      setDraftTypeIds(null);
+      setDraftLessonIdsByType({});
+      setExpandedTypeId(null);
+      setLessonsByTypeId({});
+      await reloadTypes();
+    } catch (err) {
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Không lưu được thứ tự mới."
+      );
+    } finally {
+      setSavingOrder(false);
     }
   };
 
@@ -389,12 +608,17 @@ export default function AdminMathTypes() {
   const hasGradeOptions = grades.length > 0;
 
   return (
-    <div style={styles.root}>
+    <div
+      style={{
+        ...styles.root,
+        ...(hasPendingOrderChanges ? { paddingBottom: 96 } : {}),
+      }}
+    >
       <nav style={styles.breadcrumb} aria-label="Breadcrumb">
         <Link to="/admin" style={styles.crumbLink}>
-          Tổng quan
+          Tộng quan
         </Link>
-        <span style={styles.crumbSep}>›</span>
+        <span style={styles.crumbSep}>⬺</span>
         <span style={styles.crumbCurrent}>Quản lý chủ đề</span>
       </nav>
 
@@ -437,7 +661,7 @@ export default function AdminMathTypes() {
           style={styles.filterSelect}
           disabled={loadingGrades || !hasGradeOptions}
         >
-          <option value="">— Chọn khối lớp —</option>
+          <option value=""> Chọn khối lớp </option>
           {grades.map((g) => (
             <option key={g.id} value={String(g.id)}>
               {g.name}
@@ -476,7 +700,7 @@ export default function AdminMathTypes() {
 
       {filterGradeId && !loadingTypes && showList && (
         <>
-          <section style={styles.statCard} aria-label="Thống kê">
+          <section style={styles.statCard} aria-label="Thđng kê">
             <div style={styles.statIconWrap}>
               <DocumentIcon />
             </div>
@@ -502,6 +726,12 @@ export default function AdminMathTypes() {
             </div>
           </div>
 
+          {!canReorder && types.length > 0 && (
+            <p style={styles.reorderHint}>
+              Xóa từ khóa tìm kiếm để kéo thả sắp xếp thứ tự.
+            </p>
+          )}
+
           {types.length === 0 ? (
             <p style={styles.muted}>
               Khối này chưa có chủ đề nào
@@ -511,6 +741,9 @@ export default function AdminMathTypes() {
               <table style={styles.table}>
                 <thead>
                   <tr>
+                    <th style={{ ...styles.th, width: 72 }} title="Kéo để đổi thứ tự">
+                      Thứ tự
+                    </th>
                     <th style={styles.th}>ID</th>
                     <th style={styles.th}>Tên chủ đề</th>
                     <th style={styles.th}>Mô tả</th>
@@ -522,7 +755,7 @@ export default function AdminMathTypes() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={styles.tdEmpty}>
+                      <td colSpan={5} style={styles.tdEmpty}>
                         Không có kết quả phù hợp với “{search}”.
                       </td>
                     </tr>
@@ -530,15 +763,44 @@ export default function AdminMathTypes() {
                     filtered.map((t) => {
                       const tid = String(t.id);
                       const isOpen = expandedTypeId === tid;
-                      const lessons = lessonsByTypeId[tid];
+                      const lessons = getLessonsForType(t);
                       const loadingLessons = loadingLessonsTypeId === tid;
+                      const typeIdx = orderedTypes.findIndex((x) => x.id === t.id);
+                      const isDragging = dragTypeId === t.id;
+                      const isDragOver =
+                        dragOverTypeId === t.id && dragTypeId != null && dragTypeId !== t.id;
                       return (
                         <React.Fragment key={t.id}>
                           <tr
-                            style={styles.typeRow}
+                            style={{
+                              ...styles.typeRow,
+                              ...(isDragging ? styles.draggingRow : {}),
+                              ...(isDragOver ? styles.dragOverRow : {}),
+                            }}
                             onClick={() => toggleExpand(t)}
                             aria-expanded={isOpen}
+                            onDragOver={(e) => handleTypeDragOver(e, t.id)}
+                            onDrop={(e) => handleTypeDrop(e, t.id)}
+                            onDragLeave={() => {
+                              if (dragOverTypeId === t.id) setDragOverTypeId(null);
+                            }}
                           >
+                            <td
+                              style={styles.td}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div style={dragStyles.cell}>
+                                <DragHandle
+                                  disabled={!canReorder}
+                                  label={`Kéo chủ đề ${t.name}`}
+                                  onDragStart={(e) => handleTypeDragStart(e, t.id)}
+                                  onDragEnd={handleTypeDragEnd}
+                                />
+                                <span style={dragStyles.orderNum}>
+                                  {typeIdx >= 0 ? typeIdx + 1 : ""}
+                                </span>
+                              </div>
+                            </td>
                             <td style={styles.td}>{t.id}</td>
                             <td style={styles.td}>
                               <div style={styles.typeNameToggle}>
@@ -546,7 +808,7 @@ export default function AdminMathTypes() {
                               </div>
                             </td>
                             <td style={{ ...styles.td, color: "#57606a" }}>
-                              {t.description ? t.description : "—"}
+                              {t.description ? t.description : ""}
                             </td>
                             <td
                               style={{ ...styles.td, textAlign: "right" }}
@@ -579,7 +841,7 @@ export default function AdminMathTypes() {
                           </tr>
                           {isOpen && (
                             <tr>
-                              <td colSpan={4} style={styles.nestedCell}>
+                              <td colSpan={5} style={styles.nestedCell}>
                                 <div style={styles.nestedPanel}>
                                   <div style={styles.nestedHeader}>
                                     <span style={styles.nestedTitle}>
@@ -605,6 +867,12 @@ export default function AdminMathTypes() {
                                     <table style={styles.nestedTable}>
                                       <thead>
                                         <tr>
+                                          <th
+                                            style={{ ...styles.nestedTh, width: 72 }}
+                                            title="Kéo để đổi thứ tự"
+                                          >
+                                            Thứ tự
+                                          </th>
                                           <th style={styles.nestedTh}>ID</th>
                                           <th style={styles.nestedTh}>Tên bài học</th>
                                           <th
@@ -619,8 +887,47 @@ export default function AdminMathTypes() {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {lessons.map((op) => (
-                                          <tr key={op.id}>
+                                        {lessons.map((op, opIdx) => {
+                                          const lessonKey = `${t.id}:${op.id}`;
+                                          const isLessonDragging =
+                                            dragLesson?.lessonId === op.id &&
+                                            String(dragLesson?.typeId) === tid;
+                                          const isLessonDragOver =
+                                            dragOverLessonKey === lessonKey &&
+                                            dragLesson != null &&
+                                            dragLesson.lessonId !== op.id;
+                                          return (
+                                          <tr
+                                            key={op.id}
+                                            style={{
+                                              ...(isLessonDragging ? styles.draggingRow : {}),
+                                              ...(isLessonDragOver ? styles.dragOverRow : {}),
+                                            }}
+                                            onDragOver={(e) =>
+                                              handleLessonDragOver(e, t, op.id)
+                                            }
+                                            onDrop={(e) => handleLessonDrop(e, t, op.id)}
+                                            onDragLeave={() => {
+                                              if (dragOverLessonKey === lessonKey) {
+                                                setDragOverLessonKey(null);
+                                              }
+                                            }}
+                                          >
+                                            <td style={styles.nestedTd}>
+                                              <div style={dragStyles.cell}>
+                                                <DragHandle
+                                                  disabled={!canReorder}
+                                                  label={`Kéo bài học ${op.name}`}
+                                                  onDragStart={(e) =>
+                                                    handleLessonDragStart(e, t, op.id)
+                                                  }
+                                                  onDragEnd={handleLessonDragEnd}
+                                                />
+                                                <span style={dragStyles.orderNum}>
+                                                  {opIdx + 1}
+                                                </span>
+                                              </div>
+                                            </td>
                                             <td style={styles.nestedTd}>{op.id}</td>
                                             <td style={{ ...styles.nestedTd, fontWeight: 600 }}>
                                               {op.name}
@@ -656,7 +963,8 @@ export default function AdminMathTypes() {
                                               </button>
                                             </td>
                                           </tr>
-                                        ))}
+                                          );
+                                        })}
                                       </tbody>
                                     </table>
                                   )}
@@ -681,10 +989,26 @@ export default function AdminMathTypes() {
                 filtered.map((t) => {
                   const tid = String(t.id);
                   const isOpen = expandedTypeId === tid;
-                  const lessons = lessonsByTypeId[tid];
+                  const lessons = getLessonsForType(t);
                   const loadingLessons = loadingLessonsTypeId === tid;
+                  const typeIdx = orderedTypes.findIndex((x) => x.id === t.id);
+                  const isDragging = dragTypeId === t.id;
+                  const isDragOver =
+                    dragOverTypeId === t.id && dragTypeId != null && dragTypeId !== t.id;
                   return (
-                    <article key={t.id} style={styles.typeCard}>
+                    <article
+                      key={t.id}
+                      style={{
+                        ...styles.typeCard,
+                        ...(isDragging ? styles.draggingRow : {}),
+                        ...(isDragOver ? styles.dragOverRow : {}),
+                      }}
+                      onDragOver={(e) => handleTypeDragOver(e, t.id)}
+                      onDrop={(e) => handleTypeDrop(e, t.id)}
+                      onDragLeave={() => {
+                        if (dragOverTypeId === t.id) setDragOverTypeId(null);
+                      }}
+                    >
                       <div
                         role="button"
                         tabIndex={0}
@@ -699,6 +1023,20 @@ export default function AdminMathTypes() {
                         }}
                         style={styles.typeCardMain}
                       >
+                        <div style={styles.cardField}>
+                          <span style={styles.cardLabel}>Thứ tự</span>
+                          <div style={dragStyles.cell}>
+                            <DragHandle
+                              disabled={!canReorder}
+                              label={`Kéo chủ đề ${t.name}`}
+                              onDragStart={(e) => handleTypeDragStart(e, t.id)}
+                              onDragEnd={handleTypeDragEnd}
+                            />
+                            <span style={dragStyles.orderNum}>
+                              {typeIdx >= 0 ? typeIdx + 1 : ""}
+                            </span>
+                          </div>
+                        </div>
                         <div style={styles.cardField}>
                           <span style={styles.cardLabel}>ID</span>
                           <span style={styles.cardValue}>{t.id}</span>
@@ -717,7 +1055,7 @@ export default function AdminMathTypes() {
                               wordBreak: "break-word",
                             }}
                           >
-                            {t.description ? t.description : "—"}
+                            {t.description ? t.description : ""}
                           </span>
                         </div>
                         <p style={styles.cardHint}>
@@ -770,8 +1108,45 @@ export default function AdminMathTypes() {
                           )}
                           {!loadingLessons && lessons && lessons.length > 0 && (
                             <div style={styles.lessonCardList}>
-                              {lessons.map((op) => (
-                                <div key={op.id} style={styles.lessonCard}>
+                              {lessons.map((op, opIdx) => {
+                                const lessonKey = `${t.id}:${op.id}`;
+                                const isLessonDragging =
+                                  dragLesson?.lessonId === op.id &&
+                                  String(dragLesson?.typeId) === tid;
+                                const isLessonDragOver =
+                                  dragOverLessonKey === lessonKey &&
+                                  dragLesson != null &&
+                                  dragLesson.lessonId !== op.id;
+                                return (
+                                <div
+                                  key={op.id}
+                                  style={{
+                                    ...styles.lessonCard,
+                                    ...(isLessonDragging ? styles.draggingRow : {}),
+                                    ...(isLessonDragOver ? styles.dragOverRow : {}),
+                                  }}
+                                  onDragOver={(e) => handleLessonDragOver(e, t, op.id)}
+                                  onDrop={(e) => handleLessonDrop(e, t, op.id)}
+                                  onDragLeave={() => {
+                                    if (dragOverLessonKey === lessonKey) {
+                                      setDragOverLessonKey(null);
+                                    }
+                                  }}
+                                >
+                                  <div style={styles.cardField}>
+                                    <span style={styles.cardLabel}>Thứ tự</span>
+                                    <div style={dragStyles.cell}>
+                                      <DragHandle
+                                        disabled={!canReorder}
+                                        label={`Kéo bài học ${op.name}`}
+                                        onDragStart={(e) =>
+                                          handleLessonDragStart(e, t, op.id)
+                                        }
+                                        onDragEnd={handleLessonDragEnd}
+                                      />
+                                      <span style={dragStyles.orderNum}>{opIdx + 1}</span>
+                                    </div>
+                                  </div>
                                   <div style={styles.cardField}>
                                     <span style={styles.cardLabel}>ID</span>
                                     <span style={styles.cardValue}>{op.id}</span>
@@ -810,7 +1185,8 @@ export default function AdminMathTypes() {
                                     </button>
                                   </div>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -862,6 +1238,14 @@ export default function AdminMathTypes() {
                   rows={4}
                 />
               </label>
+              <CurriculumImageField
+                kind="type"
+                label="Ảnh chủ đề"
+                value={formImage}
+                onChange={setFormImage}
+                disabled={savingForm}
+                hint="Hiển thị trên vòng chủ đề ở trang chọn bài học."
+              />
               {formError && (
                 <div style={styles.formError} role="alert">
                   {formError}
@@ -913,6 +1297,14 @@ export default function AdminMathTypes() {
                   autoFocus
                 />
               </label>
+              <CurriculumImageField
+                kind="lesson"
+                label="Ảnh bài học"
+                value={opFormImage}
+                onChange={setOpFormImage}
+                disabled={savingOp}
+                hint="Hiển thị trên ô bài học ở lộ trình (nếu trống dùng ảnh mặc định)."
+              />
               {opFormError && (
                 <div style={styles.formError} role="alert">
                   {opFormError}
@@ -943,6 +1335,14 @@ export default function AdminMathTypes() {
         </div>
       )}
 
+      {hasPendingOrderChanges && (
+        <OrderSaveBar
+          saving={savingOrder}
+          onCancel={cancelOrderChanges}
+          onSave={saveOrderChanges}
+        />
+      )}
+
       {blockModalOpen && (
         <div style={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="block-del-title">
           <div style={styles.modal}>
@@ -959,7 +1359,7 @@ export default function AdminMathTypes() {
                   setBlockModalText("");
                 }}
               >
-                Đã hiểu
+                Đã hiỒu
               </button>
             </div>
           </div>
@@ -968,6 +1368,145 @@ export default function AdminMathTypes() {
     </div>
   );
 }
+
+function DragHandle({ disabled, label, onDragStart, onDragEnd }) {
+  return (
+    <button
+      type="button"
+      draggable={!disabled}
+      aria-label={label}
+      title={disabled ? "Xóa từ khóa tìm kiếm để kéo thả" : label}
+      disabled={disabled}
+      style={{
+        ...dragStyles.handle,
+        ...(disabled ? dragStyles.handleDisabled : {}),
+      }}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <GripIcon />
+    </button>
+  );
+}
+
+function OrderSaveBar({ saving, onCancel, onSave }) {
+  return (
+    <div style={saveBarStyles.wrap} role="region" aria-label="Lưu thay đổi thứ tự">
+      <div style={saveBarStyles.bar}>
+        <button
+          type="button"
+          style={saveBarStyles.cancelBtn}
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Hủy
+        </button>
+        <button
+          type="button"
+          style={{
+            ...saveBarStyles.saveBtn,
+            ...(saving ? { opacity: 0.75, pointerEvents: "none" } : {}),
+          }}
+          onClick={onSave}
+          disabled={saving}
+        >
+          {saving ? "Đang lưu…" : "Cập nhật ngay"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GripIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="#57606a" aria-hidden>
+      <circle cx="9" cy="6" r="1.5" />
+      <circle cx="15" cy="6" r="1.5" />
+      <circle cx="9" cy="12" r="1.5" />
+      <circle cx="15" cy="12" r="1.5" />
+      <circle cx="9" cy="18" r="1.5" />
+      <circle cx="15" cy="18" r="1.5" />
+    </svg>
+  );
+}
+
+const dragStyles = {
+  cell: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  orderNum: {
+    minWidth: 22,
+    fontWeight: 700,
+    fontSize: "0.85rem",
+    color: "#57606a",
+    textAlign: "center",
+  },
+  handle: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 32,
+    height: 32,
+    padding: 0,
+    border: "1px solid #d0d7de",
+    borderRadius: 8,
+    background: "#f6f8fa",
+    cursor: "grab",
+    fontFamily: "inherit",
+    flexShrink: 0,
+  },
+  handleDisabled: {
+    opacity: 0.35,
+    cursor: "not-allowed",
+  },
+};
+
+const saveBarStyles = {
+  wrap: {
+    position: "fixed",
+    right: 24,
+    bottom: 24,
+    zIndex: 1200,
+    pointerEvents: "none",
+  },
+  bar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 16px",
+    background: "#fff",
+    borderRadius: 999,
+    boxShadow: "0 8px 28px rgba(27, 31, 35, 0.18), 0 2px 8px rgba(27, 31, 35, 0.08)",
+    border: "1px solid #d0d7de",
+    pointerEvents: "auto",
+  },
+  cancelBtn: {
+    padding: "10px 18px",
+    border: "none",
+    borderRadius: 999,
+    background: "transparent",
+    color: "#24292f",
+    fontWeight: 600,
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  saveBtn: {
+    padding: "10px 22px",
+    border: "none",
+    borderRadius: 999,
+    background: "#0969da",
+    color: "#fff",
+    fontWeight: 600,
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    boxShadow: "0 1px 0 rgba(27, 31, 35, 0.04)",
+  },
+};
 
 function SearchIcon() {
   return (
@@ -1187,6 +1726,19 @@ const styles = {
     justifyContent: "center",
     flexShrink: 0,
     padding: "0 12px 0 4px",
+  },
+  reorderHint: {
+    margin: "0 0 12px",
+    fontSize: "0.875rem",
+    color: "#57606a",
+  },
+  draggingRow: {
+    opacity: 0.55,
+  },
+  dragOverRow: {
+    outline: "2px solid #0969da",
+    outlineOffset: -2,
+    background: "#f0f6ff",
   },
   muted: {
     color: "#57606a",

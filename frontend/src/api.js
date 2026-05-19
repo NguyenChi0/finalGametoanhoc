@@ -38,6 +38,37 @@ export function questionImageUrl(link) {
   return `${origin}/questions-images/${rel}`;
 }
 
+function resolveCurriculumImageUrl(link, prefix, legacyPrefix) {
+  if (link == null || String(link).trim() === "") return "";
+  const s = String(link).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const origin = API_ORIGIN.replace(/\/$/, "");
+  if (s.startsWith(prefix)) return `${origin}${s}`;
+  if (legacyPrefix && s.startsWith(legacyPrefix)) {
+    return `${origin}${s.replace(legacyPrefix, prefix)}`;
+  }
+  if (s.startsWith("/")) return `${origin}${s}`;
+  const rel = s.replace(/^\/+/, "");
+  if (!rel) return "";
+  const segments = rel.split("/").filter(Boolean).map((seg) => encodeURIComponent(seg));
+  return `${origin}${prefix}${segments.join("/")}`;
+}
+
+/** Ảnh chủ đề — DB: `/types-images/...` hoặc URL ngoài. */
+export function typeImageUrl(link) {
+  return resolveCurriculumImageUrl(link, "/types-images/", "/curriculum-images/");
+}
+
+/** Ảnh bài học — DB: `/lessons-images/...` hoặc URL ngoài. */
+export function lessonImageUrl(link) {
+  return resolveCurriculumImageUrl(link, "/lessons-images/", "/curriculum-images/");
+}
+
+/** Ảnh khối lớp — DB: `/grades-images/...` hoặc URL ngoài. */
+export function gradeImageUrl(link) {
+  return resolveCurriculumImageUrl(link, "/grades-images/", null);
+}
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
@@ -199,8 +230,8 @@ export const getAdminGrade = async (id) => {
   return res.data;
 };
 
-export const createAdminGrade = async ({ id, name, description }) => {
-  const res = await api.post("/admin/grades", { id, name, description });
+export const createAdminGrade = async ({ id, name, description, image }) => {
+  const res = await api.post("/admin/grades", { id, name, description, image });
   return res.data;
 };
 
@@ -230,8 +261,14 @@ export const getAdminType = async (id) => {
   return res.data;
 };
 
-export const createAdminType = async ({ grade_id, name, description }) => {
-  const res = await api.post("/admin/types", { grade_id, name, description });
+export const createAdminType = async ({ grade_id, name, description, image, sort_order }) => {
+  const res = await api.post("/admin/types", {
+    grade_id,
+    name,
+    description,
+    image,
+    sort_order,
+  });
   return res.data;
 };
 
@@ -258,8 +295,8 @@ export const getAdminLesson = async (id) => {
   return res.data;
 };
 
-export const createAdminLesson = async ({ type_id, name }) => {
-  const res = await api.post("/admin/lessons", { type_id, name });
+export const createAdminLesson = async ({ type_id, name, image, sort_order }) => {
+  const res = await api.post("/admin/lessons", { type_id, name, image, sort_order });
   return res.data;
 };
 
@@ -270,6 +307,33 @@ export const updateAdminLesson = async (id, payload) => {
 
 export const deleteAdminLesson = async (id) => {
   const res = await api.delete(`/admin/lessons/${id}`);
+  return res.data;
+};
+
+export const uploadAdminTypeImage = async (file) => {
+  const form = new FormData();
+  form.append("image", file);
+  const res = await api.post("/admin/types-images", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+};
+
+export const uploadAdminLessonImage = async (file) => {
+  const form = new FormData();
+  form.append("image", file);
+  const res = await api.post("/admin/lessons-images", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+};
+
+export const uploadAdminGradeImage = async (file) => {
+  const form = new FormData();
+  form.append("image", file);
+  const res = await api.post("/admin/grades-images", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return res.data;
 };
 

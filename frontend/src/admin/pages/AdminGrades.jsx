@@ -5,7 +5,9 @@ import {
   createAdminGrade,
   updateAdminGrade,
   deleteAdminGrade,
+  gradeImageUrl,
 } from "../../api";
+import CurriculumImageField from "../components/CurriculumImageField";
 
 /** Chuẩn hóa dòng từ API — không chèn mô tả giả; NULL/empty giữ đúng như DB. */
 function normalizeGradeRow(row) {
@@ -46,6 +48,7 @@ export default function AdminGrades() {
   const [editId, setEditId] = useState(null);
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
+  const [formImage, setFormImage] = useState("");
   /** ID khối khi tạo mới (bắt buộc trên server) */
   const [formId, setFormId] = useState("1");
   const [formError, setFormError] = useState(null);
@@ -94,6 +97,7 @@ export default function AdminGrades() {
     setEditId(g.id);
     setFormName(g.name);
     setFormDesc(g.description || "");
+    setFormImage(g.image || "");
     setFormError(null);
     setEditOpen(true);
     setCreateOpen(false);
@@ -103,6 +107,7 @@ export default function AdminGrades() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormImage("");
     setFormError(null);
     const nextId =
       grades.length === 0 ? 1 : Math.max(...grades.map((g) => Number(g.id))) + 1;
@@ -117,6 +122,7 @@ export default function AdminGrades() {
     setEditId(null);
     setFormName("");
     setFormDesc("");
+    setFormImage("");
     setFormId("1");
     setFormError(null);
   };
@@ -136,15 +142,19 @@ export default function AdminGrades() {
           setFormError("ID khối phải là số nguyên từ 1 đến 255.");
           return;
         }
+        const imageVal = formImage.trim();
         await createAdminGrade({
           id: idNum,
           name,
           description: desc || null,
+          image: imageVal || null,
         });
       } else if (editId != null) {
+        const imageVal = formImage.trim();
         await updateAdminGrade(editId, {
           name,
           description: desc,
+          image: imageVal || null,
         });
       }
       await load();
@@ -266,6 +276,7 @@ export default function AdminGrades() {
                 <tr>
                   <th style={styles.th}>ID</th>
                   <th style={styles.th}>Tên khối lớp</th>
+                  <th style={{ ...styles.th, width: 72 }}>Ảnh</th>
                   <th style={styles.th}>Mô tả</th>
                   <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
                     Thao tác
@@ -275,7 +286,7 @@ export default function AdminGrades() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={styles.tdEmpty}>
+                    <td colSpan={5} style={styles.tdEmpty}>
                       Không có kết quả phù hợp với “{search}”.
                     </td>
                   </tr>
@@ -284,6 +295,23 @@ export default function AdminGrades() {
                     <tr key={g.id}>
                       <td style={styles.td}>{g.id}</td>
                       <td style={{ ...styles.td, fontWeight: 700 }}>{g.name}</td>
+                      <td style={styles.td}>
+                        {g.image ? (
+                          <img
+                            src={gradeImageUrl(g.image)}
+                            alt=""
+                            style={{
+                              width: 48,
+                              height: 32,
+                              objectFit: "cover",
+                              borderRadius: 6,
+                              border: "1px solid #d0d7de",
+                            }}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td style={{ ...styles.td, color: "#57606a" }}>
                         {g.description ? g.description : "—"}
                       </td>
@@ -410,6 +438,13 @@ export default function AdminGrades() {
                   rows={4}
                 />
               </label>
+              <CurriculumImageField
+                kind="grade"
+                label="Ảnh khối lớp"
+                value={formImage}
+                onChange={setFormImage}
+                disabled={saving}
+              />
               {formError && (
                 <div style={styles.formError} role="alert">
                   {formError}

@@ -18,6 +18,15 @@ fs.mkdirSync(QUESTIONS_IMAGES_DIR, { recursive: true });
 const ITEMS_IMAGES_DIR = path.join(__dirname, 'items-images');
 fs.mkdirSync(ITEMS_IMAGES_DIR, { recursive: true });
 
+const TYPES_IMAGES_DIR = path.join(__dirname, 'types-images');
+fs.mkdirSync(TYPES_IMAGES_DIR, { recursive: true });
+
+const LESSONS_IMAGES_DIR = path.join(__dirname, 'lessons-images');
+fs.mkdirSync(LESSONS_IMAGES_DIR, { recursive: true });
+
+const GRADES_IMAGES_DIR = path.join(__dirname, 'grades-images');
+fs.mkdirSync(GRADES_IMAGES_DIR, { recursive: true });
+
 const questionImageStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, QUESTIONS_IMAGES_DIR),
   filename: (req, file, cb) => {
@@ -51,6 +60,9 @@ app.use(express.json());// serve file nhạc tĩnh (ví dụ public/music/nhac1.
 app.use('/music', express.static(path.join(__dirname, 'public', 'music')));
 app.use('/questions-images', express.static(QUESTIONS_IMAGES_DIR));
 app.use('/items-images', express.static(ITEMS_IMAGES_DIR));
+app.use('/types-images', express.static(TYPES_IMAGES_DIR));
+app.use('/lessons-images', express.static(LESSONS_IMAGES_DIR));
+app.use('/grades-images', express.static(GRADES_IMAGES_DIR));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ae123oi34t89ujh9876543210';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d';
@@ -242,7 +254,7 @@ function buildAnswers(row) {
 // 1) Lấy danh sách lớp (grades)
 app.get('/api/grades', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, name FROM grades ORDER BY id');
+    const [rows] = await pool.query('SELECT id, name, image FROM grades ORDER BY id');
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -255,10 +267,10 @@ app.get('/api/hierarchy-labels', async (req, res) => {
   try {
     const [gradeRows] = await pool.query('SELECT id, name FROM grades ORDER BY id');
     const [typeRows] = await pool.query(
-      'SELECT id, grade_id, name FROM types ORDER BY grade_id, id'
+      'SELECT id, grade_id, name FROM types ORDER BY grade_id, sort_order ASC, id ASC'
     );
     const [lessonRows] = await pool.query(
-      'SELECT id, type_id, name FROM lessons ORDER BY type_id, id'
+      'SELECT id, type_id, name FROM lessons ORDER BY type_id, sort_order ASC, id ASC'
     );
     res.json({ grades: gradeRows, types: typeRows, lessons: lessonRows });
   } catch (err) {
@@ -274,7 +286,7 @@ app.get('/api/types/:grade_id', async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      'SELECT id, grade_id, name, description FROM types WHERE grade_id = ? ORDER BY id',
+      'SELECT id, grade_id, name, description, image, sort_order FROM types WHERE grade_id = ? ORDER BY sort_order ASC, id ASC',
       [grade_id]
     );
     res.json(rows);
@@ -291,7 +303,7 @@ async function lessonsByTypeHandler(req, res) {
 
   try {
     const [rows] = await pool.query(
-      'SELECT id, type_id, name FROM lessons WHERE type_id = ? ORDER BY id',
+      'SELECT id, type_id, name, image, sort_order FROM lessons WHERE type_id = ? ORDER BY sort_order ASC, id ASC',
       [type_id]
     );
     res.json(rows);
