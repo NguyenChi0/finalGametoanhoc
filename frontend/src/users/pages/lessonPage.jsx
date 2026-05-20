@@ -1387,9 +1387,9 @@ export default function LessonPage() {
           box-sizing: border-box;
           padding: 16px 14px;
           border-radius: 16px;
-          background: rgba(255, 255, 255, 0.92);
-          border: 2px solid rgba(146, 185, 227, 0.55);
-          box-shadow: 0 8px 28px rgba(74, 80, 128, 0.1);
+          background: #fff;
+          border: 1px solid rgba(146, 185, 227, 0.35);
+          box-shadow: 0 8px 28px rgba(74, 80, 128, 0.08);
           font-family: inherit;
           color: var(--cl-ink);
         }
@@ -1511,18 +1511,18 @@ export default function LessonPage() {
           text-transform: uppercase;
           letter-spacing: 0.04em;
           color: var(--cl-ink-muted);
-          padding: 8px 8px 10px;
-          background: rgba(255, 255, 255, 0.98);
-          border-bottom: 2px solid rgba(146, 185, 227, 0.45);
+          padding: 8px 4px 10px;
+          background: #fff;
+          border-bottom: none;
         }
         .lesson-curriculum-summary__table th:first-child {
           width: 52px;
           text-align: center;
         }
         .lesson-curriculum-summary__table td {
-          vertical-align: top;
-          padding: 7px 8px;
-          border-bottom: 1px solid rgba(146, 185, 227, 0.22);
+          vertical-align: middle;
+          padding: 3px 4px;
+          border-bottom: none;
         }
         .lesson-curriculum-summary__table td:first-child {
           text-align: center;
@@ -1530,22 +1530,26 @@ export default function LessonPage() {
           color: var(--cl-ink-muted);
           white-space: nowrap;
         }
-        .lesson-curriculum-summary__topic td {
-          background: rgba(198, 136, 235, 0.08);
+        .lesson-curriculum-summary__topic td:first-child {
+          color: var(--cl-pink);
         }
+        .lesson-curriculum-summary__topic td,
         .lesson-curriculum-summary__topic.is-open td {
-          background: rgba(198, 136, 235, 0.18);
+          background: transparent;
+        }
+        .lesson-curriculum-summary__topic.is-open .lesson-curriculum-summary__btn {
+          color: var(--cl-pink);
         }
         .lesson-curriculum-summary__topic .lesson-curriculum-summary__btn {
           font-weight: 800;
-          color: var(--cl-ink);
+          color: var(--cl-pink);
         }
         .lesson-curriculum-summary__lesson td:first-child {
           font-size: 0.78rem;
           font-weight: 600;
         }
         .lesson-curriculum-summary__lesson.is-last td {
-          background: rgba(251, 162, 208, 0.2);
+          background: transparent;
         }
         .lesson-curriculum-summary__empty-row td {
           padding-top: 2px;
@@ -1562,8 +1566,9 @@ export default function LessonPage() {
           align-items: center;
           width: 100%;
           margin: 0;
-          padding: 2px 0;
+          padding: 8px 10px;
           border: none;
+          border-radius: 10px;
           background: transparent;
           text-align: left;
           font: inherit;
@@ -1571,21 +1576,33 @@ export default function LessonPage() {
           cursor: pointer;
           font-family: inherit;
           word-break: break-word;
+          box-sizing: border-box;
+          transition: box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease, color 0.2s ease;
         }
         .lesson-curriculum-summary__btn--lesson {
-          font-weight: 600;
+          font-weight: 500;
           color: var(--cl-ink-muted);
         }
         .lesson-curriculum-summary__btn:hover,
         .lesson-curriculum-summary__btn:focus-visible {
+          background: #fff;
+          box-shadow: 0 6px 18px rgba(74, 80, 128, 0.12);
+          transform: translateY(-2px);
           color: var(--cl-periwinkle);
           outline: none;
-          text-decoration: underline;
-          text-underline-offset: 2px;
+          text-decoration: none;
+        }
+        .lesson-curriculum-summary__topic .lesson-curriculum-summary__btn:hover,
+        .lesson-curriculum-summary__topic .lesson-curriculum-summary__btn:focus-visible {
+          color: #e86fb0;
         }
         .lesson-curriculum-summary__lesson.is-last .lesson-curriculum-summary__btn--lesson {
           color: var(--cl-ink);
-          font-weight: 700;
+          font-weight: 600;
+        }
+        .lesson-curriculum-summary__lesson.is-last .lesson-curriculum-summary__btn--lesson:hover,
+        .lesson-curriculum-summary__lesson.is-last .lesson-curriculum-summary__btn--lesson:focus-visible {
+          color: var(--cl-periwinkle);
         }
         .lesson-page-map-layout .lesson-map-root {
           flex: 1 1 auto;
@@ -1937,6 +1954,11 @@ export default function LessonPage() {
             0 1px 2px rgba(255, 255, 255, 0.95),
             0 0 10px rgba(255, 255, 255, 0.75);
         }
+        /* Bản đồ ngoài: tên rất dài — thu nhỏ chữ (tóm tắt bên không dùng class này) */
+        .lesson-map-lesson-chip-label--long {
+          font-size: clamp(1.02rem, 3.85vw, 1.42rem);
+          line-height: 1.24;
+        }
         .lesson-map-lesson-chip:hover {
           transform: translate(-50%, -50%) scale(1.04);
           filter: brightness(1.06);
@@ -2103,7 +2125,13 @@ export default function LessonPage() {
                             }
                             aria-label={`Chơi ${o.name}`}
                           >
-                            <span className="lesson-map-lesson-chip-label">
+                            <span
+                              className={`lesson-map-lesson-chip-label${
+                                String(o.name ?? "").length >= 40
+                                  ? " lesson-map-lesson-chip-label--long"
+                                  : ""
+                              }`}
+                            >
                               {o.name}
                             </span>
                           </button>

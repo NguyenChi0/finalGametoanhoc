@@ -1,6 +1,82 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { isAdminUser } from "../../admin/auth";
+
+const NAV_ICONS = {
+  home: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  lessons: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M4 5a1 1 0 0 1 1-1h6.5L13 5.5V20H5a1 1 0 0 1-1-1V5Zm9 .5L11.5 4H18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5V5.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  contest: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M8 4h8v3a4 4 0 1 1-8 0V4Zm-3 1h3v3a4 4 0 0 1-3-3.86V5Zm14 0v-.86A4 4 0 0 1 16 8V5h3ZM10 12h4v3l1 5H9l1-5v-3Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  exam: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm6 0v5h5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 13h6M9 17h4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  shop: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M4 7h16l-1.2 11.1A2 2 0 0 1 16.8 20H7.2a2 2 0 0 1-2-1.9L4 7Zm4 0V5a4 4 0 0 1 8 0v2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  admin: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M12 3 4 6v6c0 4.5 3.5 8 8 9 4.5-1 8-4.5 8-9V6l-8-3Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m9 12 2 2 4-4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+};
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -80,40 +156,34 @@ export default function Navbar() {
     }
   }, [mobileOpen]);
 
+  const renderNavLink = (to, label, icon, end = false) => (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={closeMenus}
+      className={({ isActive }) =>
+        `navbar-link${isActive ? " navbar-link--active" : ""}`
+      }
+    >
+      <span className="navbar-link-icon" aria-hidden>
+        {icon}
+      </span>
+      <span className="navbar-link-label">{label}</span>
+    </NavLink>
+  );
+
   const navLinks = (
     <>
-      <Link to="/" onClick={closeMenus}>
-        Trang chủ
-      </Link>
-      <Link to="/lessons" onClick={closeMenus}>
-        Bài học
-      </Link>
-      {user && (
-        <Link to="/contest" onClick={closeMenus}>
-          Cuộc thi
-        </Link>
-      )}
-      {user && (
-        <Link to="/exam" onClick={closeMenus}>
-          Đề thi
-        </Link>
-      )}
-      {user && (
-        <Link to="/shop" onClick={closeMenus}>
-          Cửa hàng
-        </Link>
-      )}
-      {user && isAdminUser(user) && (
-        <Link to="/admin" onClick={closeMenus}>
-          Quản trị
-        </Link>
-      )}
+      {renderNavLink("/", "Trang chủ", NAV_ICONS.home, true)}
+      {renderNavLink("/lessons", "Bài học", NAV_ICONS.lessons)}
+      {user && renderNavLink("/contest", "Cuộc thi", NAV_ICONS.contest)}
+      {user && renderNavLink("/exam", "Đề thi", NAV_ICONS.exam)}
+      {user && renderNavLink("/shop", "Cửa hàng", NAV_ICONS.shop)}
+      {user && isAdminUser(user) && renderNavLink("/admin", "Quản trị", NAV_ICONS.admin)}
     </>
   );
 
-  const userMenuLabel = user?.username
-    ? `Xin chào, ${user.username}`
-    : "Tài khoản";
+  const userMenuLabel = user?.username ? `Xin chào, ${user.username}` : "";
 
   const renderUserMenu = (menuRef) => (
     <div
@@ -121,25 +191,12 @@ export default function Navbar() {
       className={`navbar-user-menu ${userMenuOpen ? "visible" : ""}`}
       role="menu"
     >
-      {!user ? (
-        <>
-          <Link to="/login" role="menuitem" onClick={closeMenus}>
-            Đăng nhập
-          </Link>
-          <Link to="/register" role="menuitem" onClick={closeMenus}>
-            Đăng ký
-          </Link>
-        </>
-      ) : (
-        <>
-          <Link to="/profile" role="menuitem" onClick={closeMenus}>
-            Trang cá nhân
-          </Link>
-          <button type="button" className="logout" role="menuitem" onClick={handleLogout}>
-            Đăng xuất
-          </button>
-        </>
-      )}
+      <Link to="/profile" role="menuitem" onClick={closeMenus}>
+        Trang cá nhân
+      </Link>
+      <button type="button" className="logout" role="menuitem" onClick={handleLogout}>
+        Đăng xuất
+      </button>
     </div>
   );
 
@@ -186,17 +243,113 @@ export default function Navbar() {
           transition: background 0.2s;
           white-space: nowrap;
         }
-        .navbar-desktop-center a:hover,
         .navbar-desktop-right a:hover {
           background: rgba(255, 255, 255, 0.15);
+        }
+        .navbar-desktop-center .navbar-link {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px 10px;
+          font-size: 1.1rem;
+          background: transparent;
+          border-radius: 0;
+        }
+        .navbar-desktop-center .navbar-link::after {
+          content: "";
+          position: absolute;
+          left: 10px;
+          right: 10px;
+          bottom: 2px;
+          height: 3px;
+          border-radius: 2px;
+          background: #fff;
+          transform: scaleX(0);
+          transform-origin: center;
+          transition: transform 0.22s ease, opacity 0.22s ease;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .navbar-desktop-center .navbar-link:hover {
+          background: transparent;
+        }
+        .navbar-desktop-center .navbar-link:hover::after,
+        .navbar-desktop-center .navbar-link--active::after {
+          transform: scaleX(1);
+          opacity: 1;
+        }
+        .navbar-link-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 0;
+        }
+        .navbar-link-icon svg {
+          display: block;
         }
         .navbar-desktop-right {
           display: flex;
           align-items: center;
           justify-content: flex-end;
+          gap: 8px;
           position: relative;
           min-width: 0;
           max-width: 100%;
+        }
+        .navbar-auth-links {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-shrink: 0;
+        }
+        .navbar-auth-link {
+          position: relative;
+          color: #fff;
+          text-decoration: none;
+          font-weight: 600;
+          font-size: 1.08rem;
+          padding: 7px 14px 10px;
+          border-radius: 8px;
+          white-space: nowrap;
+          transition: background 0.2s, color 0.2s;
+        }
+        .navbar-auth-link::after {
+          content: "";
+          position: absolute;
+          left: 12px;
+          right: 12px;
+          bottom: 2px;
+          height: 3px;
+          border-radius: 2px;
+          background: #fff;
+          transform: scaleX(0);
+          transform-origin: center;
+          transition: transform 0.22s ease, opacity 0.22s ease;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .navbar-auth-link:hover::after,
+        .navbar-auth-link--active::after {
+          transform: scaleX(1);
+          opacity: 1;
+        }
+        .navbar-desktop-right .navbar-auth-link:hover {
+          background: transparent;
+        }
+        .navbar-auth-link--register:hover {
+          background: transparent;
+        }
+        .navbar-auth-link--login {
+          background: #c069a1;
+          color: #fff;
+        }
+        .navbar-auth-link--login:hover {
+          background: #a8588f;
+          color: #fff;
+        }
+        .navbar-auth-link--login.navbar-auth-link--active {
+          background: #a8588f;
         }
         .navbar-user-trigger {
           display: inline-flex;
@@ -208,7 +361,7 @@ export default function Navbar() {
           background: transparent;
           color: #fff;
           font-weight: 600;
-          font-size: 0.95rem;
+          font-size: 1.1rem;
           cursor: pointer;
           font-family: inherit;
           max-width: 100%;
@@ -229,7 +382,7 @@ export default function Navbar() {
           max-width: min(200px, 42vw);
         }
         .navbar-user-chevron {
-          font-size: 0.7rem;
+          font-size: 0.85rem;
           opacity: 0.9;
           flex-shrink: 0;
         }
@@ -270,7 +423,7 @@ export default function Navbar() {
           border: none;
           background: transparent;
           color: #fff;
-          font-size: 0.95rem;
+          font-size: 1.08rem;
           font-weight: 600;
           text-decoration: none;
           cursor: pointer;
@@ -308,7 +461,7 @@ export default function Navbar() {
         }
         .navbar-mobile-brand-text {
           font-weight: 800;
-          font-size: clamp(0.88rem, 3.8vw, 1.05rem);
+          font-size: clamp(1rem, 4.2vw, 1.25rem);
           line-height: 1.3;
           letter-spacing: 0.02em;
           min-width: 0;
@@ -406,7 +559,9 @@ export default function Navbar() {
         }
         .navbar-mobile-panel a,
         .navbar-mobile-panel button {
-          display: block;
+          display: flex;
+          align-items: center;
+          gap: 10px;
           width: 100%;
           text-align: left;
           padding: 14px 16px;
@@ -414,7 +569,7 @@ export default function Navbar() {
           border: none;
           background: transparent;
           color: #fff;
-          font-size: 1rem;
+          font-size: 1.15rem;
           font-weight: 600;
           text-decoration: none;
           cursor: pointer;
@@ -425,6 +580,12 @@ export default function Navbar() {
         .navbar-mobile-panel button:hover {
           background: rgba(255, 255, 255, 0.12);
         }
+        .navbar-mobile-panel .navbar-link--active {
+          background: rgba(255, 255, 255, 0.18);
+        }
+        .navbar-mobile-panel .navbar-link-icon {
+          flex-shrink: 0;
+        }
         .navbar-mobile-panel .nav-divider {
           height: 1px;
           background: rgba(255, 255, 255, 0.15);
@@ -432,7 +593,7 @@ export default function Navbar() {
         }
         .navbar-mobile-panel .nav-user {
           padding: 12px 16px;
-          font-size: 0.9rem;
+          font-size: 1.05rem;
           color: rgba(255, 255, 255, 0.85);
         }
         .navbar-mobile-panel .logout {
@@ -473,24 +634,53 @@ export default function Navbar() {
           <div className="navbar-desktop-spacer" aria-hidden />
           <div className="navbar-desktop-center">{navLinks}</div>
           <div className="navbar-desktop-right">
-            <button
-              ref={userBtnDesktopRef}
-              type="button"
-              className={`navbar-user-trigger ${userMenuOpen ? "open" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setUserMenuOpen((v) => !v);
-                setMobileOpen(false);
-              }}
-              aria-expanded={userMenuOpen}
-              aria-haspopup="menu"
-            >
-              <span className="navbar-user-trigger-label">{userMenuLabel}</span>
-              <span className="navbar-user-chevron" aria-hidden>
-                {userMenuOpen ? "▲" : "▼"}
-              </span>
-            </button>
-            {renderUserMenu(userMenuDesktopRef)}
+            {!user ? (
+              <div className="navbar-auth-links">
+                <NavLink
+                  to="/login"
+                  onClick={closeMenus}
+                  className={({ isActive }) =>
+                    `navbar-auth-link navbar-auth-link--login${
+                      isActive ? " navbar-auth-link--active" : ""
+                    }`
+                  }
+                >
+                  Đăng nhập
+                </NavLink>
+                <NavLink
+                  to="/register"
+                  onClick={closeMenus}
+                  className={({ isActive }) =>
+                    `navbar-auth-link navbar-auth-link--register${
+                      isActive ? " navbar-auth-link--active" : ""
+                    }`
+                  }
+                >
+                  Đăng ký
+                </NavLink>
+              </div>
+            ) : (
+              <>
+                <button
+                  ref={userBtnDesktopRef}
+                  type="button"
+                  className={`navbar-user-trigger ${userMenuOpen ? "open" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setUserMenuOpen((v) => !v);
+                    setMobileOpen(false);
+                  }}
+                  aria-expanded={userMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <span className="navbar-user-trigger-label">{userMenuLabel}</span>
+                  <span className="navbar-user-chevron" aria-hidden>
+                    {userMenuOpen ? "▲" : "▼"}
+                  </span>
+                </button>
+                {renderUserMenu(userMenuDesktopRef)}
+              </>
+            )}
           </div>
         </div>
 

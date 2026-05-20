@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { getContests } from "../../api";
 import ContestTop3Leaderboard from "../components/ContestTop3Leaderboard";
 import { publicUrl } from "../../lib/publicUrl";
+import "../styles/userCtaFlashShine.css";
 
 const copy = {
   pageTitle: "Cuộc thi Toán học",
@@ -171,9 +172,11 @@ export default function Contest() {
                             type="button"
                             disabled={done}
                             onClick={() => !done && handleDoQuiz(contest.id)}
-                            className={`contest-cta${done ? " contest-cta-done" : ""}`}
+                            className={`contest-cta user-cta-flash${done ? " contest-cta-done" : ""}`}
                           >
-                            {done ? copy.completedQuiz : copy.doQuiz}
+                            <span className="user-cta-flash__label">
+                              {done ? copy.completedQuiz : copy.doQuiz}
+                            </span>
                           </button>
                         </div>
                       </div>

@@ -1,0 +1,72 @@
+/**
+ * Vệt sáng lướt (flashback) khi hover — cùng logic với .grade-chevron-btn::after ở lessonPage.
+ * Dùng kèm class user-cta-flash trên nút CTA; bọc chữ trong .user-cta-flash__label.
+ */
+@keyframes userCtaFlashSweep {
+  0% {
+    background-position: -20% 50%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    background-position: 120% 50%;
+    opacity: 0;
+  }
+}
+
+.user-cta-flash {
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  isolation: isolate;
+}
+
+.user-cta-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(255, 255, 255, 0.22) 44%,
+    rgba(255, 255, 255, 0.78) 50%,
+    rgba(255, 230, 252, 0.65) 56%,
+    transparent 62%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  background-position: -20% 50%;
+  background-repeat: no-repeat;
+}
+
+.user-cta-flash:hover:not(:disabled):not(.contest-cta-done)::after {
+  animation: userCtaFlashSweep 0.85s cubic-bezier(0.33, 1, 0.68, 1) forwards;
+}
+
+.user-cta-flash:disabled:hover::after,
+.user-cta-flash.contest-cta-done:hover::after {
+  animation: none;
+  opacity: 0;
+}
+
+.user-cta-flash__label {
+  position: relative;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-cta-flash::after {
+    animation: none !important;
+    opacity: 0 !important;
+    background-position: -20% 50% !important;
+  }
+}

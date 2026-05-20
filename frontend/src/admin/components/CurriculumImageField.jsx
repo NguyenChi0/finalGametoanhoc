@@ -106,7 +106,7 @@ export default function CurriculumImageField({
 }
 
 const styles = {
-  wrap: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 },
+  wrap: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, width: "100%", minWidth: 0 },
   label: { fontWeight: 600, fontSize: "0.9rem", color: "#24292f" },
   input: {
     width: "100%",

@@ -274,9 +274,9 @@ export default function AdminGrades() {
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th style={styles.th}>ID</th>
-                  <th style={styles.th}>Tên khối lớp</th>
-                  <th style={{ ...styles.th, width: 72 }}>Ảnh</th>
+                  <th style={{ ...styles.th, width: 64 }}>ID</th>
+                  <th style={{ ...styles.th, width: "18%" }}>Tên khối lớp</th>
+                  <th style={{ ...styles.th, width: 80 }}>Ảnh</th>
                   <th style={styles.th}>Mô tả</th>
                   <th style={{ ...styles.th, textAlign: "right", width: 120 }}>
                     Thao tác
@@ -312,7 +312,7 @@ export default function AdminGrades() {
                           "—"
                         )}
                       </td>
-                      <td style={{ ...styles.td, color: "#57606a" }}>
+                      <td style={{ ...styles.td, ...styles.tdDesc }}>
                         {g.description ? g.description : "—"}
                       </td>
                       <td style={{ ...styles.td, textAlign: "right" }}>
@@ -402,7 +402,7 @@ export default function AdminGrades() {
             <h3 style={styles.modalTitle}>
               {createOpen ? "Tạo khối lớp mới" : "Chỉnh sửa khối lớp"}
             </h3>
-            <form onSubmit={saveForm}>
+            <form onSubmit={saveForm} style={styles.modalForm}>
               {createOpen && (
                 <label style={styles.label}>
                   ID khối (1–255)
@@ -434,7 +434,7 @@ export default function AdminGrades() {
                 <textarea
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
-                  style={{ ...styles.inputLight, minHeight: 100, resize: "vertical" }}
+                  style={{ ...styles.inputLight, minHeight: 100, maxHeight: 200, resize: "vertical" }}
                   rows={4}
                 />
               </label>
@@ -663,6 +663,7 @@ const styles = {
   searchWrap: {
     flex: 1,
     minWidth: 240,
+    maxWidth: 480,
     display: "flex",
     alignItems: "center",
     border: "1px solid #d0d7de",
@@ -720,25 +721,32 @@ const styles = {
   },
   table: {
     width: "100%",
+    tableLayout: "fixed",
     borderCollapse: "collapse",
     fontSize: "0.9rem",
   },
   th: {
-  textAlign: "left",
-  padding: "14px 16px",
-  background: "#2d5a76",  
-  color: "#fff",          
-  fontWeight: 700,
-  fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  borderBottom: "1px solid #d0d7de",
-},
+    textAlign: "left",
+    padding: "14px 16px",
+    background: "#2d5a76",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: "0.75rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    borderBottom: "1px solid #d0d7de",
+  },
   td: {
     padding: "14px 16px",
     borderBottom: "1px solid #eaeef2",
     verticalAlign: "top",
     color: "#24292f",
+    overflow: "hidden",
+  },
+  tdDesc: {
+    color: "#57606a",
+    wordBreak: "break-word",
+    whiteSpace: "pre-wrap",
   },
   tdEmpty: {
     padding: "28px 16px",
@@ -765,6 +773,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 4,
+    minWidth: 0,
   },
   cardLabel: {
     fontSize: "0.72rem",
@@ -777,6 +786,7 @@ const styles = {
     fontSize: "0.95rem",
     lineHeight: 1.45,
     color: "#24292f",
+    wordBreak: "break-word",
   },
   cardActions: {
     display: "flex",
@@ -844,6 +854,7 @@ const styles = {
   modal: {
     width: "100%",
     maxWidth: 440,
+    boxSizing: "border-box",
     background: "#fff",
     borderRadius: 12,
     padding: "24px",
@@ -856,16 +867,27 @@ const styles = {
     color: "#1f2328",
     fontWeight: 700,
   },
+  modalForm: {
+    width: "100%",
+    display: "flex",
+    flexDirection: "column",
+  },
   label: {
     display: "flex",
     flexDirection: "column",
     gap: 8,
+    width: "100%",
+    alignSelf: "stretch",
     color: "#24292f",
     fontSize: "0.88rem",
     fontWeight: 600,
     marginBottom: 14,
   },
   inputLight: {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
     padding: "10px 12px",
     borderRadius: 8,
     border: "1px solid #d0d7de",

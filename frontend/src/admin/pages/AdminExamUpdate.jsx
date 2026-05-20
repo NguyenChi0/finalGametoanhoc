@@ -401,8 +401,7 @@ export default function AdminExamUpdate() {
         <div style={styles.filterHeader}>
           <h2 style={styles.sectionTitle}>Bộ lọc câu hỏi</h2>
           <p style={styles.sectionSubtitle}>
-            Lọc theo khối của đề / chủ đề / bài — tối đa {QUESTION_POOL_LIMIT} câu. Có chữ trong ô tìm:
-            tra toàn bộ thư viện (tối đa {QUESTION_POOL_LIMIT} kết quả).
+            Hiển thị tối đa 200 câu.
           </p>
         </div>
 

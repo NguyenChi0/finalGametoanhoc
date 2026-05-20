@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { getExams, getGrades } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import "../styles/userCtaFlashShine.css";
 
 const copy = {
   pageTitle: "Ngân hàng đề thi",
@@ -172,10 +173,10 @@ export default function Exam() {
                         <div className="card-button">
                           <button
                             type="button"
-                            className="exam-cta"
+                            className="exam-cta user-cta-flash"
                             onClick={() => navigate(`/exam/${exam.id}`)}
                           >
-                            {copy.viewDetail}
+                            <span className="user-cta-flash__label">{copy.viewDetail}</span>
                           </button>
                         </div>
                       </div>

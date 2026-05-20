@@ -236,9 +236,12 @@ export default function PreGameSetUp() {
           position: relative;
           z-index: 1;
           margin: 0;
-          font-weight: 700;
-          font-size: clamp(0.78rem, 2.4vw, 0.95rem);
-          line-height: 1.35;
+          /* Cùng font chữ trên ảnh/thẻ bài như lesson map (main.jsx đã @font-face từ /fonts/SVN-Bublont.ttf) */
+          font-family: "SVN Bublont", sans-serif;
+          font-weight: 400;
+          font-synthesis: none;
+          font-size: clamp(1.35rem, 5vw, 2rem);
+          line-height: 1.25;
           text-align: center;
           color: #4a5080;
           word-break: break-word;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { register as registerApi } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
@@ -11,6 +11,7 @@ const t = {
 };
 
 export default function Register() {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -44,7 +45,12 @@ export default function Register() {
         email,
         phone,
       });
-      setMessage(res.data.message);
+      navigate("/login", {
+        replace: true,
+        state: {
+          message: res.data?.message || "Đăng ký thành công! Vui lòng đăng nhập.",
+        },
+      });
     } catch (err) {
       console.error(err);
       const msg = err.response?.data?.message || "Lỗi khi đăng ký!";
