@@ -32,21 +32,8 @@ function getKiloviaFromSearch(search) {
   };
 }
 
-function shuffleArray(arr) {
-  const a = Array.isArray(arr) ? arr.slice() : [];
-  for (let i = a.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function withShuffledQuestions(payload) {
-  if (!payload || !Array.isArray(payload.questions)) return payload;
-  return {
-    ...payload,
-    questions: shuffleArray(payload.questions),
-  };
+function withSessionPayload(payload) {
+  return payload;
 }
 
 function GameLoadFallback() {
@@ -77,7 +64,7 @@ export default function GamePage() {
       });
 
     if (location.state) {
-      const merged = withShuffledQuestions({
+      const merged = withSessionPayload({
         ...location.state,
         kilovia: location.state.kilovia || kiloviaFallback,
       });
@@ -98,7 +85,7 @@ export default function GamePage() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.gameId === gameId && parsed.payload) {
-          const merged = withShuffledQuestions({
+          const merged = withSessionPayload({
             ...parsed.payload,
             kilovia: parsed.payload.kilovia || kiloviaFallback,
           });

@@ -1,826 +1,430 @@
-// Game 3: đáp án trên bóng bay trượt ngang; phi tiêu dưới bắn lên; sai → explode, đúng → pop
-import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
+// src/components/games/Game1.jsx
+import React, { useState, useMemo, useRef } from "react";
 import api, { questionImageUrl } from "../../api";
-import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import { publicUrl } from "../../lib/publicUrl";
+import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import LessonCompleteScreen from "./LessonCompleteScreen";
+import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
-const BALLOON_SRC = [
-  "game3-ballon1.png",
-  "game3-ballon4.png",
-  "game3-balloon2.png",
-  "game3-balloon3.png",
-];
-
-function balloonUrl(i) {
-  return `${publicUrl}/game-images/${BALLOON_SRC[i % BALLOON_SRC.length]}`;
-}
-
-/** Ô trúng tâm ngắm: chỉ số đáp án + chỉ số ô trong track (bản nhân đôi) */
-function findHitInfo(blockEls, centerScreenX) {
-  for (let i = 0; i < blockEls.length; i++) {
-    const r = blockEls[i].getBoundingClientRect();
-    if (centerScreenX >= r.left && centerScreenX <= r.right) {
-      return {
-        ansIdx: parseInt(blockEls[i].dataset.idx || "0", 10),
-        loopIndex: parseInt(blockEls[i].dataset.loopIndex || String(i), 10),
-      };
-    }
-  }
-  let bestI = 0;
-  let bestDist = Infinity;
-  for (let i = 0; i < blockEls.length; i++) {
-    const r = blockEls[i].getBoundingClientRect();
-    const mid = (r.left + r.right) / 2;
-    const d = Math.abs(centerScreenX - mid);
-    if (d < bestDist) {
-      bestDist = d;
-      bestI = i;
-    }
-  }
-  const el = blockEls[bestI];
-  return {
-    ansIdx: parseInt(el.dataset.idx || "0", 10),
-    loopIndex: parseInt(el.dataset.loopIndex || String(bestI), 10),
-  };
-}
-
-export default function Game3({ payload, onLessonComplete }) {
+export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
-
-  const [selected, setSelected] = useState({});
-  const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
-  const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [gameEnded, setGameEnded] = useState(false);
+  const user = payload?.user;
+  const [current, setCurrent] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [showResult, setShowResult] = useState(false);
+  const [userScore, setUserScore] = useState(user?.score ?? 0);
+  const [weekScore, setWeekScore] = useState(user?.week_score ?? 0);
+  const [locked, setLocked] = useState(false);
+  const [background, setBackground] = useState("game1-asker.png");
   const [correctCount, setCorrectCount] = useState(0);
-  /** idle: sẵn sàng | flying: bay lên | hit: trúng bóng — dừng và ẩn, không bay tiếp */
-  const [dartPhase, setDartPhase] = useState("idle");
-  const [trackPaused, setTrackPaused] = useState(false);
-  /** hiệu ứng tại ô vừa trúng: nổ bom / nổ bóng */
-  const [hitEffect, setHitEffect] = useState(null);
+  const [shuffleSeed, setShuffleSeed] = useState(0);
 
-  const viewportRef = useRef(null);
-  const fireTimersRef = useRef([]);
-  /** Số vòng lặp full `answers` trong mỗi đoạn — đủ rộng để luôn phủ kín khung (không bị trắng một nửa) */
-  const [segmentRepeat, setSegmentRepeat] = useState(3);
+  // Refs cho âm thanh
+  const correctSoundRef = useRef(null);
+  const wrongSoundRef = useRef(null);
 
-  const qs = useMemo(() => {
-    function shuffle(arr) {
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    }
-    const total = (questions || []).length;
-    const limit = Math.min(15, total);
+  const gameQuestions = useMemo(
+    () => prepareSessionQuestions(questions),
+    [questions, shuffleSeed]
+  );
+  const currentQuestion = gameQuestions[current];
 
-    return (questions || []).slice(0, limit).map((q) => {
-      const answers = Array.isArray(q.answers) ? shuffle(q.answers) : [];
-      return { ...q, answers };
-    });
-  }, [questions]);
-
-  useEffect(() => {
-    return () => {
-      fireTimersRef.current.forEach(clearTimeout);
-    };
-  }, []);
-
-  useEffect(() => {
-    setDartPhase("idle");
-  }, [currentQuestionIndex]);
-
-  const currentQuestion = qs[currentQuestionIndex];
-  const answers = currentQuestion?.answers || [];
-
-  const segmentItems = useMemo(() => {
-    const items = [];
-    const reps = Math.max(2, segmentRepeat);
-    for (let t = 0; t < reps; t++) {
-      answers.forEach((answer, origIdx) => {
-        items.push({ answer, origIdx, tile: t });
-      });
-    }
-    return items;
-  }, [answers, segmentRepeat]);
-
-  useLayoutEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp || !answers.length) return;
-
-    function compute() {
-      const w = vp.clientWidth;
-      const narrow = typeof window !== "undefined" && window.matchMedia("(max-width: 480px)").matches;
-      const cell = narrow ? 80 : 96;
-      const gap = 18;
-      const L = answers.length;
-      const oneRound = L * cell + Math.max(0, L - 1) * gap;
-      const repeats = Math.max(2, Math.ceil((w + gap) / Math.max(oneRound, 1)) + 1);
-      setSegmentRepeat(repeats);
-    }
-
-    compute();
-    const ro = new ResizeObserver(() => compute());
-    ro.observe(vp);
-    return () => ro.disconnect();
-  }, [answers, currentQuestionIndex]);
-
-  async function incrementScoreOnServer(userId, delta = 1) {
+  async function incrementScore(userId, delta = 1) {
     try {
-      const resp = await api.post("/score/increment", { userId, delta });
-      return resp.data;
-    } catch (e) {
-      console.warn("Lỗi gọi API cộng điểm:", e);
-      return null;
+      const res = await api.post("/score/increment", { userId, delta });
+      if (res.data?.success) {
+        setUserScore(res.data.score);
+        setWeekScore(res.data.week_score);
+
+        const raw = localStorage.getItem("user");
+        const existing = raw ? JSON.parse(raw) : (user ? { ...user } : {});
+        localStorage.setItem(
+          "user",
+          JSON.stringify({
+            ...existing,
+            score: res.data.score,
+            week_score: res.data.week_score,
+          })
+        );
+      }
+    } catch (err) {
+      console.error("API cộng điểm lỗi:", err);
     }
   }
 
-  const handleFireClick = () => {
-    const cq = qs[currentQuestionIndex];
-    if (!cq || selected[cq.id] !== undefined || dartPhase !== "idle") return;
-
-    const vp = viewportRef.current;
-    if (!vp) return;
-
-    const blocks = vp.querySelectorAll(".game3-answer-block");
-    if (blocks.length === 0) return;
-
-    const rect = vp.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const { ansIdx: rawAns, loopIndex: hitLoopIndex } = findHitInfo(blocks, centerX);
-    const n = cq.answers?.length ?? 0;
-    const ansIdx = n > 0 ? ((rawAns % n) + n) % n : 0;
-
-    const qId = cq.id;
-    const isLast = currentQuestionIndex >= qs.length - 1;
-
-    fireTimersRef.current.forEach(clearTimeout);
-    fireTimersRef.current = [];
-
-    setTrackPaused(true);
-    setDartPhase("flying");
-
-    const t1 = setTimeout(() => {
-      const q = qs.find((x) => x.id === qId);
-      const a = q?.answers?.[ansIdx];
-      const isCorrect = !!(a && a.correct);
-
-      setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
-      setHitEffect({
-        loopIndex: hitLoopIndex,
-        kind: isCorrect ? "pop" : "explode",
-      });
-      setDartPhase("hit");
-
-      let nextScore = 0;
-      setCorrectCount((prev) => {
-        nextScore = isCorrect ? prev + 1 : prev;
-        return nextScore;
-      });
-
-      const t2 = setTimeout(() => {
-        setHitEffect(null);
-        setTrackPaused(false);
-
-        if (!isLast) {
-          setCurrentQuestionIndex((i) => i + 1);
-          setSelected({});
-        } else {
-          const userId =
-            payload?.user?.id ||
-            (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
-
-          if (!userId) {
-            console.warn("Người dùng chưa login — không thể cộng điểm trên server.");
-            setGameEnded(true);
-            setGameStarted(false);
-            onLessonComplete?.(nextScore);
-          } else if (nextScore > 0) {
-            incrementScoreOnServer(userId, nextScore).then((data) => {
-              if (data && data.success) {
-                setUserScore(data.score);
-                setWeekScore(data.week_score ?? 0);
-                const raw = localStorage.getItem("user");
-                if (raw) {
-                  try {
-                    const u = JSON.parse(raw);
-                    u.score = data.score;
-                    u.week_score = data.week_score;
-                    localStorage.setItem("user", JSON.stringify(u));
-                  } catch (err) {
-                    console.warn("Không cập nhật được user trong localStorage:", err);
-                  }
-                }
-              }
-              setGameEnded(true);
-              setGameStarted(false);
-            });
-            onLessonComplete?.(nextScore);
-          } else {
-            setGameEnded(true);
-            setGameStarted(false);
-            onLessonComplete?.(nextScore);
-          }
-        }
-      }, 1000);
-      fireTimersRef.current.push(t2);
-    }, 420);
-    fireTimersRef.current.push(t1);
+  // Hàm phát âm thanh
+  const playSound = (isCorrect) => {
+    if (isCorrect) {
+      if (correctSoundRef.current) {
+        correctSoundRef.current.currentTime = 0;
+        correctSoundRef.current.play().catch(e => console.log("Lỗi phát âm thanh:", e));
+      }
+    } else {
+      if (wrongSoundRef.current) {
+        wrongSoundRef.current.currentTime = 0;
+        wrongSoundRef.current.play().catch(e => console.log("Lỗi phát âm thanh:", e));
+      }
+    }
   };
 
-  function startGame() {
-    setGameStarted(true);
-    setGameEnded(false);
-    setCurrentQuestionIndex(0);
-    setSelected({});
+  // xử lý trả lời: giờ nhận (answer, index)
+  function handleAnswer(answer, idx) {
+    if (locked) return;
+    setLocked(true);
+    setSelected(idx);
+
+    const isCorrect = !!answer.correct;
+    const isLast = current + 1 >= gameQuestions.length;
+    const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
+
+    // Phát âm thanh
+    playSound(isCorrect);
+
+    if (isCorrect) {
+      setBackground("game1-winner.png");
+    } else {
+      setBackground("game1-loser.png");
+    }
+
+    setCorrectCount(newCorrectCount);
+
+    setTimeout(() => {
+      if (!isLast) {
+        setCurrent((c) => c + 1);
+        setSelected(null);
+        setLocked(false);
+        setBackground("game1-asker.png");
+      } else {
+        setShowResult(true);
+        setBackground(isCorrect ? "game1-winner.png" : "game1-loser.png");
+
+        if (user?.id && newCorrectCount > 0) {
+          incrementScore(user.id, newCorrectCount);
+        }
+        onLessonComplete?.(newCorrectCount);
+      }
+    }, 2000);
+  }
+
+  function resetGame() {
+    setShuffleSeed((s) => s + 1);
+    setCurrent(0);
+    setSelected(null);
+    setShowResult(false);
+    setLocked(false);
+    setBackground("game1-asker.png");
     setCorrectCount(0);
-    setHitEffect(null);
-    setDartPhase("idle");
   }
 
-  function restartGame() {
-    startGame();
-  }
-
-  function goHome() {
-    window.location.href = "/gametoanhoc";
-  }
-
-  if (qs.length === 0) {
-    return <div style={{ padding: 20 }}>Không có câu hỏi</div>;
-  }
-
-  // Màn bắt đầu — template giống game 2
-  if (!gameStarted && !gameEnded) {
+  if (!gameQuestions.length) {
     return (
-      <div
-        style={{
-          width: "100%",
-          minHeight: "70vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #e67e22 0%, #2980b9 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <style>{`
-          .game3-start-card {
-            width: 100%;
-            max-width: min(600px, calc(100vw - 24px));
-            box-sizing: border-box;
-            background: white;
-            padding: clamp(16px, 5vw, 36px);
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-          }
-          .game3-start-title {
-            margin: 0 0 clamp(12px, 3vw, 20px);
-            color: #2c3e50;
-            font-size: clamp(1.1rem, 4.2vw, 1.65rem);
-            line-height: 1.25;
-          }
-          .game3-start-rules {
-            background: #ecf0f1;
-            padding: clamp(12px, 3.5vw, 20px);
-            border-radius: 12px;
-            margin: 0 auto clamp(14px, 3vw, 20px);
-            text-align: left;
-          }
-          .game3-start-rules h3 { margin: 0 0 8px; color: #34495e; font-size: clamp(0.95rem, 3.4vw, 1.1rem); }
-          .game3-start-rules ul { margin: 0; padding-left: 1.15rem; line-height: 1.65; font-size: clamp(0.8rem, 2.8vw, 0.95rem); }
-          .game3-start-btn {
-            width: 100%;
-            max-width: 320px;
-            padding: clamp(12px, 3vw, 16px) clamp(20px, 5vw, 40px);
-            font-size: clamp(0.95rem, 3.5vw, 1.15rem);
-            font-weight: 700;
-            background: linear-gradient(135deg, #e67e22 0%, #2980b9 100%);
-            color: white;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            box-sizing: border-box;
-          }
-        `}</style>
-        <div className="game3-start-card">
-          <h2 className="game3-start-title">🎯 Ném phi tiêu 🎯</h2>
-          <div className="game3-start-rules">
-            <h3>📜 Cách chơi</h3>
-            <ul>
-              <li>Đọc câu hỏi, đáp án trên các <strong>bóng bay</strong> chạy ngang.</li>
-              <li>Ô <strong>giữa khung</strong> là ô bạn chọn khi bấm <strong>Bắn</strong>.</li>
-              <li>Trúng đáp án đúng để ghi điểm — hết <strong>{qs.length}</strong> câu là xong.</li>
-            </ul>
-          </div>
-          <button type="button" className="game3-start-btn" onClick={startGame}>
-            🎮 Bắt đầu chơi
-          </button>
-        </div>
+      <div style={{ textAlign: "center", marginTop: 100, color: "white" }}>
+        Không có câu hỏi nào!
       </div>
     );
   }
 
-  // Màn kết thúc — template giống game 2
-  if (gameEnded) {
-    return (
-      <div
-        style={{
-          width: "100%",
-          minHeight: "70vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #e67e22 0%, #2980b9 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <style>{`
-          .game3-end-card { width: 100%; max-width: min(600px, calc(100vw - 24px)); box-sizing: border-box; }
-          .game3-end-title { margin: 0 0 clamp(12px, 3vw, 20px); color: #2c3e50; font-size: clamp(1.15rem, 4.5vw, 1.75rem); }
-          .game3-end-score { margin: 0 0 clamp(16px, 4vw, 28px); font-size: clamp(0.95rem, 3.8vw, 1.35rem); font-weight: bold; }
-          .game3-end-actions { display: flex; gap: clamp(10px, 2.5vw, 16px); justify-content: center; flex-wrap: wrap; width: 100%; }
-          .game3-end-actions button {
-            box-sizing: border-box;
-            padding: clamp(10px, 2.5vw, 14px) clamp(16px, 4vw, 28px);
-            font-size: clamp(0.9rem, 3.2vw, 1.05rem);
-            font-weight: 700;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            flex: 1 1 auto;
-            min-width: min(100%, 140px);
-            max-width: 100%;
-          }
-          @media (max-width: 480px) {
-            .game3-end-actions { flex-direction: column; align-items: stretch; }
-            .game3-end-actions button { min-width: 0; width: 100%; }
-          }
-        `}</style>
-        <div
-          className="game3-end-card"
-          style={{
-            background: "white",
-            padding: "clamp(16px, 5vw, 36px)",
-            borderRadius: 16,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-          }}
-        >
-          <h2 className="game3-end-title">🏆 Kết thúc game! 🏆</h2>
-          <div
-            className="game3-end-score"
-            style={{
-              background: "linear-gradient(135deg, #e67e22 0%, #2980b9 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            Bạn đã trả lời đúng: {correctCount}/{qs.length} câu hỏi
-          </div>
-          <div className="game3-end-actions">
-            <button
-              type="button"
-              onClick={restartGame}
-              style={{ background: "linear-gradient(135deg, #e67e22 0%, #2980b9 100%)", color: "white" }}
-            >
-              🔄 Chơi lại
-            </button>
-            <button
-              type="button"
-              onClick={goHome}
-              style={{ background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", color: "white" }}
-            >
-              🏠 Trang chủ
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const getImageSrc = (imgPath) => {
+    if (!imgPath) return null;
+    if (/^https?:\/\//i.test(imgPath)) return imgPath;
+    if (imgPath.startsWith("/")) return imgPath;
+    if (imgPath.startsWith("game-images/")) return `/${imgPath}`;
+    return `${publicUrl}/game-images/${imgPath}`;
+  };
 
-  const selectedAnswerIndex = selected[currentQuestion.id];
-  const canFire = selectedAnswerIndex === undefined && dartPhase === "idle";
 
-  /** Vùng chơi rộng/cao hơn template game 2 (70vh) để component thoáng hơn */
+
+  /** Vỏ khu chơi: đủ cao theo nội dung (không cắt đáp án); min-height giữ tỷ lệ đẹp */
+  const GAME1_SHELL_MIN_H = "clamp(480px, 78vh, 920px)";
   const gameShellStyle = {
     width: "100%",
-    height: "82vh",
-    minHeight: "82vh",
+    maxWidth: "100%",
+    minHeight: GAME1_SHELL_MIN_H,
+    height: "auto",
     position: "relative",
-    overflow: "hidden",
     boxSizing: "border-box",
+    overflow: "visible",
   };
+  /** @deprecated dùng `gameShellStyle`; giữ alias để tương thích nếu chunk HMR còn tham chiếu tên cũ */
+  // eslint-disable-next-line no-unused-vars -- alias chỉ để tránh ReferenceError từ hot-reload cũ
+  const gameContainerStyle = gameShellStyle;
+
+  if (showResult) {
+    return (
+      <LessonCompleteScreen
+        payload={payload}
+        correctCount={correctCount}
+        totalQuestions={gameQuestions.length}
+        onReplay={resetGame}
+        shellStyle={gameShellStyle}
+      />
+    );
+  }
+
+  const questionImageSrc = currentQuestion.question_image
+    ? questionImageUrl(currentQuestion.question_image) || null
+    : null;
 
   return (
-    <div style={gameShellStyle}>
-    <div style={styles.dartGame}>
-      <style>{`
-        @keyframes game3scroll {
-          from { transform: translate3d(0, 0, 0); }
-          to { transform: translate3d(-50%, 0, 0); }
-        }
-        .game3-square {
-          width: 100%;
-          max-width: min(98vw, 960px);
-          margin: 0 auto;
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          min-height: 0;
-          height: 100%;
-          box-sizing: border-box;
-          --game3-play-gap: clamp(16px, 2.5vmin, 26px);
-          --game3-balloon-gap: 18px;
-        }
-        .game3-play-column {
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          gap: var(--game3-play-gap);
-          width: 100%;
-          flex: 0 0 auto;
-        }
-        .game3-dart-wrap {
-          flex: 0 0 auto;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 88px;
-          width: 100%;
-          pointer-events: none;
-        }
-        .game3-dart-launcher {
-          position: relative;
-          left: auto;
-          bottom: auto;
-          width: 88px;
-          height: 88px;
-          margin-left: 0;
-          z-index: 6;
-          pointer-events: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .game3-dart-launcher img {
-          width: 78px;
-          height: 78px;
-          object-fit: contain;
-          transform: rotate(0deg);
-          transform-origin: center center;
-          filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.4));
-          /* Không transition khi về chỗ cũ — tránh hiệu ứng “bay ngược” xấu */
-          transition: none;
-        }
-        .game3-dart-launcher.shooting img {
-          transform: rotate(0deg) translateY(calc(-1 * min(38vw, 180px)));
-          transition: transform 0.38s cubic-bezier(0.33, 1, 0.68, 1);
-        }
-        .game3-dart-launcher.dart-hit img {
-          transform: rotate(0deg) translateY(calc(-1 * min(38vw, 180px)));
-          opacity: 0;
-          visibility: hidden;
-          transition: none;
-        }
-        .game3-viewport {
-          position: relative;
-          flex: 0 0 auto;
-          min-height: 132px;
-          overflow: hidden;
-          width: 100%;
-          background: transparent;
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-start;
-          align-items: stretch;
-        }
-        .game3-track {
-          display: flex;
-          flex-direction: row;
-          width: max-content;
-          height: auto;
-          flex: 0 0 auto;
-          align-items: center;
-          gap: var(--game3-balloon-gap);
-          padding: 8px 0;
-          box-sizing: border-box;
-          animation: game3scroll 14s linear infinite;
-          will-change: transform;
-          backface-visibility: hidden;
-        }
-        .game3-track.paused {
-          animation-play-state: paused;
-        }
-        /* Hai đoạn giống hệt nhau → -50% khớp mép nối, không bị “mất” bóng giữa chừng */
-        .game3-track-seg {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          gap: var(--game3-balloon-gap);
-          flex: 0 0 auto;
-          box-sizing: border-box;
-        }
-        .game3-answer-block {
-          flex: 0 0 auto;
-          position: relative;
-          width: 96px;
-          height: 118px;
-          border-radius: 14px;
-          overflow: hidden;
-          box-sizing: border-box;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-        }
-        .game3-balloon-bg {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          object-position: center bottom;
-          pointer-events: none;
-        }
-        .game3-hit-fx {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          object-position: center;
-          z-index: 2;
-          pointer-events: none;
-        }
-        .game3-answer-label {
-          position: relative;
-          z-index: 1;
-          font-weight: 800;
-          font-size: 1.42rem;
-          line-height: 1;
-          color: #fff;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.75), 0 0 2px rgba(0,0,0,0.5);
-          padding: 0 4px;
-          margin-bottom: 10px;
-        }
-        .game3-answer-label img {
-          max-width: 100%;
-          max-height: 56px;
-          object-fit: contain;
-          vertical-align: middle;
-        }
-        @media (max-width: 480px) {
-          .game3-square { max-width: min(98vw, 560px); --game3-play-gap: 14px; }
-          .game3-answer-block {
-            width: 80px;
-            height: 100px;
+    <div style={{ ...gameShellStyle, display: "flex", flexDirection: "column" }}>
+        <style>{`
+          .game1-question-col {
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
-          .game3-answer-label { font-size: 1.2rem; }
-          .game3-viewport { min-height: 110px; }
-          .game3-dart-launcher {
-            width: 76px;
-            height: 76px;
+          .game1-question-text {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            hyphens: auto;
           }
-          .game3-dart-launcher img {
-            width: 68px;
-            height: 68px;
+          .game1-answers-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 15px;
+            flex-shrink: 0;
           }
-          .game3-dart-wrap {
-            min-height: 76px;
+          @media (max-width: 600px) {
+            .game1-answers-grid {
+              grid-template-columns: 1fr;
+            }
           }
-          .game3-dart-launcher.shooting img {
-            transform: rotate(0deg) translateY(calc(-1 * min(34vw, 168px)));
+          @media (max-width: 767px) {
+            .game1-question-wrap {
+              flex: 0 0 auto !important;
+              min-height: auto !important;
+              overflow-x: hidden !important;
+              overflow-y: visible !important;
+            }
+            /* Phản hồi đúng/sai: không còn text trong flow — cần chiều cao lớn để ảnh thắng/thua rõ */
+            .game1-question-wrap.game1-question-wrap--feedback {
+              min-height: min(58vh, 520px) !important;
+            }
+            .game1-question-text {
+              font-size: clamp(0.95rem, 4.2vw, 1.15rem) !important;
+              line-height: 1.45 !important;
+            }
           }
-          .game3-dart-launcher.dart-hit img {
-            transform: rotate(0deg) translateY(calc(-1 * min(34vw, 168px)));
+          @media (min-width: 768px) {
+            .game1-question-wrap {
+              flex: 1 1 auto !important;
+              min-height: 38vh !important;
+            }
+            .game1-shell-inner {
+              padding-left: clamp(12px, 1.2vw, 20px) !important;
+              padding-right: clamp(12px, 1.2vw, 20px) !important;
+            }
+            .game1-question-wrap {
+              padding-left: clamp(10px, 1.2vw, 18px) !important;
+              padding-right: clamp(10px, 1.2vw, 18px) !important;
+              padding-top: 20px !important;
+              padding-bottom: 20px !important;
+            }
+            .game1-question-img {
+              max-width: 100% !important;
+            }
           }
-        }
-      `}</style>
+        `}</style>
+        {/* Audio */}
+        <audio
+          ref={correctSoundRef}
+          src={`${publicUrl}/game-noises/dung.mp3`}
+          preload="auto"
+        />
+        <audio
+          ref={wrongSoundRef}
+          src={`${publicUrl}/game-noises/wrong.mp3`}
+          preload="auto"
+        />
 
-      <h3 style={styles.heading}>Game Ném Phi Tiêu</h3>
-      <p style={styles.hint}>
-        Đáp án trên <strong>bóng bay</strong> chạy ngang. Bấm <strong>Bắn</strong> — ô giữa khung là ô chọn.
-      </p>
-
-      <div style={styles.gameInfo}>
-        <span>
-          Câu {currentQuestionIndex + 1}/{qs.length}
-        </span>
-      </div>
-
-      <div style={styles.gameSquare} className="game3-square">
-        <div style={styles.questionInSquare}>
-          <div style={styles.questionTextCompact}>{currentQuestion.question_text}</div>
-          {currentQuestion.question_image && (
-            <GameQuestionImageZoom
-              src={questionImageUrl(currentQuestion.question_image) || undefined}
-              thumbStyle={styles.questionImageCompact}
-            />
-          )}
-        </div>
-
-        <div className="game3-play-column">
-          <div ref={viewportRef} className="game3-viewport">
-            <div className={`game3-track${trackPaused || dartPhase !== "idle" ? " paused" : ""}`}>
-              {[0, 1].map((seg) => (
-                <div key={seg} className="game3-track-seg" aria-hidden={seg === 1 ? true : undefined}>
-                  {segmentItems.map((item, j) => {
-                    const { answer, origIdx } = item;
-                    const loopIndex = seg * segmentItems.length + j;
-                    const showFx =
-                      hitEffect &&
-                      hitEffect.loopIndex === loopIndex &&
-                      (hitEffect.kind === "explode" || hitEffect.kind === "pop");
-                    const fxSrc =
-                      hitEffect?.kind === "explode"
-                        ? `${publicUrl}/game-images/game3-explode.png`
-                        : `${publicUrl}/game-images/game3-pop.png`;
-
-                    return (
-                      <div
-                        key={`${seg}-${j}`}
-                        className="game3-answer-block"
-                        data-idx={origIdx}
-                        data-loop-index={loopIndex}
-                      >
-                        {!showFx && (
-                          <>
-                            <img
-                              className="game3-balloon-bg"
-                              src={balloonUrl(origIdx)}
-                              alt=""
-                              draggable={false}
-                            />
-                            <span className="game3-answer-label">
-                              {answer.text ? (
-                                answer.text
-                              ) : answer.image ? (
-                                <img
-                                  src={questionImageUrl(answer.image) || undefined}
-                                  alt=""
-                                />
-                              ) : (
-                                "—"
-                              )}
-                            </span>
-                          </>
-                        )}
-                        {showFx && <img className="game3-hit-fx" src={fxSrc} alt="" draggable={false} />}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+        <div
+          className="game1-shell-inner"
+          style={{
+            width: "100%",
+            flex: "1 1 auto",
+            minHeight: 0,
+            backgroundColor: "#002f5eff",
+            color: "white",
+            padding: "clamp(16px, 2.5vw, 32px)",
+            paddingBottom: "clamp(18px, 2.8vw, 36px)",
+            borderRadius: "12px",
+            border: "3px solid #1e88e5",
+            display: "flex",
+            flexDirection: "column",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              flexShrink: 0,
+              marginBottom: 12,
+              fontSize: "0.95em",
+              color: "white",
+              textAlign: "center",
+            }}
+          >
+            Câu : <b>{current + 1}/{gameQuestions.length}</b>
           </div>
 
-          <div className="game3-dart-wrap">
+          {/* Phần câu hỏi: nền scene + lớp tối bán trong (không blur) */}
+          <div
+            className={`game1-question-wrap${locked ? " game1-question-wrap--feedback" : ""}`}
+            style={{
+            flex: "0 1 auto",
+            flexShrink: 0,
+            minHeight: "38vh",
+            padding: "20px",
+            borderRadius: "10px",
+            marginBottom: "20px",
+            border: "3px solidrgb(0, 195, 255)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            position: "relative",
+            color: "black",
+            overflowX: "hidden",
+            overflowY: "visible",
+            isolation: "isolate",
+          }}>
             <div
-              key={`dart-${currentQuestion.id}-${currentQuestionIndex}`}
-              className={`game3-dart-launcher${dartPhase === "flying" ? " shooting" : ""}${
-                dartPhase === "hit" ? " dart-hit" : ""
-              }`}
-            >
-              <img src={`${publicUrl}/game-images/game3-dart.png`} alt="" />
-            </div>
-          </div>
-
-          <div style={styles.fireWrap} className="game3-fire-wrap">
-            <button
-              type="button"
-              disabled={!canFire}
-              onClick={handleFireClick}
+              aria-hidden
               style={{
-                ...styles.fireBtn,
-                opacity: canFire ? 1 : 0.55,
-                cursor: canFire ? "pointer" : "not-allowed",
+                position: "absolute",
+                inset: 0,
+                zIndex: 0,
+                backgroundImage: `url(${publicUrl}/game-images/${background})`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "center center",
+                backgroundSize: "cover",
+              }}
+            />
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 1,
+                borderRadius: "10px",
+                background:
+                  "linear-gradient(180deg, rgba(2, 14, 34, 0.52) 0%, rgba(1, 10, 28, 0.68) 100%)",
+                pointerEvents: "none",
+              }}
+            />
+
+            {/* Chữ + ảnh trên lớp phủ (full chiều ngang ô) */}
+            {!locked && (
+            <div
+              className="game1-question-col"
+              style={{
+                position: "relative",
+                zIndex: 2,
+                width: "100%",
+                maxWidth: "100%",
+                marginLeft: "auto",
+                marginRight: "auto",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                minWidth: 0,
+                boxSizing: "border-box",
               }}
             >
-              {dartPhase === "flying" ? "Đang bắn…" : "Bắn"}
-            </button>
+              <div
+                className="game1-question-text"
+                style={{
+                color: "white",
+                fontSize: "1.3em",
+                fontWeight: "bold",
+                marginBottom: questionImageSrc ? "10px" : "0",
+                textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
+                padding: "0 8px",
+                width: "100%",
+                maxWidth: "100%",
+                textAlign: "center",
+              }}
+              >
+                {currentQuestion.question_text}
+              </div>
+
+              {questionImageSrc && (
+                <GameQuestionImageZoom
+                  src={questionImageSrc}
+                  thumbClassName="game1-question-img"
+                  onThumbError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.style.display = "none";
+                  }}
+                  thumbStyle={{
+                    maxHeight: "min(50vh, 300px)",
+                    objectFit: "contain",
+                    backgroundColor: "white",
+                  }}
+                />
+              )}
+            </div>
+            )}
+          </div>
+
+          {/* Đáp án: desktop 2 cột; mobile 1 đáp án / hàng */}
+          <div className="game1-answers-grid">
+            {currentQuestion.answers.map((ans, i) => {
+              const chosen = selected === i;
+              let bg = "linear-gradient(135deg, rgba(54, 150, 230, 0.8), rgba(24, 122, 221, 0.8))";
+              let borderColor = "#1e88e5";
+              if (selected !== null) {
+                if (chosen && ans.correct) {
+                  bg = "linear-gradient(135deg, #4CAF50, #45a049)";
+                  borderColor = "#4CAF50";
+                } else if (chosen && !ans.correct) {
+                  bg = "linear-gradient(135deg, #dc3545, #c82333)";
+                  borderColor = "#dc3545";
+                } else if (ans.correct) {
+                  // hiển thị đáp án đúng cho người chơi biết
+                  bg = "linear-gradient(135deg, #4CAF50, #45a049)";
+                  borderColor = "#4CAF50";
+                } else {
+                  bg = "linear-gradient(135deg, rgba(44, 62, 80, 0.8), rgba(52, 73, 94, 0.8))";
+                  borderColor = "#7aacdfff";
+                }
+              }
+
+              return (
+                <button
+                  key={i}
+                  onClick={() => handleAnswer(ans, i)}
+                  disabled={locked}
+                  style={{
+                    background: bg,
+                    color: "white",
+                    border: `3px solid ${borderColor}`,
+                    borderRadius: "8px",
+                    padding: "12px 10px",
+                    fontSize: "14px",
+                    cursor: locked ? "default" : "pointer",
+                    fontWeight: "bold",
+                    minHeight: "60px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-start",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  <span style={{
+                    marginRight: "10px",
+                    fontSize: "1.1em",
+                    minWidth: "25px",
+                    textAlign: "center"
+                  }}>
+                    {String.fromCharCode(65 + i)}.
+                  </span>
+                  {ans.text}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
-    </div>
     </div>
   );
 }
-
-const styles = {
-  dartGame: {
-    position: "relative",
-    textAlign: "center",
-    padding: "clamp(12px, 2vw, 20px) clamp(10px, 2.5vw, 24px)",
-    width: "100%",
-    maxWidth: "100%",
-    height: "100%",
-    margin: "0 auto",
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
-  },
-  heading: {
-    margin: "0 0 4px",
-    fontSize: "clamp(1.05rem, 3.2vw, 1.3rem)",
-    fontWeight: 700,
-  },
-  hint: {
-    fontSize: "clamp(0.78rem, 2.1vw, 0.88rem)",
-    color: "#555",
-    margin: "0 0 8px",
-    padding: "0 4px",
-    lineHeight: 1.35,
-  },
-  gameInfo: {
-    display: "flex",
-    justifyContent: "center",
-    marginBottom: "10px",
-    padding: "2px 6px",
-    fontSize: "clamp(0.8rem, 2.2vw, 0.92rem)",
-    fontWeight: 600,
-  },
-  gameSquare: {
-    background: "transparent",
-    border: "none",
-    boxShadow: "none",
-    padding: 0,
-  },
-  questionInSquare: {
-    flex: "0 0 auto",
-    flexShrink: 0,
-    paddingBottom: "clamp(14px, 3.5vmin, 24px)",
-  },
-  questionTextCompact: {
-    fontSize: "clamp(0.95rem, 3.8vmin, 1.35rem)",
-    fontWeight: "bold",
-    lineHeight: 1.2,
-    marginBottom: "6px",
-  },
-  questionImageCompact: {
-    display: "block",
-    maxWidth: "100%",
-    maxHeight: "min(48vw, 220px)",
-    height: "auto",
-    marginTop: "6px",
-    marginLeft: "auto",
-    marginRight: "auto",
-    borderRadius: "8px",
-    objectFit: "contain",
-  },
-  fireWrap: {
-    flex: "0 0 auto",
-    textAlign: "center",
-    marginTop: 0,
-    paddingTop: 0,
-  },
-  fireBtn: {
-    background: "linear-gradient(180deg, #e67e22, #d35400)",
-    color: "#fff",
-    border: "none",
-    padding: "12px 40px",
-    borderRadius: "999px",
-    fontSize: "clamp(1rem, 3vw, 1.2rem)",
-    fontWeight: "800",
-    boxShadow: "0 4px 14px rgba(211, 84, 0, 0.45)",
-  },
-  gameOver: {
-    textAlign: "center",
-    padding: "40px 20px",
-  },
-  gameWon: {
-    textAlign: "center",
-    padding: "40px 20px",
-  },
-  finalScores: {
-    fontSize: "1rem",
-    marginTop: "12px",
-    marginBottom: "8px",
-  },
-  playAgainBtn: {
-    background: "#3498db",
-    color: "white",
-    border: "none",
-    padding: "12px 24px",
-    borderRadius: "6px",
-    fontSize: "16px",
-    cursor: "pointer",
-    marginTop: "20px",
-    transition: "background 0.3s ease",
-  },
-};

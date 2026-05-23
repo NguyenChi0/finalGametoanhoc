@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import api, { itemImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import { levelItemAuraFilter } from "../lib/itemRarity";
 import "../styles/userCtaFlashShine.css";
 
 const PAGE_SIZE = 5;
@@ -104,14 +105,6 @@ export default function Shop() {
     }
   };
 
-  const getAuraColor = (score) => {
-    if (score >= 20000) return "rgba(255, 0, 0, 0.8)";
-    if (score >= 10000) return "rgba(128, 0, 128, 0.8)";
-    if (score >= 5000) return "rgba(255, 215, 0, 0.8)";
-    if (score >= 1000) return "rgba(0, 255, 0, 0.8)";
-    return "rgba(255, 255, 255, 0.3)";
-  };
-
   if (!user) {
     return <Navigate to="/login" replace />;
   }
@@ -181,12 +174,7 @@ export default function Shop() {
                           <img
                             src={itemImageUrl(item.link)}
                             alt={item.name}
-                            style={{
-                              filter: `
-                                drop-shadow(0 0 6px ${getAuraColor(price)})
-                                drop-shadow(0 0 12px ${getAuraColor(price)})
-                              `,
-                            }}
+                            style={{ filter: levelItemAuraFilter(item.level) }}
                           />
                         </div>
                         <div className="card-info">

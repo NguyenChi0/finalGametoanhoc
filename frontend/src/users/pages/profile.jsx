@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import api, { itemImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import { levelItemAuraFilter, levelLabel, levelLabelColor } from "../lib/itemRarity";
 
 export default function Profile() {
   const { username: paramUsername } = useParams();
@@ -97,13 +98,27 @@ export default function Profile() {
                     <img
                       src={itemImageUrl(item.link)}
                       alt={item.name}
-                      style={styles.itemImage}
-                      onError={(e) => { e.target.onerror = null; e.target.src = "/placeholder-item.png"; }}
+                      style={{
+                        ...styles.itemImage,
+                        filter: levelItemAuraFilter(item.level),
+                      }}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = "/placeholder-item.png";
+                      }}
                     />
                     <div style={{ marginTop: 8, textAlign: "center" }}>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
-                      {item.description && <div style={{ fontSize: 12 }}>{item.description}</div>}
-                      {/* Đã bỏ dòng hiển thị thời gian mua */}
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          marginTop: 4,
+                          color: levelLabelColor(item.level),
+                        }}
+                      >
+                        {levelLabel(item.level)}
+                      </div>
                     </div>
                   </div>
                 );

@@ -2,6 +2,8 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import LessonCompleteScreen from "./LessonCompleteScreen";
+import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -10,9 +12,10 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   const [userScore, setUserScore] = useState(payload?.user?.score ?? 0);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [correctCount, setCorrectCount] = useState(0);
+  const [shuffleSeed, setShuffleSeed] = useState(0);
 
   // Game states
-  const [gameScreen, setGameScreen] = useState("menu"); // menu, playing, finished, crashed
+  const [gameScreen, setGameScreen] = useState("playing"); // playing, finished, crashed
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [playerLane, setPlayerLane] = useState(1);
   const [gameState, setGameState] = useState("running");
@@ -33,24 +36,10 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
 
   const currentSpeed = speedSettings[gameSpeed];
 
-  // Shuffle câu trả lời, giới hạn tối đa 15 câu hỏi mỗi bài
-  const qs = useMemo(() => {
-    function shuffle(arr) {
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    }
-    const total = (questions || []).length;
-    const limit = Math.min(15, total);
-
-    return (questions || []).slice(0, limit).map((q) => {
-      const answers = Array.isArray(q.answers) ? shuffle(q.answers) : [];
-      return { ...q, answers };
-    });
-  }, [questions]);
+  const qs = useMemo(
+    () => prepareSessionQuestions(questions),
+    [questions, shuffleSeed]
+  );
 
   // Gọi API cộng điểm
   async function incrementScoreOnServer(userId, delta = 1) {
@@ -111,7 +100,8 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
     backgroundMusicRef.current = new Audio(`${publicUrl}/music/nhac5.mp3`);
     backgroundMusicRef.current.loop = true;
     backgroundMusicRef.current.volume = 0.7;
-    
+    backgroundMusicRef.current.play().catch((e) => console.log("Autoplay prevented:", e));
+
     return () => {
       if (backgroundMusicRef.current) {
         backgroundMusicRef.current.pause();
@@ -141,6 +131,7 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
 
   // Restart game
   function restartGame() {
+    setShuffleSeed((s) => s + 1);
     setGameScreen("playing");
     setCurrentQuestion(0);
     setPlayerLane(1);
@@ -295,196 +286,16 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   const laneHeight = 90;
   const laneLabels = ['A', 'B', 'C', 'D'];
 
-  // Menu Screen
-  if (gameScreen === "menu") {
-    return (
-      <div style={{ 
-        width: "100%", 
-        height: "80vh", 
-        background: "linear-gradient(180deg, #87CEEB 0%, #E0F6FF 100%)", 
-        display: "flex", 
-        alignItems: "center", 
-        justifyContent: "center",
-      }}>
-        <div style={{ 
-          background: "#fff", 
-          padding: "60px 80px", 
-          borderRadius: 24, 
-          textAlign: "center", 
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-          maxWidth: 600
-        }}>
-          <div style={{ fontSize: 56, marginBottom: 20 }}>🏃‍♂️</div>
-          <h1 style={{ 
-            fontSize: 48, 
-            fontWeight: "bold", 
-            color: "#2c3e50", 
-            marginBottom: 16,
-            textShadow: "2px 2px 4px rgba(0,0,0,0.1)"
-          }}>
-            Vượt Chướng Ngại Vật
-          </h1>
-          <p style={{ 
-            fontSize: 20, 
-            color: "#666", 
-            marginBottom: 40,
-            lineHeight: 1.6
-          }}>
-            Hãy chọn làn đường đúng nhất nhé!
-          </p>
-          <div style={{ display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap" }}>
-            <button
-              onClick={startGame}
-              style={{
-                padding: "18px 48px",
-                fontSize: 22,
-                fontWeight: "bold",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 12,
-                cursor: "pointer",
-                boxShadow: "0 8px 20px rgba(102, 126, 234, 0.4)",
-                transition: "all 0.3s ease",
-                transform: "scale(1)"
-              }}
-              onMouseEnter={e => e.target.style.transform = "scale(1.05)"}
-              onMouseLeave={e => e.target.style.transform = "scale(1)"}
-            >
-              🎮 Bắt Đầu Chơi
-            </button>
-            {onBackToHome && (
-              <button
-                onClick={onBackToHome}
-                style={{
-                  padding: "18px 48px",
-                  fontSize: 22,
-                  fontWeight: "bold",
-                  background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  boxShadow: "0 8px 20px rgba(245, 87, 108, 0.4)",
-                  transition: "all 0.3s ease",
-                  transform: "scale(1)"
-                }}
-                onMouseEnter={e => e.target.style.transform = "scale(1.05)"}
-                onMouseLeave={e => e.target.style.transform = "scale(1)"}
-              >
-                🏠 Trang Chủ
-              </button>
-            )}
-          </div>
-          <div style={{ 
-            marginTop: 40, 
-            padding: 20, 
-            background: "#f8f9fa", 
-            borderRadius: 12,
-            fontSize: 16,
-            color: "#555"
-          }}>
-            <p style={{ margin: "8px 0" }}>⌨️ <strong>W/S</strong> hoặc <strong>A/B/C/D</strong>: Di chuyển</p>
-            <p style={{ margin: "8px 0" }}>🔢 <strong>1/2/3</strong>: Thay đổi tốc độ</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Finish Screen
   if (gameScreen === "finished") {
     return (
-      <div style={{ 
-        width: "100%", 
-        height: "80vh", 
-        background: "linear-gradient(180deg, #87CEEB 0%, #E0F6FF 100%)", 
-        display: "flex", 
-        alignItems: "center", 
-        justifyContent: "center",
-      }}>
-        <div style={{ 
-          background: "#fff", 
-          padding: "60px 80px", 
-          borderRadius: 24, 
-          textAlign: "center", 
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-          maxWidth: 600
-        }}>
-          <div style={{ fontSize: 80, marginBottom: 20 }}>🎉</div>
-          <h1 style={{ 
-            fontSize: 42, 
-            fontWeight: "bold", 
-            color: "#22c55e", 
-            marginBottom: 16
-          }}>
-            Chúc Mừng!
-          </h1>
-          <p style={{ 
-            fontSize: 20, 
-            color: "#666", 
-            marginBottom: 40,
-            lineHeight: 1.6
-          }}>
-            Bạn đã hoàn thành cuộc thi
-          </p>
-          <div style={{ display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap" }}>
-            <button
-              onClick={restartGame}
-              style={{
-                padding: "18px 48px",
-                fontSize: 22,
-                fontWeight: "bold",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 12,
-                cursor: "pointer",
-                boxShadow: "0 8px 20px rgba(102, 126, 234, 0.4)",
-                transition: "all 0.3s ease"
-              }}
-            >
-              🔄 Chơi Lại
-            </button>
-            <button
-              onClick={backToMenu}
-              style={{
-                padding: "18px 48px",
-                fontSize: 22,
-                fontWeight: "bold",
-                background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 12,
-                cursor: "pointer",
-                boxShadow: "0 8px 20px rgba(79, 172, 254, 0.4)",
-                transition: "all 0.3s ease"
-              }}
-            >
-              📋 Menu
-            </button>
-            {onBackToHome && (
-              <button
-                onClick={onBackToHome}
-                style={{
-                  padding: "18px 48px",
-                  fontSize: 22,
-                  fontWeight: "bold",
-                  background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  boxShadow: "0 8px 20px rgba(245, 87, 108, 0.4)",
-                  transition: "all 0.3s ease"
-                }}
-              >
-                🏠 Trang Chủ
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <LessonCompleteScreen
+        payload={payload}
+        correctCount={correctCount}
+        totalQuestions={qs.length}
+        onReplay={restartGame}
+        onHome={onBackToHome}
+        height="80vh"
+      />
     );
   }
 

@@ -3,15 +3,18 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import LessonCompleteScreen from "./LessonCompleteScreen";
+import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [gameStarted, setGameStarted] = useState(false);
+  const [gameStarted, setGameStarted] = useState(true);
   const [gameEnded, setGameEnded] = useState(false);
   const [fruits, setFruits] = useState([]);
   const [correctCount, setCorrectCount] = useState(0);
+  const [shuffleSeed, setShuffleSeed] = useState(0);
   const [isSlicing, setIsSlicing] = useState(false);
   const [slicePath, setSlicePath] = useState([]);
   const gameContainerRef = useRef(null);
@@ -28,20 +31,10 @@ export default function Game1({ payload, onLessonComplete }) {
     `${publicUrl}/game-images/game6-fruit4.png`,
   ];
 
-  const qs = useMemo(() => {
-    function shuffle(arr) {
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    }
-    return questions.map((q) => {
-      const answers = Array.isArray(q.answers) ? shuffle(q.answers) : [];
-      return { ...q, answers };
-    });
-  }, [questions]);
+  const qs = useMemo(
+    () => prepareSessionQuestions(questions),
+    [questions, shuffleSeed]
+  );
 
   const currentQuestion = qs[currentQuestionIndex];
 
@@ -331,6 +324,7 @@ export default function Game1({ payload, onLessonComplete }) {
   }
 
   function restartGame() {
+    setShuffleSeed((s) => s + 1);
     startGame();
   }
 
@@ -349,248 +343,23 @@ export default function Game1({ payload, onLessonComplete }) {
     ? questionImageUrl(questionImageRaw) || null
     : null;
 
-  if (!gameStarted && !gameEnded) {
-    if (qs.length === 0) {
-      return (
-        <div style={{ padding: 24, textAlign: "center", color: "#37474f" }}>
-          Không có câu hỏi nào.
-        </div>
-      );
-    }
-
+  if (qs.length === 0 && !gameEnded) {
     return (
-      <div
-        className="game6-start-root"
-        style={{
-          width: "100%",
-          minHeight: "70vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <style>{`
-          .game6-start-card {
-            width: 100%;
-            max-width: min(600px, calc(100vw - 24px));
-            box-sizing: border-box;
-            background: white;
-            padding: clamp(16px, 5vw, 36px);
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-          }
-          .game6-start-title {
-            margin: 0 0 clamp(12px, 3vw, 20px);
-            color: #2c3e50;
-            font-size: clamp(1.1rem, 4.2vw, 1.65rem);
-            line-height: 1.25;
-            word-wrap: break-word;
-          }
-          .game6-start-rules {
-            background: #ecf0f1;
-            padding: clamp(12px, 3.5vw, 20px);
-            border-radius: 12px;
-            margin: 0 auto clamp(14px, 3vw, 20px);
-            text-align: left;
-          }
-          .game6-start-rules h3 {
-            margin: 0 0 8px;
-            color: #34495e;
-            font-size: clamp(0.95rem, 3.4vw, 1.1rem);
-          }
-          .game6-start-rules ul {
-            margin: 0;
-            padding-left: 1.15rem;
-            line-height: 1.65;
-            font-size: clamp(0.8rem, 2.8vw, 0.95rem);
-          }
-          .game6-start-btn {
-            width: 100%;
-            max-width: 320px;
-            padding: clamp(12px, 3vw, 16px) clamp(20px, 5vw, 40px);
-            font-size: clamp(0.95rem, 3.5vw, 1.15rem);
-            font-weight: 700;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-            box-sizing: border-box;
-          }
-        `}</style>
-        <div className="game6-start-card">
-          <h2 className="game6-start-title">🍎 Trắc nghiệm 🍊</h2>
-
-          <div className="game6-start-rules">
-            <h3>📜 Cách chơi:</h3>
-            <ul>
-              <li>Đọc câu hỏi bên cạnh vùng chơi</li>
-              <li>Giữ chuột và kéo để chém vào quả có đáp án đúng</li>
-              <li>Chém sai vẫn chuyển câu tiếp; làm hết bài mới tính điểm</li>
-              <li>
-                Chủ đề gồm <b>{qs.length}</b> câu hỏi
-              </li>
-            </ul>
-          </div>
-
-          <button
-            type="button"
-            className="game6-start-btn"
-            onClick={startGame}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = "scale(1.02)";
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-            }}
-          >
-            🎮 Bắt đầu chơi
-          </button>
-        </div>
+      <div style={{ padding: 24, textAlign: "center", color: "#37474f" }}>
+        Không có câu hỏi nào.
       </div>
     );
   }
 
   if (gameEnded) {
     return (
-      <div
-        className="game6-end-root"
-        style={{
-          width: "100%",
-          minHeight: "70vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <style>{`
-          .game6-end-card {
-            width: 100%;
-            max-width: min(600px, calc(100vw - 24px));
-            box-sizing: border-box;
-          }
-          .game6-end-title {
-            margin: 0 0 clamp(12px, 3vw, 20px);
-            color: #2c3e50;
-            font-size: clamp(1.15rem, 4.5vw, 1.75rem);
-            line-height: 1.25;
-            word-wrap: break-word;
-          }
-          .game6-end-score {
-            margin: 0 0 clamp(16px, 4vw, 28px);
-            font-size: clamp(0.95rem, 3.8vw, 1.35rem);
-            line-height: 1.35;
-            font-weight: bold;
-            word-wrap: break-word;
-            padding: 0 2px;
-          }
-          .game6-end-actions {
-            display: flex;
-            gap: clamp(10px, 2.5vw, 16px);
-            justify-content: center;
-            flex-wrap: wrap;
-            width: 100%;
-          }
-          .game6-end-actions button {
-            box-sizing: border-box;
-            padding: clamp(10px, 2.5vw, 14px) clamp(16px, 4vw, 28px);
-            font-size: clamp(0.9rem, 3.2vw, 1.05rem);
-            font-weight: 700;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-            flex: 1 1 auto;
-            min-width: min(100%, 140px);
-            max-width: 100%;
-          }
-          @media (max-width: 480px) {
-            .game6-end-actions {
-              flex-direction: column;
-              align-items: stretch;
-            }
-            .game6-end-actions button {
-              min-width: 0;
-              width: 100%;
-            }
-          }
-        `}</style>
-        <div
-          className="game6-end-card"
-          style={{
-            background: "white",
-            padding: "clamp(16px, 5vw, 36px)",
-            borderRadius: 16,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-          }}
-        >
-          <h2 className="game6-end-title">🏆 Kết thúc game! 🏆</h2>
-
-          <div
-            className="game6-end-score"
-            style={{
-              background: "linear-gradient(135deg, #ffd89b 0%, #19547b 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            Bạn đã trả lời đúng: {correctCount}/{qs.length} câu hỏi
-          </div>
-
-          <div className="game6-end-actions">
-            <button
-              type="button"
-              onClick={restartGame}
-              style={{
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                color: "white",
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              🔄 Chơi lại
-            </button>
-
-            <button
-              type="button"
-              onClick={goHome}
-              style={{
-                background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-                color: "white",
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              🏠 Trang chủ
-            </button>
-          </div>
-        </div>
-      </div>
+      <LessonCompleteScreen
+        payload={payload}
+        correctCount={correctCount}
+        totalQuestions={qs.length}
+        onReplay={restartGame}
+        height="70vh"
+      />
     );
   }
 

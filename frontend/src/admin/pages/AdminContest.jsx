@@ -471,7 +471,7 @@ export default function AdminContest() {
   };
 
   const handleDeleteContest = async (contest) => {
-    if (!window.confirm(`Xóa contest #${contest.id} (${contest.name})?`)) return;
+    if (!window.confirm(`Bạn chắc chắn muốn XÓA cuộc thi #${contest.id} (${contest.name})? Dữ liệu liên quan đến cuộc thi sẽ không thể hoàn tác.`)) return;
     setSaving(true);
     setError(null);
     try {

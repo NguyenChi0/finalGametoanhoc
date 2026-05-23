@@ -1,25 +1,38 @@
 import React, { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { getContests } from "../../api";
+import { getContests, getGrades } from "../../api";
 import ContestTop3Leaderboard from "../components/ContestTop3Leaderboard";
 import { publicUrl } from "../../lib/publicUrl";
 import "../styles/userCtaFlashShine.css";
 
+const PAGE_SIZE = 5;
+
+const CONTEST_STATUS_ACTIVE = 2;
+const CONTEST_STATUS_SCHEDULED = 1;
+const CONTEST_STATUS_ENDED = 0;
+
 const copy = {
   pageTitle: "Cuộc thi Toán học",
-    intro: "Tham gia cuộc thi và nhận muôn vàn giải thưởng hấp dẫn",
-    noteTitle: "Lưu ý:",
+  intro: "Tham gia cuộc thi và nhận muôn vàn giải thưởng hấp dẫn",
+  noteTitle: "Lưu ý:",
   note1: "Mỗi bài thi chỉ được làm một lần",
   note2: "Điểm thưởng sẽ được cộng sau khi kết thúc cuộc thi",
-  note3: "Hãy kiểm tra kết nối mạng trước khi làm bài.",
+  note3: "Chúc các bạn may mắn và rinh được các phần thưởng hấp dẫn",
   loading: "Đang tải danh sách cuộc thi…",
   loadError: "Không tải được danh sách cuộc thi.",
-  empty: "Hiện không có cuộc thi nào đang diễn ra. Vui lòng quay lại sau.",
+  empty: "Chưa có cuộc thi nào cho lớp đã chọn.",
   scheduleLabel: "Thời gian:",
   questionsSuffix: " câu hỏi",
   doQuiz: "Làm bài",
   completedQuiz: "Đã hoàn thành",
+  endedQuiz: "Đã kết thúc",
+  upcomingQuiz: "Chưa mở",
+  statusActive: "Đang diễn ra",
+  statusScheduled: "Sắp diễn ra",
+  statusEnded: "Đã kết thúc",
   yourScore: "Điểm:",
+  gradeFilterLabel: "Chọn lớp của bạn",
+  allGrades: "Tất cả lớp",
 };
 
 const CL = {
@@ -55,12 +68,53 @@ function formatContestWindow(start, end) {
   return `${a} – ${b}`;
 }
 
+function contestStatusLabel(status) {
+  const s = Number(status);
+  if (s === CONTEST_STATUS_ACTIVE) return copy.statusActive;
+  if (s === CONTEST_STATUS_SCHEDULED) return copy.statusScheduled;
+  if (s === CONTEST_STATUS_ENDED) return copy.statusEnded;
+  return "—";
+}
+
+function contestCtaLabel(status, done) {
+  if (done) return copy.completedQuiz;
+  const s = Number(status);
+  if (s === CONTEST_STATUS_ACTIVE) return copy.doQuiz;
+  if (s === CONTEST_STATUS_SCHEDULED) return copy.upcomingQuiz;
+  return copy.endedQuiz;
+}
+
+function canDoContest(status, done) {
+  return Number(status) === CONTEST_STATUS_ACTIVE && !done;
+}
+
 export default function Contest() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const [contests, setContests] = useState([]);
+  const [grades, setGrades] = useState([]);
+  const [selectedGradeId, setSelectedGradeId] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const gradeRows = await getGrades();
+        if (!cancelled) {
+          setGrades(Array.isArray(gradeRows) ? gradeRows : []);
+        }
+      } catch {
+        if (!cancelled) setGrades([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,15 +122,23 @@ export default function Contest() {
       setLoading(true);
       setError("");
       try {
-        const data = await getContests();
-        const raw = Array.isArray(data) ? data : [];
-        const activeOnly = raw.filter((c) => Number(c.status) === 2);
-        if (!cancelled) setContests(activeOnly);
+        const data = await getContests({
+          grade_id: selectedGradeId || undefined,
+          page,
+          page_size: PAGE_SIZE,
+        });
+        if (!cancelled) {
+          const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+          const pagination = data?.pagination || {};
+          setContests(rows);
+          setTotalPages(Math.max(1, Number(pagination.total_pages) || 1));
+        }
       } catch (err) {
         console.error(err);
         if (!cancelled) {
           setError(err.response?.data?.message || copy.loadError);
           setContests([]);
+          setTotalPages(1);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -85,7 +147,7 @@ export default function Contest() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedGradeId, page]);
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -122,6 +184,28 @@ export default function Contest() {
               </ul>
             </aside>
 
+            <div className="contest-toolbar">
+              <label htmlFor="contest-grade-filter" className="contest-filter-label">
+                {copy.gradeFilterLabel}
+              </label>
+              <select
+                id="contest-grade-filter"
+                className="contest-filter-select"
+                value={selectedGradeId}
+                onChange={(e) => {
+                  setSelectedGradeId(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">{copy.allGrades}</option>
+                {grades.map((grade) => (
+                  <option key={grade.id} value={String(grade.id)}>
+                    {grade.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {loading && <p className="contest-status">{copy.loading}</p>}
             {error && !loading && <p className="contest-error">{error}</p>}
 
@@ -132,6 +216,9 @@ export default function Contest() {
                   const durationMin = Number(contest.exam_duration_minutes) || 30;
                   const desc = contest.description?.trim() || "—";
                   const done = Boolean(contest.completed);
+                  const status = Number(contest.status);
+                  const playable = canDoContest(status, done);
+                  const ctaLabel = contestCtaLabel(status, done);
                   const myScore =
                     contest.my_score != null && contest.my_score !== ""
                       ? Number(contest.my_score)
@@ -154,6 +241,20 @@ export default function Contest() {
                             </p>
                           )}
                           <div className="meta">
+                            <span className="meta-chip meta-chip-grade">
+                              🎓 {contest.grade_name || `Khối ${contest.grade_id}`}
+                            </span>
+                            <span
+                              className={`meta-chip meta-chip-status meta-chip-status--${
+                                status === CONTEST_STATUS_ACTIVE
+                                  ? "active"
+                                  : status === CONTEST_STATUS_SCHEDULED
+                                    ? "scheduled"
+                                    : "ended"
+                              }`}
+                            >
+                              {contestStatusLabel(status)}
+                            </span>
                             <span className="meta-chip meta-chip-time">
                               ⏱️ {durationMin} phút
                             </span>
@@ -170,13 +271,11 @@ export default function Contest() {
                         <div className="card-button">
                           <button
                             type="button"
-                            disabled={done}
-                            onClick={() => !done && handleDoQuiz(contest.id)}
-                            className={`contest-cta user-cta-flash${done ? " contest-cta-done" : ""}`}
+                            disabled={!playable}
+                            onClick={() => playable && handleDoQuiz(contest.id)}
+                            className={`contest-cta${playable ? " user-cta-flash" : " contest-cta-done"}`}
                           >
-                            <span className="user-cta-flash__label">
-                              {done ? copy.completedQuiz : copy.doQuiz}
-                            </span>
+                            <span className="user-cta-flash__label">{ctaLabel}</span>
                           </button>
                         </div>
                       </div>
@@ -193,6 +292,28 @@ export default function Contest() {
 
             {!loading && !error && contests.length === 0 && (
               <p className="contest-status">{copy.empty}</p>
+            )}
+
+            {!loading && !error && contests.length > 0 && (
+              <div className="contest-pagination">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  Trang trước
+                </button>
+                <span>
+                  Trang {page}/{totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                >
+                  Trang sau
+                </button>
+              </div>
             )}
           </section>
         </main>
@@ -289,6 +410,41 @@ export default function Contest() {
         .contest-notes-list li:last-child {
           margin-bottom: 0;
         }
+        .contest-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 22px;
+          flex-wrap: wrap;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: linear-gradient(90deg, rgba(146, 185, 227, 0.35), rgba(251, 162, 208, 0.25));
+        }
+        .contest-filter-label {
+          color: ${CL.ink};
+          font-weight: 700;
+          font-size: 0.95rem;
+        }
+        .contest-filter-select {
+          min-width: 180px;
+          flex: 1;
+          max-width: 320px;
+          border: 2px solid ${CL.periwinkle};
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-size: 14px;
+          font-family: inherit;
+          font-weight: 600;
+          color: ${CL.ink};
+          background: #fff;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(108, 126, 225, 0.15);
+        }
+        .contest-filter-select:focus {
+          outline: none;
+          border-color: ${CL.lavender};
+          box-shadow: 0 0 0 3px rgba(198, 136, 235, 0.35);
+        }
         .contest-status {
           color: ${CL.inkMuted};
           font-weight: 500;
@@ -372,6 +528,22 @@ export default function Contest() {
           font-weight: 600;
           line-height: 1.3;
         }
+        .meta-chip-grade {
+          background: rgba(108, 126, 225, 0.18);
+          color: ${CL.periwinkle};
+        }
+        .meta-chip-status--active {
+          background: rgba(46, 125, 50, 0.18);
+          color: #2e7d32;
+        }
+        .meta-chip-status--scheduled {
+          background: rgba(255, 196, 164, 0.45);
+          color: #b85a2e;
+        }
+        .meta-chip-status--ended {
+          background: rgba(176, 190, 197, 0.45);
+          color: #546e7a;
+        }
         .meta-chip-time {
           background: rgba(198, 136, 235, 0.22);
           color: #8b4cad;
@@ -423,10 +595,56 @@ export default function Contest() {
           transform: none;
           filter: none;
         }
+        .contest-pagination {
+          margin-top: 24px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .contest-pagination button {
+          border: 2px solid ${CL.periwinkle};
+          background: #fff;
+          color: ${CL.periwinkle};
+          border-radius: 999px;
+          padding: 9px 18px;
+          cursor: pointer;
+          font-weight: 700;
+          font-family: inherit;
+          transition: background 0.2s, color 0.2s, transform 0.15s;
+        }
+        .contest-pagination button:hover:not(:disabled) {
+          background: ${CL.periwinkle};
+          color: #fff;
+          transform: translateY(-1px);
+        }
+        .contest-pagination button:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          border-color: #ccc;
+          color: #999;
+        }
+        .contest-pagination span {
+          color: ${CL.ink};
+          font-size: 14px;
+          font-weight: 600;
+          padding: 6px 14px;
+          border-radius: 999px;
+          background: rgba(146, 185, 227, 0.3);
+        }
         @media (max-width: 768px) {
           .contest-panel {
             padding: 18px 14px 22px;
             border-radius: 18px;
+          }
+          .contest-toolbar {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .contest-filter-select {
+            max-width: none;
+            width: 100%;
           }
           .card-content {
             flex-direction: column;

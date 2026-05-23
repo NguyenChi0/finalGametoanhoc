@@ -3,6 +3,8 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import LessonCompleteScreen from "./LessonCompleteScreen";
+import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -12,7 +14,6 @@ export default function Game1({ payload, onLessonComplete }) {
   const [locked, setLocked] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
-  const [showMenu, setShowMenu] = useState(true);
   
   // Quái vật
   const [monsterX, setMonsterX] = useState(null);
@@ -27,23 +28,10 @@ export default function Game1({ payload, onLessonComplete }) {
   const containerRef = useRef(null);
   const moveIntervalRef = useRef(null);
 
-  const shuffleArray = (arr) => {
-    const a = arr ? arr.slice() : [];
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  };
-
-  const preparedQuestions = useMemo(() => {
-    return (questions || []).map((q) => ({
-      ...q,
-      answers: shuffleArray(q.answers || []),
-    }));
-  }, [questions]);
-
-  const gameQuestions = preparedQuestions;
+  const gameQuestions = useMemo(
+    () => prepareSessionQuestions(questions),
+    [questions, shuffleSeed]
+  );
   const currentQuestion = gameQuestions[current];
 
   const shapes = ["circle", "square", "triangle"];
@@ -61,13 +49,13 @@ export default function Game1({ payload, onLessonComplete }) {
   };
 
   useEffect(() => {
-    if (!showMenu && !showResult && current < gameQuestions.length) {
+    if (!showResult && current < gameQuestions.length) {
       spawnMonster();
     }
-  }, [current, showMenu, showResult]);
+  }, [current, showResult]);
 
   useEffect(() => {
-    if (showMenu || showResult || !isAlive || monsterX === null) return;
+    if (showResult || !isAlive || monsterX === null) return;
     if (moveIntervalRef.current) clearInterval(moveIntervalRef.current);
     moveIntervalRef.current = setInterval(() => {
       setMonsterX(prev => {
@@ -77,7 +65,7 @@ export default function Game1({ payload, onLessonComplete }) {
       });
     }, 30);
     return () => clearInterval(moveIntervalRef.current);
-  }, [showMenu, showResult, isAlive, monsterX]);
+  }, [showResult, isAlive, monsterX]);
 
   const saveScore = async () => {
     if (!user?.id) return;
@@ -160,11 +148,11 @@ export default function Game1({ payload, onLessonComplete }) {
   };
 
   const resetGame = () => {
+    setShuffleSeed((s) => s + 1);
     setCurrent(0);
     setSelected(null);
     setLocked(false);
     setShowResult(false);
-    setShowMenu(true);
     setCorrectCount(0);
     setMonsterX(null);
     setIsAlive(true);
@@ -177,228 +165,15 @@ export default function Game1({ payload, onLessonComplete }) {
     return <div style={{ textAlign: "center", marginTop: 100, color: "white" }}>Không có câu hỏi nào!</div>;
   }
 
-  // --- MÀN HÌNH MENU ---
-  if (showMenu) {
-    return (
-      <div
-        style={{
-          width: "100%",
-          minHeight: "70vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "min(600px, calc(100vw - 24px))",
-            boxSizing: "border-box",
-            background: "white",
-            padding: "clamp(16px, 5vw, 36px)",
-            borderRadius: "16px",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 clamp(12px, 3vw, 20px)",
-              color: "#2c3e50",
-              fontSize: "clamp(1.1rem, 4.2vw, 1.65rem)",
-              lineHeight: 1.25,
-              wordWrap: "break-word",
-            }}
-          >
-            🗻 BẮN YÊU QUÁI 🗻
-          </h2>
-
-          <div
-            style={{
-              background: "#ecf0f1",
-              padding: "clamp(12px, 3.5vw, 20px)",
-              borderRadius: "12px",
-              margin: "0 auto clamp(14px, 3vw, 20px)",
-              textAlign: "left",
-            }}
-          >
-            <h3
-              style={{
-                margin: "0 0 8px",
-                color: "#34495e",
-                fontSize: "clamp(0.95rem, 3.4vw, 1.1rem)",
-              }}
-            >
-              📜 Cách chơi:
-            </h3>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: "1.15rem",
-                lineHeight: 1.65,
-                fontSize: "clamp(0.8rem, 2.8vw, 0.95rem)",
-              }}
-            >
-              <li>Mỗi câu hỏi là một con yêu quái. Trả lời đúng để bắn hạ nó!</li>
-              <li>Quái vật sẽ tiến dần về thành của bạn. Hãy nhanh tay chọn đáp án đúng.</li>
-              <li>Trả lời sai – quái vật nổ tung nhưng bạn không được cộng điểm.</li>
-              <li>Chủ đề gồm <b>{gameQuestions.length}</b> câu hỏi.</li>
-            </ul>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowMenu(false)}
-            style={{
-              width: "100%",
-              maxWidth: "320px",
-              padding: "clamp(12px, 3vw, 16px) clamp(20px, 5vw, 40px)",
-              fontSize: "clamp(0.95rem, 3.5vw, 1.15rem)",
-              fontWeight: 700,
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              border: "none",
-              borderRadius: "999px",
-              cursor: "pointer",
-              boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-              transition: "transform 0.2s",
-              boxSizing: "border-box",
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
-            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
-          >
-            🎮 BẮT ĐẦU
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- MÀN HÌNH KẾT THÚC ---
   if (showResult) {
-    const handleGoHome = () => {
-      window.location.href = "/gametoanhoc";
-    };
-
     return (
-      <div
-        style={{
-          width: "100%",
-          minHeight: "70vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "min(600px, calc(100vw - 24px))",
-            boxSizing: "border-box",
-            background: "white",
-            padding: "clamp(16px, 5vw, 36px)",
-            borderRadius: "16px",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 clamp(12px, 3vw, 20px)",
-              color: "#2c3e50",
-              fontSize: "clamp(1.1rem, 4.2vw, 1.65rem)",
-              lineHeight: 1.25,
-              wordWrap: "break-word",
-            }}
-          >
-            {correctCount === gameQuestions.length ? "🎉 Xuất sắc!" : "🏁 Hoàn thành!"}
-          </h2>
-
-          <div
-            style={{
-              background: "#ecf0f1",
-              padding: "clamp(12px, 3.5vw, 20px)",
-              borderRadius: "12px",
-              margin: "0 auto clamp(20px, 4vw, 30px)",
-              textAlign: "center",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "clamp(0.95rem, 3.5vw, 1.2rem)",
-                fontWeight: "bold",
-                color: "#2c3e50",
-              }}
-            >
-              Bạn đã bắn hạ{" "}
-              <span style={{ color: "#e74c3c" }}>{correctCount}</span> / {gameQuestions.length} yêu quái
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: "clamp(12px, 3vw, 20px)",
-              justifyContent: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              onClick={resetGame}
-              style={{
-                padding: "clamp(10px, 2.5vw, 14px) clamp(20px, 5vw, 32px)",
-                fontSize: "clamp(0.9rem, 3.2vw, 1rem)",
-                fontWeight: 700,
-                background: "#4ECDC4",
-                color: "white",
-                border: "none",
-                borderRadius: "999px",
-                cursor: "pointer",
-                boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-                transition: "transform 0.2s",
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
-              onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            >
-              🔄 Chơi Lại
-            </button>
-            <button
-              onClick={handleGoHome}
-              style={{
-                padding: "clamp(10px, 2.5vw, 14px) clamp(20px, 5vw, 32px)",
-                fontSize: "clamp(0.9rem, 3.2vw, 1rem)",
-                fontWeight: 700,
-                background: "#FF6B6B",
-                color: "white",
-                border: "none",
-                borderRadius: "999px",
-                cursor: "pointer",
-                boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-                transition: "transform 0.2s",
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
-              onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            >
-              🏠 Trang Chủ
-            </button>
-          </div>
-        </div>
-
-        <audio ref={correctSoundRef} src={`${publicUrl}/game-noises/dung.mp3`} preload="auto" />
-        <audio ref={wrongSoundRef} src={`${publicUrl}/game-noises/wrong.mp3`} preload="auto" />
-      </div>
+      <LessonCompleteScreen
+        payload={payload}
+        correctCount={correctCount}
+        totalQuestions={gameQuestions.length}
+        onReplay={resetGame}
+        height="70vh"
+      />
     );
   }
 

@@ -1,0 +1,380 @@
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { publicUrl } from "../../lib/publicUrl";
+import { persistPregamePayload } from "../lib/playSession";
+import {
+  buildNextLessonPregamePayload,
+  findNextLessonInType,
+} from "../lib/nextLesson";
+import "../styles/userCtaFlashShine.css";
+
+function ReplayLineIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 12a9 9 0 0 1 15.5-6.36M21 12a9 9 0 0 1-15.5 6.36"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 4v5h5M21 20v-5h-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function HomeLineIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function NextLessonLineIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 12h14M13 6l6 6-6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const resultBtnBase = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  color: "white",
+  padding: "14px 32px",
+  border: "none",
+  borderRadius: 9999,
+  cursor: "pointer",
+  fontSize: "1.08em",
+  fontWeight: "bold",
+  fontFamily: "inherit",
+};
+
+const lessonCompleteBg = `${publicUrl}/component-images/lessonCompleteBackground.png`;
+
+/**
+ * Màn kết thúc bài học dùng chung (nền lessonCompleteBackground, 3 nút + Bài tiếp).
+ */
+export default function LessonCompleteScreen({
+  payload,
+  correctCount,
+  totalQuestions,
+  onReplay,
+  onHome,
+  shellStyle = {},
+  height = "75vh",
+}) {
+  const navigate = useNavigate();
+  const [nextLessonAvailable, setNextLessonAvailable] = useState(false);
+  const [nextLessonLoading, setNextLessonLoading] = useState(false);
+  const [nextLessonError, setNextLessonError] = useState(null);
+
+  const isPerfect = correctCount === totalQuestions;
+  const goHome =
+    onHome ||
+    (() => {
+      window.location.href = "/gametoanhoc";
+    });
+
+  useEffect(() => {
+    if (payload?.type?.id == null || payload?.lesson?.id == null) {
+      setNextLessonAvailable(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setNextLessonError(null);
+    void (async () => {
+      try {
+        const next = await findNextLessonInType(payload.type.id, payload.lesson.id);
+        if (!cancelled) setNextLessonAvailable(Boolean(next));
+      } catch {
+        if (!cancelled) setNextLessonAvailable(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payload?.type?.id, payload?.lesson?.id]);
+
+  async function handleGoNextLesson() {
+    setNextLessonError(null);
+    setNextLessonLoading(true);
+    try {
+      const nextPayload = await buildNextLessonPregamePayload(payload);
+      if (!nextPayload) {
+        setNextLessonAvailable(false);
+        setNextLessonError("Không còn bài tiếp theo trong chủ đề này.");
+        return;
+      }
+      persistPregamePayload(nextPayload);
+      navigate("/play-setup", { state: nextPayload });
+    } catch (err) {
+      setNextLessonError(
+        err?.message || "Không tải được bài tiếp theo. Vui lòng thử lại."
+      );
+    } finally {
+      setNextLessonLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="lesson-complete-shell"
+      style={{
+        ...shellStyle,
+        minHeight: height,
+        height,
+      }}
+    >
+      <style>{`
+        .lesson-complete-shell {
+          min-height: ${height} !important;
+          height: ${height} !important;
+          max-height: ${height} !important;
+        }
+        .lesson-complete-shell .lesson-complete-bg {
+          position: relative;
+          width: 100%;
+          min-height: ${height};
+          height: ${height};
+          max-height: ${height};
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+          align-items: center;
+          overflow: hidden;
+          border-radius: 0 !important;
+          box-sizing: border-box;
+          padding-top: clamp(20px, 4vh, 40px);
+        }
+        .lesson-complete-shell .lesson-complete-scene {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+        }
+        .lesson-complete-shell .lesson-complete-content {
+          position: relative;
+          z-index: 1;
+          width: 100%;
+          max-width: min(1120px, 98%);
+          padding: clamp(16px, 3vw, 32px) clamp(24px, 4vw, 48px);
+          box-sizing: border-box;
+          text-align: center;
+          color: #4a5080;
+          border-radius: 0 !important;
+        }
+        .lesson-complete-shell .lesson-complete-title {
+          margin: 0 0 24px;
+        }
+        .lesson-complete-shell .lesson-complete-body p {
+          margin: 0 0 12px;
+        }
+        .lesson-complete-shell .lesson-complete-body p:last-child {
+          margin-bottom: 0;
+        }
+        .lesson-complete-shell .lesson-complete-actions {
+          display: flex;
+          gap: 18px;
+          justify-content: center;
+          flex-wrap: wrap;
+          margin-top: 8px;
+        }
+        .lesson-complete-shell .lesson-complete-btn {
+          border-radius: 9999px !important;
+          min-width: clamp(148px, 28vw, 200px);
+          box-shadow: 0 4px 14px rgba(74, 80, 128, 0.16);
+          transition: filter 0.2s ease, transform 0.15s ease;
+        }
+        .lesson-complete-shell .lesson-complete-btn:hover:not(:disabled) {
+          filter: brightness(1.06);
+          transform: translateY(-1px);
+        }
+        .lesson-complete-shell .lesson-complete-btn:active:not(:disabled) {
+          transform: translateY(0);
+        }
+        .lesson-complete-shell .lesson-complete-btn .user-cta-flash__label {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+        @media (min-width: 768px) {
+          .lesson-complete-shell .lesson-complete-title {
+            font-size: clamp(2.15rem, 3.4vw, 2.85rem) !important;
+            margin-bottom: clamp(22px, 3vw, 32px) !important;
+          }
+          .lesson-complete-shell .lesson-complete-body {
+            margin-bottom: clamp(22px, 3vw, 36px) !important;
+          }
+          .lesson-complete-shell .lesson-complete-body p:first-child {
+            font-size: clamp(1.35rem, 2.2vw, 1.6rem) !important;
+          }
+          .lesson-complete-shell .lesson-complete-body p:last-child {
+            font-size: clamp(1.2rem, 2vw, 1.45rem) !important;
+          }
+          .lesson-complete-shell .lesson-complete-actions {
+            gap: clamp(18px, 2.5vw, 28px) !important;
+          }
+          .lesson-complete-shell .lesson-complete-actions button {
+            font-size: clamp(1.1rem, 1.6vw, 1.25rem) !important;
+            padding: clamp(16px, 2vw, 22px) clamp(28px, 4vw, 44px) !important;
+            min-height: 56px !important;
+          }
+        }
+        @media (max-width: 767px) {
+          .lesson-complete-shell {
+            min-height: ${height} !important;
+            height: ${height} !important;
+            max-height: ${height} !important;
+          }
+          .lesson-complete-shell .lesson-complete-bg {
+            min-height: ${height};
+            height: ${height};
+            max-height: ${height};
+          }
+          .lesson-complete-shell .lesson-complete-title {
+            font-size: clamp(2.05rem, 8.5vw, 2.85rem) !important;
+            margin-bottom: clamp(20px, 5vw, 30px) !important;
+            line-height: 1.2 !important;
+          }
+          .lesson-complete-shell .lesson-complete-body {
+            margin-bottom: clamp(22px, 6vw, 36px) !important;
+          }
+          .lesson-complete-shell .lesson-complete-body p {
+            font-size: clamp(1.25rem, 5.2vw, 1.5rem) !important;
+            margin-bottom: clamp(10px, 3vw, 14px) !important;
+          }
+          .lesson-complete-shell .lesson-complete-body p:last-child {
+            font-size: clamp(1.15rem, 4.8vw, 1.4rem) !important;
+          }
+          .lesson-complete-shell .lesson-complete-actions {
+            gap: clamp(14px, 4vw, 22px) !important;
+          }
+          .lesson-complete-shell .lesson-complete-actions button {
+            font-size: clamp(1.12rem, 4.8vw, 1.35rem) !important;
+            padding: clamp(16px, 4.5vw, 22px) clamp(26px, 7vw, 40px) !important;
+            min-height: 58px !important;
+          }
+        }
+      `}</style>
+      <div className="lesson-complete-bg">
+        <div
+          className="lesson-complete-scene"
+          aria-hidden
+          style={{ backgroundImage: `url(${lessonCompleteBg})` }}
+        />
+        <div className="lesson-complete-content">
+          <h2
+            className="lesson-complete-title"
+            style={{
+              color: isPerfect ? "#c9a227" : "#6c7ee1",
+              fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
+              fontWeight: 800,
+            }}
+          >
+            Hoàn thành bài học
+          </h2>
+
+          <div className="lesson-complete-body" style={{ marginBottom: "24px" }}>
+            <p style={{ fontSize: "1.35em", fontWeight: 600 }}>
+              + {correctCount} điểm đạt được
+            </p>
+            <p style={{ fontSize: "1.25em", color: "#6c7ee1", fontWeight: 700 }}>
+              Đúng : {correctCount}/{totalQuestions}
+            </p>
+          </div>
+
+          {nextLessonError && (
+            <p
+              style={{
+                margin: "0 0 12px",
+                fontSize: "0.95em",
+                color: "#c62828",
+                fontWeight: 600,
+              }}
+              role="alert"
+            >
+              {nextLessonError}
+            </p>
+          )}
+
+          <div className="lesson-complete-actions">
+            <button
+              type="button"
+              className="lesson-complete-btn user-cta-flash"
+              onClick={onReplay}
+              style={{
+                ...resultBtnBase,
+                background: "#fba2d0",
+                color: "#4a5080",
+              }}
+            >
+              <span className="user-cta-flash__label">
+                <ReplayLineIcon />
+                <span>Chơi lại</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="lesson-complete-btn user-cta-flash"
+              onClick={goHome}
+              style={{
+                ...resultBtnBase,
+                background: "#c688eb",
+              }}
+            >
+              <span className="user-cta-flash__label">
+                <HomeLineIcon />
+                <span>Về trang chủ</span>
+              </span>
+            </button>
+            {nextLessonAvailable && (
+              <button
+                type="button"
+                className="lesson-complete-btn user-cta-flash"
+                onClick={handleGoNextLesson}
+                disabled={nextLessonLoading}
+                style={{
+                  ...resultBtnBase,
+                  background: "#ffc4a4",
+                  color: "#4a5080",
+                  opacity: nextLessonLoading ? 0.75 : 1,
+                }}
+              >
+                <span className="user-cta-flash__label">
+                  <NextLessonLineIcon />
+                  <span>{nextLessonLoading ? "Đang tải…" : "Bài tiếp"}</span>
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

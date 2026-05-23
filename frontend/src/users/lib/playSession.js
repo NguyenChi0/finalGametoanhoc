@@ -1,6 +1,7 @@
 export const SESSION_KEY = "game_play_state_v1";
 export const PREGAME_SESSION_KEY = "game_pregame_state_v1";
 export const LAST_LESSON_KEY = "lesson_last_selection_v1";
+export const LAST_GAME_INTERFACE_KEY = "game_interface_last_v1";
 
 function isValidLastLessonSelection(data) {
   return (
@@ -49,6 +50,35 @@ export function readLastLessonSelection() {
   } catch (e) {
     console.warn("Lỗi đọc bài học gần nhất:", e);
     return null;
+  }
+}
+
+/** Giao diện game lần chọn gần nhất (localStorage). */
+export function readLastGameInterface(validIds) {
+  const allowed = Array.isArray(validIds) ? new Set(validIds) : null;
+  try {
+    const raw = localStorage.getItem(LAST_GAME_INTERFACE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const id = parsed?.gameId;
+    if (typeof id !== "string" || !id) return null;
+    if (allowed && !allowed.has(id)) return null;
+    return id;
+  } catch (e) {
+    console.warn("Lỗi đọc giao diện game gần nhất:", e);
+    return null;
+  }
+}
+
+export function persistLastGameInterface(gameId) {
+  if (!gameId || typeof gameId !== "string") return;
+  try {
+    localStorage.setItem(
+      LAST_GAME_INTERFACE_KEY,
+      JSON.stringify({ gameId, ts: Date.now() })
+    );
+  } catch (e) {
+    console.warn("Không lưu được giao diện game gần nhất:", e);
   }
 }
 

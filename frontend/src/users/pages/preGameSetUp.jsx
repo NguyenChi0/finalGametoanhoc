@@ -3,11 +3,16 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { getLessons, getTypes, lessonImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import { GAME_OPTIONS } from "../lib/gameInterfaces";
+import GameInterfaceCarousel from "../components/GameInterfaceCarousel";
 import {
+  persistLastGameInterface,
   persistPlayState,
   persistPregamePayload,
+  readLastGameInterface,
   readPregamePayload,
 } from "../lib/playSession";
+
+const GAME_IDS = GAME_OPTIONS.map((o) => o.id);
 
 function isValidPlayPayload(p) {
   if (!p || typeof p !== "object") return false;
@@ -57,14 +62,18 @@ function needsPayloadHydration(p) {
     p.lesson.image == null || String(p.lesson.image).trim() === "";
   const missingTypeName = !p.type?.name;
   const missingLessonName = !p.lesson?.name;
-  return missingLessonImage || missingTypeName || missingLessonName;
+  const missingLessonDesc =
+    p.lesson.description == null || String(p.lesson.description).trim() === "";
+  return missingLessonImage || missingTypeName || missingLessonName || missingLessonDesc;
 }
 
 export default function PreGameSetUp() {
   const location = useLocation();
   const navigate = useNavigate();
   const [payload, setPayload] = useState(null);
-  const [gameId, setGameId] = useState("game1");
+  const [gameId, setGameId] = useState(
+    () => readLastGameInterface(GAME_IDS) ?? "game1"
+  );
   const [missing, setMissing] = useState(false);
   const [lessonImgFailed, setLessonImgFailed] = useState(false);
   const hydrateAttempted = useRef(false);
@@ -90,6 +99,10 @@ export default function PreGameSetUp() {
     setLessonImgFailed(false);
     hydrateAttempted.current = false;
   }, [payload?.lesson?.id, payload?.type?.id, payload?.lesson?.image, payload?.type?.name]);
+
+  useEffect(() => {
+    persistLastGameInterface(gameId);
+  }, [gameId]);
 
   useEffect(() => {
     if (!payload || !needsPayloadHydration(payload) || hydrateAttempted.current) {
@@ -130,6 +143,12 @@ export default function PreGameSetUp() {
               ...(lessonRow?.name && !prev.lesson?.name
                 ? { name: lessonRow.name }
                 : {}),
+              ...(lessonRow?.description != null &&
+              String(lessonRow.description).trim() !== "" &&
+              (prev.lesson?.description == null ||
+                String(prev.lesson.description).trim() === "")
+                ? { description: lessonRow.description }
+                : {}),
             },
           };
           persistPregamePayload(next);
@@ -149,10 +168,16 @@ export default function PreGameSetUp() {
       (payload.type?.id != null ? `Chủ đề ${payload.type.id}` : null);
     const lessonName = payload.lesson?.name || `Bài ${payload.lesson?.id ?? "—"}`;
     const questionCount = payload.questions?.length ?? 0;
+    const lessonDesc =
+      payload.lesson?.description != null &&
+      String(payload.lesson.description).trim() !== ""
+        ? String(payload.lesson.description).trim()
+        : null;
     const description =
-      questionCount > 0
-        ? `Sắp xếp số phạm vi 100`
-        : "Chưa có câu hỏi cho bài học này.";
+      lessonDesc ||
+      (questionCount > 0
+        ? `${questionCount} câu hỏi cho bài học này.`
+        : "Chưa có câu hỏi cho bài học này.");
     const thumbColor = thumbColorForLesson(payload.lesson?.id);
     const hasLessonDetail = lessonHasDetailImage(payload.lesson);
     const lessonDetailUrl = lessonDetailImageUrl(payload.lesson);
@@ -185,16 +210,33 @@ export default function PreGameSetUp() {
     : lessonMeta?.lessonChipBg || "";
   const showLessonThumbLabel = !lessonUsesDetailBg;
 
+  const pageBg = `${publicUrl}/component-images/home-background.png`;
+
   return (
     <>
       <style>{`
         .pregame-page {
+          position: relative;
           min-height: 100vh;
-          background: #f7f8fa;
+          overflow-x: hidden;
           padding: clamp(20px, 4vw, 48px) clamp(16px, 4vw, 32px) 56px;
           box-sizing: border-box;
         }
+        .pregame-bg-fixed {
+          position: fixed;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          background-color: #b8e0f5;
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          transform: translateZ(0);
+          backface-visibility: hidden;
+        }
         .pregame-inner {
+          position: relative;
+          z-index: 1;
           max-width: 960px;
           margin: 0 auto;
         }
@@ -212,7 +254,6 @@ export default function PreGameSetUp() {
           flex: 0 0 clamp(140px, 32vw, 220px);
           width: clamp(140px, 32vw, 220px);
           aspect-ratio: 1;
-          border-radius: 14px;
           align-self: flex-start;
           overflow: hidden;
           position: relative;
@@ -290,29 +331,14 @@ export default function PreGameSetUp() {
           border: 1px solid #e8eaed;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
         }
-        .pregame-actions-label {
-          display: block;
-          font-weight: 700;
-          margin-bottom: 8px;
-          color: #1a1d26;
-          font-size: 0.9rem;
-        }
-        .pregame-select {
-          width: 100%;
-          max-width: 100%;
-          padding: 12px 14px;
-          border-radius: 10px;
-          border: 1px solid #d8dce3;
-          font-size: 0.95rem;
-          margin-bottom: 16px;
-          box-sizing: border-box;
-          background: #fff;
-          color: #1a1d26;
+        .pregame-carousel-wrap {
+          margin-bottom: 20px;
         }
         .pregame-btns {
           display: flex;
           flex-wrap: wrap;
-          gap: 12px;
+          gap: 12px; 
+          font-family: inherit;
         }
         .pregame-btn-primary {
           flex: 1 1 160px;
@@ -324,6 +350,7 @@ export default function PreGameSetUp() {
           font-weight: 800;
           font-size: 1rem;
           cursor: pointer;
+          font-family: inherit;
         }
         .pregame-btn-primary:hover {
           background: #5a6ed4;
@@ -337,6 +364,7 @@ export default function PreGameSetUp() {
           color: #4a5080;
           font-weight: 600;
           cursor: pointer;
+          font-family: inherit;
         }
         .pregame-missing {
           text-align: center;
@@ -357,6 +385,11 @@ export default function PreGameSetUp() {
       `}</style>
 
       <div className="pregame-page">
+        <div
+          className="pregame-bg-fixed"
+          aria-hidden
+          style={{ backgroundImage: `url(${pageBg})` }}
+        />
         <div className="pregame-inner">
           {missing && (
             <div className="pregame-missing">
@@ -417,21 +450,13 @@ export default function PreGameSetUp() {
               </article>
 
               <section className="pregame-actions" aria-label="Cài đặt trước khi chơi">
-                <label htmlFor="pregame-interface" className="pregame-actions-label">
-                  Chọn giao diện game
-                </label>
-                <select
-                  id="pregame-interface"
-                  className="pregame-select"
-                  value={gameId}
-                  onChange={(e) => setGameId(e.target.value)}
-                >
-                  {GAME_OPTIONS.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="pregame-carousel-wrap">
+                  <GameInterfaceCarousel
+                    options={GAME_OPTIONS}
+                    value={gameId}
+                    onChange={setGameId}
+                  />
+                </div>
                 <div className="pregame-btns">
                   <button type="button" className="pregame-btn-primary" onClick={handlePlay}>
                     Chơi

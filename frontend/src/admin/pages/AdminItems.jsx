@@ -7,6 +7,7 @@ import {
   deleteAdminItem,
   itemImageUrl,
 } from "../../api";
+import { LEVEL_LABELS } from "../../users/lib/itemRarity";
 
 const ITEMS_PAGE_SIZE = 10;
 
@@ -37,6 +38,10 @@ function normalizeItemRow(row) {
       row.require_score != null && row.require_score !== ""
         ? Number(row.require_score)
         : 0,
+    level:
+      row.level != null && row.level !== ""
+        ? Math.min(6, Math.max(1, Number(row.level) || 1))
+        : 1,
   };
 }
 
@@ -55,6 +60,7 @@ export default function AdminItems() {
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formScore, setFormScore] = useState("0");
+  const [formLevel, setFormLevel] = useState("1");
   /** Giống AdminQuestionCreate: data URL hoặc chuỗi đường dẫn /items-images/... */
   const [itemImage, setItemImage] = useState("");
   const [itemImagePreview, setItemImagePreview] = useState("");
@@ -185,6 +191,7 @@ export default function AdminItems() {
     setFormName(it.name);
     setFormDesc(it.description || "");
     setFormScore(String(it.require_score ?? 0));
+    setFormLevel(String(it.level ?? 1));
     const lk = it.link ? String(it.link).trim() : "";
     setOriginalLink(lk);
     setItemImage(lk);
@@ -201,6 +208,7 @@ export default function AdminItems() {
     setFormName("");
     setFormDesc("");
     setFormScore("0");
+    setFormLevel("1");
     setOriginalLink("");
     setItemImage("");
     setItemImagePreview("");
@@ -218,6 +226,7 @@ export default function AdminItems() {
     setFormName("");
     setFormDesc("");
     setFormScore("0");
+    setFormLevel("1");
     setOriginalLink("");
     setItemImage("");
     setItemImagePreview("");
@@ -237,6 +246,11 @@ export default function AdminItems() {
     const scoreNum = Number(formScore);
     if (Number.isNaN(scoreNum) || scoreNum < 0) {
       setFormError("Giá (điểm) phải là số ≥ 0.");
+      return;
+    }
+    const levelNum = Number(formLevel);
+    if (!Number.isInteger(levelNum) || levelNum < 1 || levelNum > 6) {
+      setFormError("Cấp độ phải từ 1 đến 6.");
       return;
     }
 
@@ -272,6 +286,7 @@ export default function AdminItems() {
           name,
           description: desc || null,
           require_score: scoreNum,
+          level: levelNum,
           ...(fileToSend ? { imageFile: fileToSend } : {}),
           ...(pathOnly ? { item_image_path: pathOnly } : {}),
         });
@@ -281,6 +296,7 @@ export default function AdminItems() {
             name,
             description: desc,
             require_score: scoreNum,
+            level: levelNum,
             clear_item_image: true,
           });
         } else if (fileToSend || (pathOnly && pathOnly !== originalLink)) {
@@ -288,6 +304,7 @@ export default function AdminItems() {
             name,
             description: desc,
             require_score: scoreNum,
+            level: levelNum,
             ...(fileToSend ? { imageFile: fileToSend } : {}),
             ...(!fileToSend && pathOnly ? { item_image_path: pathOnly } : {}),
           });
@@ -296,6 +313,7 @@ export default function AdminItems() {
             name,
             description: desc,
             require_score: scoreNum,
+            level: levelNum,
             link: originalLink,
           });
         }
@@ -443,6 +461,10 @@ export default function AdminItems() {
                     <span style={styles.cardLabel}>Giá (điểm)</span>
                     <span style={{ ...styles.cardValue, fontWeight: 600 }}>{it.require_score}</span>
                   </div>
+                  <div style={styles.cardField}>
+                    <span style={styles.cardLabel}>Cấp</span>
+                    <span style={styles.cardValue}>{LEVEL_LABELS[it.level] || it.level}</span>
+                  </div>
                   <div style={styles.cardActions}>
                     <button
                       type="button"
@@ -479,13 +501,14 @@ export default function AdminItems() {
                   <th style={styles.th}>Mô tả</th>
                   <th style={{ ...styles.th, width: 88 }}>Ảnh</th>
                   <th style={{ ...styles.th, width: 110 }}>Giá (điểm)</th>
+                  <th style={{ ...styles.th, width: 100 }}>Cấp</th>
                   <th style={{ ...styles.th, textAlign: "right", width: 120 }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={styles.tdEmpty}>
+                    <td colSpan={7} style={styles.tdEmpty}>
                       Không có kết quả phù hợp với “{search}”.
                     </td>
                   </tr>
@@ -507,6 +530,7 @@ export default function AdminItems() {
                         <ItemThumb link={it.link} />
                       </td>
                       <td style={styles.td}>{it.require_score}</td>
+                      <td style={styles.td}>{LEVEL_LABELS[it.level] || it.level}</td>
                       <td style={{ ...styles.td, textAlign: "right" }}>
                         <button
                           type="button"
@@ -696,6 +720,20 @@ export default function AdminItems() {
                   style={styles.inputLight}
                   required
                 />
+              </label>
+              <label style={styles.label}>
+                Cấp độ (1–6)
+                <select
+                  value={formLevel}
+                  onChange={(e) => setFormLevel(e.target.value)}
+                  style={styles.inputLight}
+                >
+                  {Object.entries(LEVEL_LABELS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {k} — {label}
+                    </option>
+                  ))}
+                </select>
               </label>
               {formError && (
                 <div style={styles.formError} role="alert">

@@ -949,6 +949,7 @@ export default function LessonPage() {
         id: lessonId,
         name: lessonName,
         image: lessonRow?.image ?? null,
+        description: lessonRow?.description ?? null,
       },
       questions: shuffledQuestions,
       user: currentUser,

@@ -81,6 +81,8 @@ export default function AdminMathTypes() {
   const [opForTypeId, setOpForTypeId] = useState(null);
   const [opForTypeName, setOpForTypeName] = useState("");
   const [opName, setOpName] = useState("");
+  const [opDesc, setOpDesc] = useState("");
+  const [opStatus, setOpStatus] = useState("1");
   const [opFormImage, setOpFormImage] = useState("");
   const [opFormError, setOpFormError] = useState(null);
   const [savingOp, setSavingOp] = useState(false);
@@ -388,6 +390,8 @@ export default function AdminMathTypes() {
     setOpCreate(true);
     setOpEditId(null);
     setOpName("");
+    setOpDesc("");
+    setOpStatus("1");
     setOpFormImage("");
     setOpFormError(null);
     setOpModalOpen(true);
@@ -399,6 +403,8 @@ export default function AdminMathTypes() {
     setOpCreate(false);
     setOpEditId(op.id);
     setOpName(op.name);
+    setOpDesc(op.description || "");
+    setOpStatus(String(op.status === 0 || op.status === "0" ? 0 : 1));
     setOpFormImage(op.image || "");
     setOpFormError(null);
     setOpModalOpen(true);
@@ -411,6 +417,8 @@ export default function AdminMathTypes() {
     setOpForTypeId(null);
     setOpForTypeName("");
     setOpName("");
+    setOpDesc("");
+    setOpStatus("1");
     setOpFormImage("");
     setOpFormError(null);
   };
@@ -429,14 +437,23 @@ export default function AdminMathTypes() {
         return;
       }
       const imageVal = opFormImage.trim();
+      const descVal = opDesc.trim() || null;
+      const statusVal = Number(opStatus);
       if (opCreate) {
         await createAdminLesson({
           type_id: opForTypeId,
           name,
+          description: descVal,
+          status: statusVal,
           image: imageVal || null,
         });
       } else if (opEditId != null) {
-        await updateAdminLesson(opEditId, { name, image: imageVal || null });
+        await updateAdminLesson(opEditId, {
+          name,
+          description: descVal,
+          status: statusVal,
+          image: imageVal || null,
+        });
       }
       await loadLessonsForType(typeRow);
       closeOpModal();
@@ -1296,6 +1313,28 @@ export default function AdminMathTypes() {
                   required
                   autoFocus
                 />
+              </label>
+              <label style={styles.label}>
+                Mô tả (pregame)
+                <textarea
+                  value={opDesc}
+                  onChange={(e) => setOpDesc(e.target.value)}
+                  style={{ ...styles.inputLight, minHeight: 72, resize: "vertical" }}
+                  rows={3}
+                  disabled={savingOp}
+                />
+              </label>
+              <label style={styles.label}>
+                Trạng thái (chưa lọc trên bản đồ)
+                <select
+                  value={opStatus}
+                  onChange={(e) => setOpStatus(e.target.value)}
+                  style={styles.inputLight}
+                  disabled={savingOp}
+                >
+                  <option value="1">1 — Hiện</option>
+                  <option value="0">0 — Ẩn</option>
+                </select>
               </label>
               <CurriculumImageField
                 kind="lesson"

@@ -120,11 +120,15 @@ export const getAuthMe = async () => {
 // Contests (trang user — không qua /admin)
 // ==========================
 /**
- * Danh sách cuộc thi (user): chỉ cuộc đang diễn ra (`status === 2`).
- * Mỗi phần tử có `exam_duration_minutes` / `duration_time` = thời gian làm bài (phút) từ DB.
+ * Danh sách cuộc thi (user): toàn bộ cuộc thi, lọc khối + phân trang.
+ * @param {{ grade_id?: number|string, page?: number, page_size?: number }} [opts]
+ * @returns {Promise<{ data: object[], pagination: { page, page_size, total, total_pages } }>}
  */
-export const getContests = async () => {
-  const res = await api.get("/contests");
+export const getContests = async (opts = {}) => {
+  const params = Object.fromEntries(
+    Object.entries(opts).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await api.get("/contests", { params });
   return res.data;
 };
 
@@ -295,8 +299,22 @@ export const getAdminLesson = async (id) => {
   return res.data;
 };
 
-export const createAdminLesson = async ({ type_id, name, image, sort_order }) => {
-  const res = await api.post("/admin/lessons", { type_id, name, image, sort_order });
+export const createAdminLesson = async ({
+  type_id,
+  name,
+  description,
+  status,
+  image,
+  sort_order,
+}) => {
+  const res = await api.post("/admin/lessons", {
+    type_id,
+    name,
+    description,
+    status,
+    image,
+    sort_order,
+  });
   return res.data;
 };
 
@@ -431,6 +449,9 @@ export const createAdminItem = async (payload) => {
     fd.append("name", rest.name ?? "");
     fd.append("description", rest.description ?? "");
     fd.append("require_score", String(rest.require_score ?? 0));
+    if (rest.level != null && rest.level !== "") {
+      fd.append("level", String(rest.level));
+    }
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name ? imageFile.name : "item.png";
@@ -471,6 +492,9 @@ export const updateAdminItem = async (id, payload) => {
     fd.append("name", rest.name ?? "");
     fd.append("description", rest.description ?? "");
     fd.append("require_score", String(rest.require_score ?? 0));
+    if (rest.level != null && rest.level !== "") {
+      fd.append("level", String(rest.level));
+    }
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name ? imageFile.name : "item.png";
@@ -658,10 +682,22 @@ export const updateQuestion = async (id, payload) => {
   return res.data;
 };
 
-export const deleteQuestion = async (id) => {
+/** Mẫu đề đang chứa câu hỏi — dùng trước khi xóa có force. */
+export const getQuestionUsage = async (id) => {
   const qid = Number(id);
   if (!qid) throw new Error("id không hợp lệ");
-  const res = await api.delete(`/questions/${qid}`);
+  const res = await api.get(`/questions/${qid}/usage`);
+  return res.data;
+};
+
+/**
+ * Xóa câu hỏi. `{ force: true }` gỡ khỏi mẫu đề liên quan rồi xóa (transaction server).
+ */
+export const deleteQuestion = async (id, { force } = {}) => {
+  const qid = Number(id);
+  if (!qid) throw new Error("id không hợp lệ");
+  const params = force ? { force: 1 } : undefined;
+  const res = await api.delete(`/questions/${qid}`, { params });
   return res.data;
 };
 

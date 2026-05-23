@@ -265,6 +265,28 @@ function normalizeExamTemplateDurationMinutes(raw, { required = false } = {}) {
   return n;
 }
 
+function parseLessonStatus(raw) {
+  if (raw === undefined || raw === null || raw === '') return 1;
+  const n = Number(raw);
+  if (n !== 0 && n !== 1) {
+    const e = new Error('status phải là 0 hoặc 1');
+    e.statusCode = 400;
+    throw e;
+  }
+  return n;
+}
+
+function parseItemLevel(raw, { defaultVal = 1 } = {}) {
+  if (raw === undefined || raw === null || raw === '') return defaultVal;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 6) {
+    const e = new Error('level phải từ 1 đến 6');
+    e.statusCode = 400;
+    throw e;
+  }
+  return n;
+}
+
 function parseSortOrder(raw, { required = false } = {}) {
   if (raw === undefined || raw === null || raw === '') {
     if (required) {
@@ -811,7 +833,8 @@ module.exports = function mountAdminCrud(app, pool) {
 
   app.post('/api/admin/lessons', async (req, res) => {
     try {
-      const { type_id, name, image, sort_order: sortOrderRaw } = req.body || {};
+      const { type_id, name, description, status, image, sort_order: sortOrderRaw } =
+        req.body || {};
       const tid = Number(type_id);
       if (!tid || !name) {
         return res.status(400).json({ message: 'type_id và name là bắt buộc' });
@@ -820,9 +843,14 @@ module.exports = function mountAdminCrud(app, pool) {
       const sortOrder = parsedSort != null ? parsedSort : await nextLessonSortOrder(tid);
       const imagePath =
         image !== undefined ? normalizeLessonImagePath(image) : null;
+      const desc =
+        description != null && String(description).trim() !== ''
+          ? String(description).trim()
+          : null;
+      const statusVal = parseLessonStatus(status);
       const [result] = await pool.query(
-        'INSERT INTO lessons (type_id, name, image, sort_order) VALUES (?, ?, ?, ?)',
-        [tid, String(name).trim(), imagePath, sortOrder]
+        'INSERT INTO lessons (type_id, name, description, status, image, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+        [tid, String(name).trim(), desc, statusVal, imagePath, sortOrder]
       );
       const [rows] = await pool.query('SELECT * FROM lessons WHERE id = ?', [result.insertId]);
       res.status(201).json(rows[0]);
@@ -840,7 +868,8 @@ module.exports = function mountAdminCrud(app, pool) {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
     try {
-      const { type_id, name, image, sort_order: sortOrderRaw } = req.body || {};
+      const { type_id, name, description, status, image, sort_order: sortOrderRaw } =
+        req.body || {};
       const updates = [];
       const params = [];
       if (type_id != null) {
@@ -850,6 +879,16 @@ module.exports = function mountAdminCrud(app, pool) {
       if (name != null) {
         updates.push('name = ?');
         params.push(String(name).trim());
+      }
+      if (description !== undefined) {
+        updates.push('description = ?');
+        params.push(
+          description === '' || description === null ? null : String(description).trim()
+        );
+      }
+      if (status !== undefined && status !== '') {
+        updates.push('status = ?');
+        params.push(parseLessonStatus(status));
       }
       if (image !== undefined) {
         updates.push('image = ?');
@@ -1601,7 +1640,7 @@ module.exports = function mountAdminCrud(app, pool) {
     },
     async (req, res) => {
       try {
-        const { name, description, require_score } = req.body || {};
+        const { name, description, require_score, level } = req.body || {};
         if (!name || String(name).trim() === '') {
           if (req.file && req.file.path) {
             try {
@@ -1635,8 +1674,9 @@ module.exports = function mountAdminCrud(app, pool) {
         /** Một số DB `items.id` không AUTO_INCREMENT — gán id = MAX(id)+1 */
         const [[{ mx }]] = await pool.query('SELECT COALESCE(MAX(id), 0) AS mx FROM items');
         const nextId = Number(mx) + 1;
+        const levelVal = parseItemLevel(level);
         await pool.query(
-          'INSERT INTO items (id, name, description, link, require_score) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO items (id, name, description, link, require_score, level) VALUES (?, ?, ?, ?, ?, ?)',
           [
             nextId,
             String(name).trim(),
@@ -1645,6 +1685,7 @@ module.exports = function mountAdminCrud(app, pool) {
               : null,
             linkVal,
             score,
+            levelVal,
           ]
         );
         const [rows] = await pool.query('SELECT * FROM items WHERE id = ?', [nextId]);
@@ -1732,7 +1773,7 @@ module.exports = function mountAdminCrud(app, pool) {
             }
           }
 
-          const { name, description, require_score } = req.body || {};
+          const { name, description, require_score, level } = req.body || {};
           if (name != null && String(name).trim() !== '') {
             updates.push('name = ?');
             params.push(String(name).trim());
@@ -1756,8 +1797,12 @@ module.exports = function mountAdminCrud(app, pool) {
             updates.push('require_score = ?');
             params.push(s);
           }
+          if (level !== undefined && level !== '') {
+            updates.push('level = ?');
+            params.push(parseItemLevel(level));
+          }
         } else {
-          const { name, description, link, require_score } = req.body || {};
+          const { name, description, link, require_score, level } = req.body || {};
           if (name != null) {
             updates.push('name = ?');
             params.push(String(name).trim());
@@ -1783,6 +1828,10 @@ module.exports = function mountAdminCrud(app, pool) {
             }
             updates.push('require_score = ?');
             params.push(s);
+          }
+          if (level !== undefined && level !== '') {
+            updates.push('level = ?');
+            params.push(parseItemLevel(level));
           }
         }
 

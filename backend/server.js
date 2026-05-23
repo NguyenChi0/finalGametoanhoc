@@ -270,7 +270,7 @@ app.get('/api/hierarchy-labels', async (req, res) => {
       'SELECT id, grade_id, name FROM types ORDER BY grade_id, sort_order ASC, id ASC'
     );
     const [lessonRows] = await pool.query(
-      'SELECT id, type_id, name FROM lessons ORDER BY type_id, sort_order ASC, id ASC'
+      'SELECT id, type_id, name, description, status FROM lessons ORDER BY type_id, sort_order ASC, id ASC'
     );
     res.json({ grades: gradeRows, types: typeRows, lessons: lessonRows });
   } catch (err) {
@@ -303,7 +303,7 @@ async function lessonsByTypeHandler(req, res) {
 
   try {
     const [rows] = await pool.query(
-      'SELECT id, type_id, name, image, sort_order FROM lessons WHERE type_id = ? ORDER BY sort_order ASC, id ASC',
+      'SELECT id, type_id, name, description, status, image, sort_order FROM lessons WHERE type_id = ? ORDER BY sort_order ASC, id ASC',
       [type_id]
     );
     res.json(rows);
@@ -455,6 +455,61 @@ app.get('/api/questions', async (req, res) => {
     res.status(500).json({ message: 'Lỗi khi lấy questions', error: err.message });
   }
 });
+
+/** Danh sách mẫu đề đang chứa câu hỏi (dùng cho cảnh báo / xóa có force). */
+async function fetchExamTemplatesUsingQuestion(queryable, questionId) {
+  const [tplRows] = await queryable.query(
+    `SELECT t.id, t.name, t.grade_id, g.name AS grade_name
+     FROM exam_template_questions etq
+     INNER JOIN exam_templates t ON t.id = etq.template_id
+     LEFT JOIN grades g ON g.id = t.grade_id
+     WHERE etq.question_id = ?
+     ORDER BY t.id ASC`,
+    [questionId]
+  );
+  return tplRows;
+}
+
+function unlinkQuestionImageFileIfStored(relImg) {
+  const rel = String(relImg || '').trim();
+  if (!rel.startsWith('/questions-images/')) return;
+  const filename = path.basename(rel);
+  const absolutePath = path.join(QUESTIONS_IMAGES_DIR, filename);
+  if (fs.existsSync(absolutePath)) {
+    try {
+      fs.unlinkSync(absolutePath);
+    } catch (_) {}
+  }
+}
+
+// 5b) Mẫu đề đang dùng câu hỏi (admin — trước GET /:id)
+app.get(
+  '/api/questions/:id/usage',
+  authenticateToken,
+  requireAdminRole,
+  async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
+    try {
+      const [[existing]] = await pool.query(
+        'SELECT id FROM questions WHERE id = ? LIMIT 1',
+        [id]
+      );
+      if (!existing) {
+        return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
+      }
+      const exam_templates = await fetchExamTemplatesUsingQuestion(pool, id);
+      return res.json({
+        id,
+        in_exam_template_count: exam_templates.length,
+        exam_templates,
+      });
+    } catch (err) {
+      console.error('Error GET /api/questions/:id/usage:', err);
+      return res.status(500).json({ message: 'Lỗi khi lấy thông tin sử dụng câu hỏi', error: err.message });
+    }
+  }
+);
 
 // 5) Lấy một câu hỏi chi tiết theo id
 app.get('/api/questions/:id', async (req, res) => {
@@ -823,6 +878,12 @@ app.delete('/api/questions/:id', authenticateToken, requireAdminRole, async (req
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
 
+  const force =
+    req.query.force === '1' ||
+    req.query.force === 'true' ||
+    req.body?.force === true ||
+    req.body?.force === 1;
+
   try {
     const [[existing]] = await pool.query(
       'SELECT id, question_image FROM questions WHERE id = ? LIMIT 1',
@@ -832,38 +893,45 @@ app.delete('/api/questions/:id', authenticateToken, requireAdminRole, async (req
       return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
     }
 
-    const [[refRow]] = await pool.query(
-      'SELECT COUNT(*) AS cnt FROM exam_template_questions WHERE question_id = ?',
-      [id]
-    );
-    if (Number(refRow?.cnt ?? 0) > 0) {
+    const exam_templates = await fetchExamTemplatesUsingQuestion(pool, id);
+    if (exam_templates.length > 0 && !force) {
       return res.status(409).json({
         message:
-          'Không thể xóa vì câu hỏi đang được sử dụng trong mẫu đề. Hãy gỡ câu hỏi khỏi đề trong Quản lý exams trước.',
+          'Không thể xóa vì câu hỏi đang được sử dụng trong mẫu đề. Gửi lại với ?force=1 để gỡ khỏi các đề và xóa.',
+        exam_templates,
       });
     }
 
-    const [result] = await pool.query('DELETE FROM questions WHERE id = ?', [id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
-    }
-
-    const relImg = String(existing.question_image || '').trim();
-    if (relImg.startsWith('/questions-images/')) {
-      const filename = path.basename(relImg);
-      const absolutePath = path.join(QUESTIONS_IMAGES_DIR, filename);
-      if (fs.existsSync(absolutePath)) {
-        try {
-          fs.unlinkSync(absolutePath);
-        } catch (_) {}
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      if (exam_templates.length > 0) {
+        await conn.query('DELETE FROM exam_template_questions WHERE question_id = ?', [id]);
       }
+      const [result] = await conn.query('DELETE FROM questions WHERE id = ?', [id]);
+      if (result.affectedRows === 0) {
+        await conn.rollback();
+        return res.status(404).json({ message: 'Không tìm thấy câu hỏi' });
+      }
+      await conn.commit();
+    } catch (txErr) {
+      await conn.rollback();
+      throw txErr;
+    } finally {
+      conn.release();
     }
 
-    return res.json({ message: 'Đã xóa câu hỏi', id });
+    unlinkQuestionImageFileIfStored(existing.question_image);
+
+    return res.json({
+      message: 'Đã xóa câu hỏi',
+      id,
+      removed_from_exam_templates: exam_templates.length,
+    });
   } catch (err) {
     if (err?.code === 'ER_ROW_IS_REFERENCED_2' || err?.errno === 1451) {
       return res.status(409).json({
-        message: 'Không thể xóa vì câu hỏi đang được sử dụng ở đề thi.',
+        message: 'Không thể xóa vì câu hỏi đang được tham chiếu ở nơi khác.',
       });
     }
     console.error('Error DELETE /api/questions/:id:', err);
@@ -1005,7 +1073,7 @@ app.get('/api/user/:username', authenticateToken, async (req, res) => {
 
     // 4) Lấy items
     const [itemRows] = await pool.execute(
-      `SELECT i.id, i.name, i.description, i.link, i.require_score, ui.purchased_at
+      `SELECT i.id, i.name, i.description, i.link, i.require_score, i.level, ui.purchased_at
        FROM user_items ui
        JOIN items i ON ui.item_id = i.id
        WHERE ui.user_id = ?`,
@@ -1283,6 +1351,38 @@ app.get('/api/contests', authenticateToken, async (req, res) => {
   }
   try {
     await syncContestJobs();
+    const rawGradeId = req.query.grade_id;
+    const gradeId =
+      rawGradeId != null && String(rawGradeId).trim() !== '' ? Number(rawGradeId) : null;
+    const rawPage = Number(req.query.page);
+    const rawPageSize = Number(req.query.page_size);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const pageSize =
+      Number.isFinite(rawPageSize) && rawPageSize > 0
+        ? Math.min(100, Math.floor(rawPageSize))
+        : 5;
+    const offset = (page - 1) * pageSize;
+
+    const where = [];
+    const whereParams = [];
+    if (Number.isFinite(gradeId) && gradeId > 0) {
+      where.push('COALESCE(c.grade_id, t.grade_id) = ?');
+      whereParams.push(gradeId);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const baseFrom = `
+       FROM contests c
+       INNER JOIN exam_templates t ON t.id = c.template_id
+       LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
+       LEFT JOIN user_contests uc ON uc.contest_id = c.id AND uc.user_id = ?`;
+
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total ${baseFrom} ${whereSql}`,
+      [userId, ...whereParams]
+    );
+    const total = Number(countRows?.[0]?.total || 0);
+
     const [rows] = await pool.query(
       `SELECT c.id, c.name, c.prize, c.template_id, c.created_at, c.start_time, c.end_time, c.status, c.description,
               c.duration_time,
@@ -1290,16 +1390,27 @@ app.get('/api/contests', authenticateToken, async (req, res) => {
               (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.template_id = c.template_id) AS question_count,
               uc.score AS my_score,
               CASE WHEN uc.id IS NOT NULL THEN 1 ELSE 0 END AS completed
-       FROM contests c
-       INNER JOIN exam_templates t ON t.id = c.template_id
-       LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
-       LEFT JOIN user_contests uc ON uc.contest_id = c.id AND uc.user_id = ?
-       ORDER BY c.start_time DESC, c.id DESC`,
-      [userId]
+       ${baseFrom}
+       ${whereSql}
+       ORDER BY
+         CASE c.status WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 0 THEN 2 ELSE 3 END ASC,
+         CASE WHEN c.status = 1 THEN c.start_time END ASC,
+         CASE WHEN c.status = 0 THEN c.end_time END DESC,
+         CASE WHEN c.status = 2 THEN c.start_time END DESC,
+         c.id DESC
+       LIMIT ? OFFSET ?`,
+      [userId, ...whereParams, pageSize, offset]
     );
     const shaped = rows.map(shapePublicContestRow);
-    // Trang user: chỉ liệt kê cuộc thi đang diễn ra (theo thời gian → status = 2).
-    res.json(shaped.filter((c) => c.status === CONTEST_STATUS_ACTIVE));
+    res.json({
+      data: shaped,
+      pagination: {
+        page,
+        page_size: pageSize,
+        total,
+        total_pages: Math.max(1, Math.ceil(total / pageSize) || 1),
+      },
+    });
   } catch (err) {
     console.error('Error GET /api/contests:', err);
     res.status(500).json({ message: 'L\u1ED7i khi l\u1EA5y danh s\u00E1ch cu\u1ED9c thi' });

@@ -1,8 +1,10 @@
 // src/components/games/game5.jsx — Marlin & Nemo tìm Dory giữa đám cá (đáp án)
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import LessonCompleteScreen from "./LessonCompleteScreen";
+import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 const gameShellStyle = {
   width: "100%",
@@ -31,11 +33,12 @@ const img = (name) =>
   `${publicUrl || ""}/game-images/${name}`;
 
 export default function Game5({ payload, onLessonComplete }) {
-  const [gameStarted, setGameStarted] = useState(false);
+  const [gameStarted, setGameStarted] = useState(true);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [questions, setQuestions] = useState(payload?.questions || []);
+  const [questions, setQuestions] = useState(() =>
+    prepareSessionQuestions(payload?.questions)
+  );
   const [selected, setSelected] = useState({});
-  const [isLoading, setIsLoading] = useState(false);
   /** Phản hồi toàn màn: ảnh đúng/sai — không dùng lớp phủ xám trên thẻ cá */
   const [feedbackFlash, setFeedbackFlash] = useState(null);
   const [correctCount, setCorrectCount] = useState(0);
@@ -44,22 +47,7 @@ export default function Game5({ payload, onLessonComplete }) {
   const correctSound = new Audio(`${publicUrl}/game-noises/dung.mp3`);
   const wrongSound = new Audio(`${publicUrl}/game-noises/wrong.mp3`);
 
-  const currentQuestion = useMemo(() => {
-    if (!questions[currentQuestionIndex]) return null;
-
-    function shuffle(arr) {
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    }
-
-    const q = questions[currentQuestionIndex];
-    const answers = Array.isArray(q.answers) ? shuffle(q.answers) : [];
-    return { ...q, answers };
-  }, [questions, currentQuestionIndex]);
+  const currentQuestion = questions[currentQuestionIndex] ?? null;
 
   async function incrementScoreOnServer(userId, delta = 1) {
     try {
@@ -95,21 +83,6 @@ export default function Game5({ payload, onLessonComplete }) {
     });
   }
 
-  async function fetchNextQuestion() {
-    if (isLoading) return;
-    setIsLoading(true);
-    try {
-      const resp = await api.get(`/game/next-question?current=${currentQuestionIndex + 1}`);
-      if (resp.data?.question) {
-        setQuestions((prev) => [...prev, resp.data.question]);
-      }
-    } catch (e) {
-      console.warn("Lỗi fetch câu hỏi tiếp theo:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   function choose(qId, ansIdx) {
     if (selected[qId] !== undefined) return;
 
@@ -123,40 +96,27 @@ export default function Game5({ payload, onLessonComplete }) {
       setFeedbackFlash("correct");
       setTimeout(() => {
         setFeedbackFlash(null);
-        setCurrentQuestionIndex((prev) => {
-          const next = prev + 1;
-          if (next >= questions.length - 2) fetchNextQuestion();
-          return next;
-        });
+        setCurrentQuestionIndex((prev) => prev + 1);
       }, 2000);
     } else {
       wrongSound.play().catch((e) => console.warn("Âm thanh:", e));
       setFeedbackFlash("wrong");
       setTimeout(() => {
         setFeedbackFlash(null);
-        setCurrentQuestionIndex((prev) => {
-          const next = prev + 1;
-          if (next >= questions.length - 2) fetchNextQuestion();
-          return next;
-        });
+        setCurrentQuestionIndex((prev) => prev + 1);
       }, 1500);
     }
   }
 
   function resetGame() {
+    setGameStarted(true);
     setCurrentQuestionIndex(0);
-    setQuestions(payload?.questions || []);
+    setQuestions(prepareSessionQuestions(payload?.questions));
     setSelected({});
     setFeedbackFlash(null);
     setCorrectCount(0);
     finishSentRef.current = false;
   }
-
-  useEffect(() => {
-    if (questions.length === 0 && gameStarted) {
-      fetchNextQuestion();
-    }
-  }, [gameStarted]);
 
   useEffect(() => {
     const noMoreQuestion = !questions[currentQuestionIndex];
@@ -171,120 +131,15 @@ export default function Game5({ payload, onLessonComplete }) {
 
   const totalQuestions = questions.length;
 
-  if (!gameStarted) {
+  if (gameStarted && !currentQuestion) {
     return (
-      <div style={startEndRootStyle}>
-        <style>{`
-          .game5-start-card {
-            width: 100%;
-            max-width: min(640px, calc(100vw - 24px));
-            box-sizing: border-box;
-            background: rgba(255,255,255,0.96);
-            padding: clamp(18px, 5vw, 40px);
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-          }
-          .game5-start-title {
-            margin: 0 0 clamp(10px, 2vw, 16px);
-            color: #01579b;
-            font-size: clamp(1.1rem, 4vw, 1.65rem);
-            line-height: 1.3;
-          }
-          .game5-start-story {
-            text-align: left;
-            font-size: clamp(0.88rem, 2.9vw, 1rem);
-            color: #37474f;
-            line-height: 1.6;
-            margin-bottom: clamp(16px, 3vw, 22px);
-          }
-          .game5-start-btn {
-            width: 100%;
-            max-width: 320px;
-            padding: clamp(12px, 3vw, 16px) clamp(20px, 5vw, 40px);
-            font-size: clamp(0.95rem, 3.5vw, 1.1rem);
-            font-weight: 700;
-            background: linear-gradient(135deg, #29b6f6 0%, #0277bd 100%);
-            color: white;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-          }
-        `}</style>
-        <div className="game5-start-card">
-          <h2 className="game5-start-title">Finding Dory</h2>
-          <div className="game5-start-story">
-            <p style={{ marginTop: 0 }}>
-              Cô bạn cá Dory hay quên đã lạc vào 1 đàn cá xanh. Hãy chọn đáp án đúng để đưa cá hề bố Martin và cá hề con Nemo về với cô bạn thân!
-            </p>
-          </div>
-          <button
-            type="button"
-            className="game5-start-btn"
-            onClick={() => setGameStarted(true)}
-          >
-            🎮 Bắt đầu
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!currentQuestion) {
-    const n = questions.length;
-    return (
-      <div style={startEndRootStyle}>
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "min(640px, calc(100vw - 24px))",
-            boxSizing: "border-box",
-            background: "rgba(255,255,255,0.96)",
-            padding: "clamp(18px, 5vw, 40px)",
-            borderRadius: 16,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-          }}
-        >
-          <h2 style={{ color: "#01579b", margin: "0 0 16px" }}>🎉 Hoàn thành!</h2>
-          <p style={{ fontSize: "clamp(0.95rem, 3vw, 1.1rem)", color: "#37474f", marginBottom: 20 }}>
-            <b>{n}/{n}</b> câu
-          </p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={resetGame}
-              style={{
-                padding: "12px 24px",
-                borderRadius: 999,
-                border: "none",
-                fontWeight: 700,
-                cursor: "pointer",
-                background: "linear-gradient(135deg, #29b6f6, #0277bd)",
-                color: "white",
-              }}
-            >
-              🔄 Chơi lại
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = "/gametoanhoc";
-              }}
-              style={{
-                padding: "12px 24px",
-                borderRadius: 999,
-                border: "none",
-                fontWeight: 700,
-                cursor: "pointer",
-                background: "linear-gradient(135deg, #26c6da, #00838f)",
-                color: "white",
-              }}
-            >
-              🏠 Trang chủ
-            </button>
-          </div>
-        </div>
-      </div>
+      <LessonCompleteScreen
+        payload={payload}
+        correctCount={correctCount}
+        totalQuestions={totalQuestions}
+        onReplay={resetGame}
+        height="70vh"
+      />
     );
   }
 
@@ -542,21 +397,6 @@ export default function Game5({ payload, onLessonComplete }) {
         </div>
       </div>
 
-      {isLoading && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 8,
-            left: "50%",
-            transform: "translateX(-50%)",
-            color: "#e3f2fd",
-            fontSize: 12,
-            textShadow: "0 1px 2px #000",
-          }}
-        >
-          Đang tải câu…
-        </div>
-      )}
     </div>
   );
 }

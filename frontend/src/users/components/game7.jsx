@@ -3,11 +3,13 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import LessonCompleteScreen from "./LessonCompleteScreen";
+import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   const questions = payload?.questions || [];
 
-  const [gameState, setGameState] = useState('start'); // 'start', 'playing', 'finished'
+  const [gameState, setGameState] = useState('playing'); // 'playing', 'finished'
   const [selected, setSelected] = useState({});
   const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
@@ -19,22 +21,12 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   const [finalScore, setFinalScore] = useState(0);
   const gameAreaRef = useRef(null);
   const finishSentRef = useRef(false);
+  const [shuffleSeed, setShuffleSeed] = useState(0);
 
-  // Shuffle câu trả lời
-  const qs = useMemo(() => {
-    function shuffle(arr) {
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    }
-    return questions.map((q) => {
-      const answers = Array.isArray(q.answers) ? shuffle(q.answers) : [];
-      return { ...q, answers };
-    });
-  }, [questions]);
+  const qs = useMemo(
+    () => prepareSessionQuestions(questions),
+    [questions, shuffleSeed]
+  );
 
   const currentQuestion = qs[currentQuestionIndex];
 
@@ -209,6 +201,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   }
 
   function restartGame() {
+    setShuffleSeed((s) => s + 1);
     startGame();
   }
 
@@ -220,257 +213,16 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
     }
   }
 
-  // Màn hình Start (giống game2)
-  if (gameState === 'start') {
+  if (gameState === "finished") {
     return (
-      <div
-        style={{
-          width: "100%",
-          minHeight: "100vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <style>{`
-          .game7-start-card {
-            width: 100%;
-            max-width: min(600px, calc(100vw - 24px));
-            box-sizing: border-box;
-            background: white;
-            padding: clamp(16px, 5vw, 36px);
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-          }
-          .game7-start-title {
-            margin: 0 0 clamp(12px, 3vw, 20px);
-            color: #2c3e50;
-            font-size: clamp(1.1rem, 4.2vw, 1.65rem);
-            line-height: 1.25;
-            word-wrap: break-word;
-          }
-          .game7-start-scores {
-            margin-bottom: clamp(12px, 3vw, 18px);
-            font-size: clamp(0.85rem, 3.2vw, 1rem);
-            line-height: 1.45;
-            word-wrap: break-word;
-          }
-          .game7-start-rules {
-            background: #ecf0f1;
-            padding: clamp(12px, 3.5vw, 20px);
-            border-radius: 12px;
-            margin: 0 auto clamp(14px, 3vw, 20px);
-            text-align: left;
-          }
-          .game7-start-rules h3 {
-            margin: 0 0 8px;
-            color: #34495e;
-            font-size: clamp(0.95rem, 3.4vw, 1.1rem);
-          }
-          .game7-start-rules ul {
-            margin: 0;
-            padding-left: 1.15rem;
-            line-height: 1.65;
-            font-size: clamp(0.8rem, 2.8vw, 0.95rem);
-          }
-          .game7-start-btn {
-            width: 100%;
-            max-width: 320px;
-            padding: clamp(12px, 3vw, 16px) clamp(20px, 5vw, 40px);
-            font-size: clamp(0.95rem, 3.5vw, 1.15rem);
-            font-weight: 700;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-            box-sizing: border-box;
-          }
-        `}</style>
-        <div className="game7-start-card">
-          <h2 className="game7-start-title">🚪 HÀNH TRÌNH QUA CÁNH CỬA 🚪</h2>
-
-          {userScore !== null && (
-            <div className="game7-start-scores">
-              <span style={{ marginRight: "clamp(8px, 2vw, 16px)" }}>
-                Điểm tổng: <b style={{ color: "#e74c3c" }}>{userScore}</b>
-              </span>
-              <span>
-                Điểm tuần: <b style={{ color: "#3498db" }}>{weekScore}</b>
-              </span>
-            </div>
-          )}
-
-          <div className="game7-start-rules">
-            <h3>📜 Cách chơi:</h3>
-            <ul>
-              <li>Di chuyển nhân vật bằng phím ← →</li>
-              <li>Nhấn ENTER để chọn cánh cửa gần nhất</li>
-              <li>Chọn đúng cánh cửa có đáp án đúng</li>
-              <li>
-                Bài gồm <b>{qs.length}</b> câu hỏi
-              </li>
-            </ul>
-          </div>
-
-          <button
-            type="button"
-            className="game7-start-btn"
-            onClick={startGame}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = "scale(1.02)";
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-            }}
-          >
-            🎮 Bắt đầu cuộc phiêu lưu
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Màn hình kết thúc
-  if (gameState === 'finished') {
-    return (
-      <div
-        style={{
-          width: "100%",
-          minHeight: "100vh",
-          padding: "clamp(10px, 3vw, 24px)",
-          boxSizing: "border-box",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          overflowX: "hidden",
-          overflowY: "auto",
-        }}
-      >
-        <style>{`
-          .game7-end-card {
-            width: 100%;
-            max-width: min(600px, calc(100vw - 24px));
-            box-sizing: border-box;
-          }
-          .game7-end-title {
-            margin: 0 0 clamp(12px, 3vw, 20px);
-            color: #2c3e50;
-            font-size: clamp(1.15rem, 4.5vw, 1.75rem);
-            line-height: 1.25;
-            word-wrap: break-word;
-          }
-          .game7-end-score {
-            margin: 0 0 clamp(16px, 4vw, 28px);
-            font-size: clamp(0.95rem, 3.8vw, 1.35rem);
-            line-height: 1.35;
-            font-weight: bold;
-            word-wrap: break-word;
-            padding: 0 2px;
-          }
-          .game7-end-actions {
-            display: flex;
-            gap: clamp(10px, 2.5vw, 16px);
-            justify-content: center;
-            flex-wrap: wrap;
-            width: 100%;
-          }
-          .game7-end-actions button {
-            box-sizing: border-box;
-            padding: clamp(10px, 2.5vw, 14px) clamp(16px, 4vw, 28px);
-            font-size: clamp(0.9rem, 3.2vw, 1.05rem);
-            font-weight: 700;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-            flex: 1 1 auto;
-            min-width: min(100%, 140px);
-            max-width: 100%;
-          }
-          @media (max-width: 480px) {
-            .game7-end-actions {
-              flex-direction: column;
-              align-items: stretch;
-            }
-            .game7-end-actions button {
-              min-width: 0;
-              width: 100%;
-            }
-          }
-        `}</style>
-        <div
-          className="game7-end-card"
-          style={{
-            background: "white",
-            padding: "clamp(16px, 5vw, 36px)",
-            borderRadius: 16,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-          }}
-        >
-          <h2 className="game7-end-title">🏆 Kết thúc hành trình! 🏆</h2>
-
-          <div
-            className="game7-end-score"
-            style={{
-              background: "linear-gradient(135deg, #ffd89b 0%, #19547b 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            Bạn đã trả lời đúng: {finalScore}/{qs.length} câu hỏi
-          </div>
-
-          <div className="game7-end-actions">
-            <button
-              type="button"
-              onClick={restartGame}
-              style={{
-                background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-                color: "white",
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              🔄 Chơi lại
-            </button>
-
-            <button
-              type="button"
-              onClick={handleReturnHome}
-              style={{
-                background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-                color: "white",
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              🏠 Trang chủ
-            </button>
-          </div>
-        </div>
-      </div>
+      <LessonCompleteScreen
+        payload={payload}
+        correctCount={finalScore}
+        totalQuestions={qs.length}
+        onReplay={restartGame}
+        onHome={handleReturnHome}
+        height="75vh"
+      />
     );
   }
 
