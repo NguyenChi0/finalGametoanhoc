@@ -199,8 +199,9 @@ export default function PreGameSetUp() {
 
   const handlePlay = () => {
     if (!payload || !isValidPlayPayload(payload)) return;
-    persistPlayState(gameId, payload);
-    navigate(`/game/${gameId}`, { state: payload });
+    const playPayload = { ...payload, game: { id: gameId } };
+    persistPlayState(gameId, playPayload);
+    navigate(`/game/${gameId}`, { state: playPayload });
   };
 
   const lessonUsesDetailBg =

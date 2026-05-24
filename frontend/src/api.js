@@ -710,6 +710,40 @@ export const incrementScore = async ({ userId, delta }) => {
 };
 
 // ==========================
+// Lesson progress (stars)
+// ==========================
+export const getLessonProgress = async (gradeId) => {
+  const gid = Number(gradeId);
+  if (!gid) throw new Error("gradeId không hợp lệ");
+  const res = await api.get("/lesson-progress", { params: { grade_id: gid } });
+  return res.data;
+};
+
+export const getLastLessonProgress = async () => {
+  const res = await api.get("/lesson-progress/last");
+  return res.data?.progress ?? null;
+};
+
+export const saveLessonProgress = async ({
+  lessonId,
+  gradeId,
+  typeId,
+  correctCount,
+  totalCount,
+  gameId,
+}) => {
+  const res = await api.post("/lesson-progress", {
+    lessonId,
+    gradeId,
+    typeId,
+    correctCount,
+    totalCount,
+    gameId,
+  });
+  return res.data;
+};
+
+// ==========================
 // External login child (Kilovia)
 // ==========================
 export const externalLoginChild = async ({ maTreEm, fullname, school }) => {

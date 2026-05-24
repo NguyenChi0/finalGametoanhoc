@@ -1,5 +1,4 @@
 import { getLessons, getQuestions, questionImageUrl } from "../../api";
-import { persistLastLessonSelection } from "./playSession";
 
 function sortBySortOrder(rows) {
   const list = Array.isArray(rows) ? rows.slice() : [];
@@ -88,15 +87,6 @@ export async function buildNextLessonPregamePayload(currentPayload) {
 
   const typeName = currentPayload.type?.name ?? null;
   const lessonName = nextLesson.name ?? null;
-
-  persistLastLessonSelection({
-    gradeId,
-    typeId,
-    lessonId: nextLesson.id,
-    gradeName: null,
-    typeName,
-    lessonName,
-  });
 
   const payload = {
     grade: { id: gradeId },

@@ -1,8 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { getContests, getGrades } from "../../api";
 import ContestTop3Leaderboard from "../components/ContestTop3Leaderboard";
 import { publicUrl } from "../../lib/publicUrl";
+import {
+  CONTEST_GRADE_PILL_STORAGE_KEY,
+  readGradePillFilter,
+  resolveSelectedGradeId,
+  resolveVisibleGradeIds,
+  writeGradePillFilter,
+} from "../../lib/gradePillFilterStorage";
 import "../styles/userCtaFlashShine.css";
 
 const PAGE_SIZE = 5;
@@ -31,8 +38,11 @@ const copy = {
   statusScheduled: "Sắp diễn ra",
   statusEnded: "Đã kết thúc",
   yourScore: "Điểm:",
-  gradeFilterLabel: "Chọn lớp của bạn",
+  gradeFilterLabel: "Lọc theo khối",
   allGrades: "Tất cả lớp",
+  addGrade: "Thêm khối",
+  removeGrade: "Bỏ khối",
+  allGradesShown: "Đã hiển thị tất cả khối",
 };
 
 const CL = {
@@ -93,7 +103,14 @@ export default function Contest() {
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const [contests, setContests] = useState([]);
   const [grades, setGrades] = useState([]);
-  const [selectedGradeId, setSelectedGradeId] = useState("");
+  const [selectedGradeId, setSelectedGradeId] = useState(() => {
+    const saved = readGradePillFilter(CONTEST_GRADE_PILL_STORAGE_KEY);
+    return saved?.selectedGradeId ?? "";
+  });
+  const [visibleGradeIds, setVisibleGradeIds] = useState(null);
+  const [gradeFilterHydrated, setGradeFilterHydrated] = useState(false);
+  const [addPickerOpen, setAddPickerOpen] = useState(false);
+  const addPickerRef = useRef(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -115,6 +132,37 @@ export default function Contest() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (grades.length === 0 || gradeFilterHydrated) return;
+    const saved = readGradePillFilter(CONTEST_GRADE_PILL_STORAGE_KEY);
+    const allIds = grades.map((g) => String(g.id));
+    const visible = resolveVisibleGradeIds(saved?.visibleGradeIds, allIds);
+    setVisibleGradeIds(visible);
+    setSelectedGradeId((cur) =>
+      resolveSelectedGradeId(cur !== "" ? cur : saved?.selectedGradeId ?? "", visible)
+    );
+    setGradeFilterHydrated(true);
+  }, [grades, gradeFilterHydrated]);
+
+  useEffect(() => {
+    if (!gradeFilterHydrated || visibleGradeIds === null) return;
+    writeGradePillFilter(CONTEST_GRADE_PILL_STORAGE_KEY, {
+      visibleGradeIds,
+      selectedGradeId,
+    });
+  }, [gradeFilterHydrated, visibleGradeIds, selectedGradeId]);
+
+  useEffect(() => {
+    if (!addPickerOpen) return undefined;
+    const onDocClick = (e) => {
+      if (addPickerRef.current && !addPickerRef.current.contains(e.target)) {
+        setAddPickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [addPickerOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +207,39 @@ export default function Contest() {
     navigate(`/contest/${contestId}`);
   };
 
+  const visibleGrades = (visibleGradeIds ?? [])
+    .map((id) => grades.find((g) => String(g.id) === id))
+    .filter(Boolean);
+  const hiddenGrades = grades.filter(
+    (g) => !(visibleGradeIds ?? []).includes(String(g.id))
+  );
+
+  const selectGrade = (gradeId) => {
+    setSelectedGradeId(String(gradeId));
+    setPage(1);
+  };
+
+  const removeVisibleGrade = (gradeId) => {
+    const sid = String(gradeId);
+    setVisibleGradeIds((prev) => {
+      const list = prev ?? [];
+      const next = list.filter((x) => x !== sid);
+      setSelectedGradeId((cur) => (cur === sid ? next[0] ?? "" : cur));
+      return next;
+    });
+    setPage(1);
+  };
+
+  const addVisibleGrade = (gradeId) => {
+    const sid = String(gradeId);
+    setVisibleGradeIds((prev) => {
+      const list = prev ?? [];
+      if (list.includes(sid)) return list;
+      return [...list, sid];
+    });
+    setAddPickerOpen(false);
+  };
+
   return (
     <div className="contest-page">
       <div
@@ -185,25 +266,85 @@ export default function Contest() {
             </aside>
 
             <div className="contest-toolbar">
-              <label htmlFor="contest-grade-filter" className="contest-filter-label">
-                {copy.gradeFilterLabel}
-              </label>
-              <select
-                id="contest-grade-filter"
-                className="contest-filter-select"
-                value={selectedGradeId}
-                onChange={(e) => {
-                  setSelectedGradeId(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">{copy.allGrades}</option>
-                {grades.map((grade) => (
-                  <option key={grade.id} value={String(grade.id)}>
-                    {grade.name}
-                  </option>
-                ))}
-              </select>
+              <p className="contest-filter-label">{copy.gradeFilterLabel}</p>
+              <div className="contest-grade-pills" role="tablist" aria-label={copy.gradeFilterLabel}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedGradeId === ""}
+                  className={`contest-grade-pill contest-grade-pill--all${
+                    selectedGradeId === "" ? " contest-grade-pill--active" : ""
+                  }`}
+                  onClick={() => selectGrade("")}
+                >
+                  {copy.allGrades}
+                </button>
+                {visibleGrades.map((grade) => {
+                  const gid = String(grade.id);
+                  const active = selectedGradeId === gid;
+                  return (
+                    <span
+                      key={grade.id}
+                      className={`contest-grade-pill-wrap${
+                        active ? " contest-grade-pill-wrap--active" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        className={`contest-grade-pill${
+                          active ? " contest-grade-pill--active" : ""
+                        }`}
+                        onClick={() => selectGrade(gid)}
+                      >
+                        {grade.name}
+                      </button>
+                      <button
+                        type="button"
+                        className="contest-grade-pill-remove"
+                        aria-label={`${copy.removeGrade} ${grade.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeVisibleGrade(gid);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+                <div className="contest-grade-pill-add-wrap" ref={addPickerRef}>
+                  <button
+                    type="button"
+                    className="contest-grade-pill contest-grade-pill--add"
+                    aria-label={copy.addGrade}
+                    aria-expanded={addPickerOpen}
+                    onClick={() => setAddPickerOpen((open) => !open)}
+                  >
+                    +
+                  </button>
+                  {addPickerOpen && (
+                    <div className="contest-grade-add-picker" role="listbox">
+                      {hiddenGrades.length === 0 ? (
+                        <p className="contest-grade-add-picker-empty">{copy.allGradesShown}</p>
+                      ) : (
+                        hiddenGrades.map((grade) => (
+                          <button
+                            key={grade.id}
+                            type="button"
+                            role="option"
+                            className="contest-grade-add-picker-item"
+                            onClick={() => addVisibleGrade(grade.id)}
+                          >
+                            {grade.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {loading && <p className="contest-status">{copy.loading}</p>}
@@ -412,38 +553,167 @@ export default function Contest() {
         }
         .contest-toolbar {
           display: flex;
-          align-items: center;
-          gap: 12px;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 10px;
           margin-bottom: 22px;
-          flex-wrap: wrap;
           padding: 14px 16px;
           border-radius: 16px;
           background: linear-gradient(90deg, rgba(146, 185, 227, 0.35), rgba(251, 162, 208, 0.25));
         }
         .contest-filter-label {
+          margin: 0;
           color: ${CL.ink};
           font-weight: 700;
           font-size: 0.95rem;
         }
-        .contest-filter-select {
-          min-width: 180px;
-          flex: 1;
-          max-width: 320px;
-          border: 2px solid ${CL.periwinkle};
-          border-radius: 12px;
-          padding: 10px 14px;
-          font-size: 14px;
-          font-family: inherit;
-          font-weight: 600;
-          color: ${CL.ink};
-          background: #fff;
-          cursor: pointer;
-          box-shadow: 0 2px 8px rgba(108, 126, 225, 0.15);
+        .contest-grade-pills {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
         }
-        .contest-filter-select:focus {
-          outline: none;
+        .contest-grade-pill-wrap {
+          display: inline-flex;
+          align-items: stretch;
+          border-radius: 999px;
+          border: 2px solid rgba(108, 126, 225, 0.35);
+          background: #fff;
+          overflow: hidden;
+          box-shadow: 0 2px 8px rgba(108, 126, 225, 0.12);
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .contest-grade-pill-wrap--active {
+          border-color: ${CL.periwinkle};
+          background: linear-gradient(135deg, ${CL.periwinkle}, ${CL.lavender});
+          box-shadow: 0 3px 12px rgba(108, 126, 225, 0.28);
+        }
+        .contest-grade-pill {
+          border: none;
+          background: #fff;
+          color: ${CL.ink};
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.2;
+          padding: 8px 14px;
+          cursor: pointer;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+        .contest-grade-pill--all {
+          border-radius: 999px;
+          border: 2px solid rgba(108, 126, 225, 0.35);
+          box-shadow: 0 2px 8px rgba(108, 126, 225, 0.12);
+        }
+        .contest-grade-pill--active {
+          background: linear-gradient(135deg, ${CL.periwinkle}, ${CL.lavender});
+          color: #fff;
+        }
+        .contest-grade-pill-wrap .contest-grade-pill {
+          border-radius: 0;
+          background: transparent;
+          padding: 8px 2px 8px 14px;
+        }
+        .contest-grade-pill-wrap .contest-grade-pill--active {
+          background: transparent;
+          color: #fff;
+        }
+        .contest-grade-pill-remove {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          flex-shrink: 0;
+          border: none;
+          background: transparent;
+          color: ${CL.inkMuted};
+          font-size: 17px;
+          line-height: 1;
+          cursor: pointer;
+          font-family: inherit;
+          padding: 0 10px 0 0;
+          opacity: 0.72;
+          transition: opacity 0.15s ease, color 0.15s ease;
+        }
+        .contest-grade-pill-wrap--active .contest-grade-pill-remove {
+          color: #fff;
+          opacity: 0.88;
+        }
+        .contest-grade-pill-remove:hover {
+          opacity: 1;
+          color: ${CL.periwinkle};
+        }
+        .contest-grade-pill-wrap--active .contest-grade-pill-remove:hover {
+          opacity: 1;
+          color: #fff;
+        }
+        .contest-grade-pill-add-wrap {
+          position: relative;
+        }
+        .contest-grade-pill--add {
+          width: 36px;
+          height: 36px;
+          padding: 0;
+          border-radius: 999px;
+          border: 2px dashed rgba(108, 126, 225, 0.55);
+          background: rgba(255, 255, 255, 0.85);
+          color: ${CL.periwinkle};
+          font-size: 22px;
+          font-weight: 700;
+          line-height: 1;
+          box-shadow: none;
+        }
+        .contest-grade-pill--add:hover {
+          background: #fff;
           border-color: ${CL.lavender};
-          box-shadow: 0 0 0 3px rgba(198, 136, 235, 0.35);
+          color: ${CL.lavender};
+        }
+        .contest-grade-add-picker {
+          position: absolute;
+          top: calc(100% + 6px);
+          left: 0;
+          z-index: 20;
+          min-width: 160px;
+          max-height: 220px;
+          overflow-y: auto;
+          padding: 6px;
+          border-radius: 14px;
+          border: 2px solid rgba(108, 126, 225, 0.35);
+          background: #fff;
+          box-shadow: 0 10px 28px rgba(74, 80, 128, 0.18);
+        }
+        .contest-grade-add-picker-empty {
+          margin: 0;
+          padding: 10px 12px;
+          color: ${CL.inkMuted};
+          font-size: 13px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .contest-grade-add-picker-item {
+          display: block;
+          width: 100%;
+          border: none;
+          border-radius: 10px;
+          padding: 9px 12px;
+          text-align: left;
+          background: transparent;
+          color: ${CL.ink};
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+        .contest-grade-add-picker-item:hover {
+          background: rgba(108, 126, 225, 0.14);
+          color: ${CL.periwinkle};
+        }
+        .contest-grade-pill:focus-visible,
+        .contest-grade-pill-remove:focus-visible,
+        .contest-grade-add-picker-item:focus-visible {
+          outline: 2px solid ${CL.lavender};
+          outline-offset: 2px;
         }
         .contest-status {
           color: ${CL.inkMuted};
@@ -638,13 +908,12 @@ export default function Contest() {
             padding: 18px 14px 22px;
             border-radius: 18px;
           }
-          .contest-toolbar {
-            flex-direction: column;
-            align-items: stretch;
+          .contest-grade-pills {
+            gap: 6px;
           }
-          .contest-filter-select {
-            max-width: none;
-            width: 100%;
+          .contest-grade-pill {
+            font-size: 12px;
+            padding: 7px 12px;
           }
           .card-content {
             flex-direction: column;

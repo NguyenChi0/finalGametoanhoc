@@ -12,6 +12,8 @@ import {
   getTypes,
   getLessons,
   getQuestions,
+  getLessonProgress,
+  getLastLessonProgress,
   questionImageUrl,
   typeImageUrl,
   lessonImageUrl,
@@ -21,14 +23,70 @@ import {
 import {
   readPregamePayload,
   persistPregamePayload,
-  persistLastLessonSelection,
-  readLastLessonSelection,
 } from "../lib/playSession";
 import {
   getKiloviaContext,
   setKiloviaContextFromMessage,
 } from "../lib/kiloviaBridge";
 import { publicUrl } from "../../lib/publicUrl";
+import LessonStarRating from "../components/LessonStarRating";
+import TopicCompleteTick from "../components/TopicCompleteTick";
+
+function mapLessonProgressItems(items) {
+  const m = {};
+  if (!Array.isArray(items)) return m;
+  for (const row of items) {
+    if (row?.lessonId != null) {
+      m[String(row.lessonId)] = row;
+    }
+  }
+  return m;
+}
+
+/** Chủ đề hoàn thành khi mọi bài học đã có tiến độ (đã chơi xong ít nhất 1 lần). */
+function isTopicFullyComplete(lessons, progressByLessonId) {
+  const list = Array.isArray(lessons) ? lessons : [];
+  if (list.length === 0) return false;
+  return list.every((lesson) => progressByLessonId[String(lesson.id)] != null);
+}
+
+async function fetchLessonProgressForGrade(gradeId) {
+  const token =
+    typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
+  if (!token || gradeId == null) return {};
+  try {
+    const data = await getLessonProgress(gradeId);
+    return mapLessonProgressItems(data?.items);
+  } catch (err) {
+    console.warn("Không tải được tiến độ bài học:", err);
+    return {};
+  }
+}
+
+async function fetchLastLessonSelection() {
+  const token =
+    typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
+  if (!token) return null;
+  try {
+    const progress = await getLastLessonProgress();
+    if (
+      !progress ||
+      progress.lessonId == null ||
+      progress.gradeId == null ||
+      progress.typeId == null
+    ) {
+      return null;
+    }
+    return {
+      gradeId: progress.gradeId,
+      typeId: progress.typeId,
+      lessonId: progress.lessonId,
+    };
+  } catch (err) {
+    console.warn("Không tải được bài học gần nhất:", err);
+    return null;
+  }
+}
 
 const ALLOWED_KILOVIA_ORIGINS = [
   "https://kilovia.com",
@@ -165,14 +223,24 @@ function buildSpineClusterSvgLines(layout, lessonCount) {
   return lines;
 }
 
+/** Chủ đề >10 bài: tăng tốc reveal để không chờ quá lâu (vd. 18 bài). */
+function spineRevealSpeed(lessonCount) {
+  if (lessonCount <= 10) return 1;
+  return Math.min(3, 1 + (lessonCount - 10) * 0.2);
+}
+
 /** Thời lượng ease-out cho từng đoạn + thời điểm hiện từng ô bài (sau nhánh tới ô đó). */
 function computeSpineDrawTiming(lines, lessonCount) {
+  const speed = spineRevealSpeed(lessonCount);
   const PX = 420;
-  const MIN_DUR = 0.1;
-  const MAX_DUR = 0.48;
-  let acc = 0.06;
+  const MIN_DUR = 0.1 / speed;
+  const MAX_DUR = 0.48 / speed;
+  let acc = 0.06 / speed;
   const timed = lines.map((ln) => {
-    const dur = Math.min(MAX_DUR, Math.max(MIN_DUR, ln.length / PX + 0.07));
+    const dur = Math.min(
+      MAX_DUR,
+      Math.max(MIN_DUR, (ln.length / PX + 0.07) / speed)
+    );
     const animStart = acc;
     acc += dur;
     return { ...ln, animStart, animDur: dur };
@@ -191,7 +259,27 @@ function computeSpineDrawTiming(lines, lessonCount) {
     }
     chipDelays.push(end);
   }
-  return { timedLines: timed, chipDelays, totalTime: acc };
+
+  const chipFadeDur = lessonCount > 10 ? 0.22 : 0.36;
+  if (lessonCount > 10) {
+    const maxEnd = 2.4 + Math.min(lessonCount - 10, 14) * 0.06;
+    const lastEnd = chipDelays[chipDelays.length - 1] ?? acc;
+    if (lastEnd > maxEnd && lastEnd > 0) {
+      const scale = maxEnd / lastEnd;
+      return {
+        timedLines: timed.map((ln) => ({
+          ...ln,
+          animStart: ln.animStart * scale,
+          animDur: ln.animDur * scale,
+        })),
+        chipDelays: chipDelays.map((d) => d * scale),
+        totalTime: acc * scale,
+        chipFadeDur,
+      };
+    }
+  }
+
+  return { timedLines: timed, chipDelays, totalTime: acc, chipFadeDur };
 }
 
 function chunkArray(arr, size) {
@@ -476,8 +564,10 @@ function LessonCurriculumSummary({
   lessonsMap,
   expandedTypeId,
   lastChosenLessonId,
+  progressByLessonId,
   onTopicClick,
   onLessonClick,
+  onCollapse,
 }) {
   const list = Array.isArray(types) ? types : [];
   const [search, setSearch] = useState("");
@@ -489,10 +579,22 @@ function LessonCurriculumSummary({
 
   return (
     <aside
+      id="lesson-curriculum-summary"
       className="lesson-curriculum-summary"
       aria-label="Tóm tắt chủ đề và bài học"
     >
-      <h2 className="lesson-curriculum-summary__title">Tóm tắt</h2>
+      <div className="lesson-curriculum-summary__head">
+        <h2 className="lesson-curriculum-summary__title">Tóm tắt</h2>
+        <button
+          type="button"
+          className="lesson-curriculum-summary__collapse-btn"
+          onClick={onCollapse}
+          aria-label="Thu gọn tóm tắt"
+          title="Thu gọn"
+        >
+          Thu gọn
+        </button>
+      </div>
       {gradeName ? (
         <p className="lesson-curriculum-summary__grade">{gradeName}</p>
       ) : null}
@@ -550,6 +652,10 @@ function LessonCurriculumSummary({
                 const topicOpen =
                   expandedTypeId != null &&
                   String(expandedTypeId) === String(t.id);
+                const topicComplete = isTopicFullyComplete(
+                  lessons,
+                  progressByLessonId
+                );
                 return (
                   <React.Fragment key={t.id}>
                     <tr
@@ -565,7 +671,15 @@ function LessonCurriculumSummary({
                           onClick={() => onTopicClick(t.id)}
                           aria-expanded={topicOpen}
                         >
-                          <span>{t.name}</span>
+                          <span className="lesson-curriculum-summary__topic-label">
+                            <span>{t.name}</span>
+                            {topicComplete ? (
+                              <TopicCompleteTick
+                                size="sm"
+                                className="lesson-curriculum-summary__topic-tick"
+                              />
+                            ) : null}
+                          </span>
                         </button>
                       </td>
                     </tr>
@@ -599,7 +713,14 @@ function LessonCurriculumSummary({
                                 className="lesson-curriculum-summary__btn lesson-curriculum-summary__btn--lesson"
                                 onClick={() => onLessonClick(t.id, lesson.id)}
                               >
-                                <span>{lesson.name}</span>
+                                <span className="lesson-curriculum-summary__lesson-label">
+                                  <span>{lesson.name}</span>
+                                  <LessonStarRating
+                                    stars={progressByLessonId?.[String(lesson.id)]?.stars ?? 0}
+                                    size="xs"
+                                    className="lesson-curriculum-summary__stars"
+                                  />
+                                </span>
                               </button>
                             </td>
                           </tr>
@@ -677,6 +798,8 @@ export default function LessonPage() {
   const [error, setError] = useState(null);
   const [expandedTypeId, setExpandedTypeId] = useState(null);
   const [lastChosenLessonId, setLastChosenLessonId] = useState(null);
+  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [lessonProgressById, setLessonProgressById] = useState({});
   const [revealedTopicIds, setRevealedTopicIds] = useState(() => new Set());
   const topicNodeRefs = useRef(new Map());
   const lessonChipRefs = useRef(new Map());
@@ -811,6 +934,7 @@ export default function LessonPage() {
     if (selectedGrade != null && String(selectedGrade) !== String(gradeId)) {
       setExpandedTypeId(null);
       setLastChosenLessonId(null);
+      setLessonProgressById({});
     }
     setSelectedGrade(gradeId);
     try {
@@ -826,6 +950,8 @@ export default function LessonPage() {
         }
         setCache((prev) => ({ ...prev, lessons: { ...prev.lessons, ...newLessons } }));
       }
+      const progressMap = await fetchLessonProgressForGrade(gradeId);
+      setLessonProgressById(progressMap);
       if (restoreTypeId != null) {
         setExpandedTypeId(restoreTypeId);
       }
@@ -862,28 +988,27 @@ export default function LessonPage() {
       return;
     }
 
-    const saved = readLastLessonSelection();
-    const canRestoreLast =
-      saved != null &&
-      grades.some((g) => String(g.id) === String(saved.gradeId));
+    initialGradeAutoDone.current = true;
+    void (async () => {
+      const saved = await fetchLastLessonSelection();
+      const canRestoreLast =
+        saved != null &&
+        grades.some((g) => String(g.id) === String(saved.gradeId));
 
-    if (canRestoreLast) {
-      initialGradeAutoDone.current = true;
-      void (async () => {
+      if (canRestoreLast) {
         await handleSelectGrade(saved.gradeId, {
           restoreTypeId: saved.typeId,
         });
         scrollToLastLessonPending.current = true;
         setLastChosenLessonId(saved.lessonId);
-      })();
-      return;
-    }
+        return;
+      }
 
-    const defaultId = pickDefaultGradeId(grades);
-    if (defaultId == null) return;
-
-    initialGradeAutoDone.current = true;
-    void handleSelectGrade(defaultId);
+      const defaultId = pickDefaultGradeId(grades);
+      if (defaultId != null) {
+        await handleSelectGrade(defaultId);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- một lần khi grades sẵn sàng
   }, [grades]);
 
@@ -926,17 +1051,6 @@ export default function LessonPage() {
       null;
     const typeName = typeRow?.name || null;
     const lessonName = lessonRow?.name || null;
-    const gradeName =
-      grades.find((g) => String(g.id) === String(gradeId))?.name || null;
-
-    persistLastLessonSelection({
-      gradeId,
-      typeId,
-      lessonId,
-      gradeName,
-      typeName,
-      lessonName,
-    });
 
     const payload = {
       grade: { id: gradeId },
@@ -1404,12 +1518,73 @@ export default function LessonPage() {
             flex-direction: column;
           }
         }
+        .lesson-curriculum-summary__head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 6px;
+        }
         .lesson-curriculum-summary__title {
-          margin: 0 0 6px;
+          margin: 0;
           font-size: clamp(0.95rem, 2.5vw, 1.08rem);
           font-weight: 800;
           color: var(--cl-periwinkle);
           line-height: 1.3;
+        }
+        .lesson-curriculum-summary__collapse-btn {
+          flex: 0 0 auto;
+          margin: 0;
+          padding: 6px 12px;
+          border: 1px solid rgba(146, 185, 227, 0.55);
+          border-radius: 10px;
+          background: #fff;
+          color: var(--cl-ink-muted);
+          font-size: 0.78rem;
+          font-weight: 600;
+          font-family: inherit;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
+        }
+        .lesson-curriculum-summary__collapse-btn:hover,
+        .lesson-curriculum-summary__collapse-btn:focus-visible {
+          color: var(--cl-periwinkle);
+          box-shadow: 0 6px 18px rgba(74, 80, 128, 0.12);
+          transform: translateY(-1px);
+          outline: none;
+        }
+        .lesson-summary-reopen-btn {
+          flex: 0 0 auto;
+          align-self: flex-start;
+          margin: 0;
+          padding: 10px 16px;
+          border: 1px solid rgba(146, 185, 227, 0.55);
+          border-radius: 12px;
+          background: #fff;
+          color: var(--cl-periwinkle);
+          font-size: 0.9rem;
+          font-weight: 700;
+          font-family: inherit;
+          cursor: pointer;
+          box-shadow: 0 8px 28px rgba(74, 80, 128, 0.08);
+          transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .lesson-summary-reopen-btn:hover,
+        .lesson-summary-reopen-btn:focus-visible {
+          box-shadow: 0 10px 32px rgba(74, 80, 128, 0.14);
+          transform: translateY(-2px);
+          outline: none;
+        }
+        @media (min-width: 960px) {
+          .lesson-summary-reopen-btn {
+            position: sticky;
+            top: 20px;
+          }
+        }
+        .lesson-page-map-layout--summary-collapsed .lesson-map-root {
+          flex: 1 1 100%;
+          max-width: none;
         }
         .lesson-curriculum-summary__grade {
           margin: 0 0 10px;
@@ -1545,6 +1720,16 @@ export default function LessonPage() {
           font-weight: 800;
           color: var(--cl-pink);
         }
+        .lesson-curriculum-summary__topic-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          min-width: 0;
+        }
+        .lesson-curriculum-summary__topic-tick {
+          flex-shrink: 0;
+        }
         .lesson-curriculum-summary__lesson td:first-child {
           font-size: 0.78rem;
           font-weight: 600;
@@ -1583,6 +1768,16 @@ export default function LessonPage() {
         .lesson-curriculum-summary__btn--lesson {
           font-weight: 500;
           color: var(--cl-ink-muted);
+        }
+        .lesson-curriculum-summary__lesson-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          min-width: 0;
+        }
+        .lesson-curriculum-summary__stars {
+          flex-shrink: 0;
         }
         .lesson-curriculum-summary__btn:hover,
         .lesson-curriculum-summary__btn:focus-visible {
@@ -1719,6 +1914,8 @@ export default function LessonPage() {
           margin-bottom: 0;
         }
         .lesson-map-topic-head {
+          position: relative;
+          overflow: visible;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -1746,6 +1943,20 @@ export default function LessonPage() {
           cursor: pointer;
           position: relative;
           z-index: 1;
+        }
+        .lesson-map-topic-complete {
+          position: absolute;
+          top: -20px;
+          left: calc(50% + var(--lesson-topic-px, 260px) / 2 + 6px);
+          transform: translateX(-100%);
+          z-index: 6;
+          pointer-events: none;
+        }
+        @media (max-width: 520px) {
+          .lesson-map-topic-complete {
+            top: -14px;
+            left: calc(50% + var(--lesson-topic-px, 200px) / 2 + 4px);
+          }
         }
         .lesson-map-topic-head:not(.lesson-map-topic-head--in-view) .lesson-map-type {
           opacity: 0;
@@ -1971,6 +2182,20 @@ export default function LessonPage() {
           transform: translate(-50%, -50%) scale(1.04);
           filter: brightness(1.06) drop-shadow(0 0 10px rgba(251, 162, 208, 0.9));
         }
+        .lesson-map-lesson-chip-stars {
+          position: absolute;
+          left: 50%;
+          bottom: 4%;
+          transform: translateX(-50%);
+          z-index: 3;
+          max-width: 96%;
+          justify-content: center;
+        }
+        @media (max-width: 520px) {
+          .lesson-map-lesson-chip-stars {
+            bottom: 3%;
+          }
+        }
         .lesson-map-hub-empty {
           position: absolute;
           left: 50%;
@@ -1987,16 +2212,34 @@ export default function LessonPage() {
 
       {/* Bản đồ xương sống: trục dọc + chủ đề (ô bo góc) + bài học hai bên */}
       {selectedGrade && cache.types[selectedGrade] && (
-        <div className="lesson-page-map-layout">
-          <LessonCurriculumSummary
-            gradeName={selectedGradeName}
-            types={cache.types[selectedGrade] || []}
-            lessonsMap={cache.lessons}
-            expandedTypeId={expandedTypeId}
-            lastChosenLessonId={lastChosenLessonId}
-            onTopicClick={handleSummaryTopicClick}
-            onLessonClick={handleSummaryLessonClick}
-          />
+        <div
+          className={`lesson-page-map-layout${
+            summaryOpen ? "" : " lesson-page-map-layout--summary-collapsed"
+          }`}
+        >
+          {summaryOpen ? (
+            <LessonCurriculumSummary
+              gradeName={selectedGradeName}
+              types={cache.types[selectedGrade] || []}
+              lessonsMap={cache.lessons}
+              expandedTypeId={expandedTypeId}
+              lastChosenLessonId={lastChosenLessonId}
+              onTopicClick={handleSummaryTopicClick}
+              onLessonClick={handleSummaryLessonClick}
+              progressByLessonId={lessonProgressById}
+              onCollapse={() => setSummaryOpen(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              className="lesson-summary-reopen-btn"
+              aria-expanded={false}
+              aria-controls="lesson-curriculum-summary"
+              onClick={() => setSummaryOpen(true)}
+            >
+              Tóm tắt
+            </button>
+          )}
           <div className="lesson-map-root" ref={lessonMapRootRef}>
           <p className="lesson-map-title">Lộ trình bài học</p>
           <div className="lesson-map-shell">
@@ -2006,11 +2249,13 @@ export default function LessonPage() {
                 const layout = getSpineClusterLayout(lessons, lessonMapMetrics);
                 const open = isTypeExpanded(t);
                 const svgLines = buildSpineClusterSvgLines(layout, lessons.length);
-                const { timedLines, chipDelays } = computeSpineDrawTiming(
-                  svgLines,
-                  lessons.length
-                );
+                const { timedLines, chipDelays, chipFadeDur } =
+                  computeSpineDrawTiming(svgLines, lessons.length);
                 const typeImg = typeDisplayImageUrl(t);
+                const topicComplete = isTopicFullyComplete(
+                  lessons,
+                  lessonProgressById
+                );
 
                 return (
                   <div
@@ -2035,6 +2280,12 @@ export default function LessonPage() {
                       aria-controls={`lesson-hub-${t.id}`}
                       aria-label={t.name}
                     >
+                      {topicComplete ? (
+                        <TopicCompleteTick
+                          size="lg"
+                          className="lesson-map-topic-complete"
+                        />
+                      ) : null}
                       <div
                         className={`lesson-map-type${
                           typeImg ? " lesson-map-type--has-image" : ""
@@ -2097,6 +2348,8 @@ export default function LessonPage() {
                         const isLastPicked =
                           lastChosenLessonId != null &&
                           String(o.id) === String(lastChosenLessonId);
+                        const lessonStars =
+                          lessonProgressById[String(o.id)]?.stars ?? 0;
                         return (
                           <button
                             key={o.id}
@@ -2118,6 +2371,7 @@ export default function LessonPage() {
                               maxWidth: layout.lessonSize,
                               maxHeight: layout.lessonSize,
                               animationDelay: `${chipDelays[i] ?? 0}s`,
+                              animationDuration: `${chipFadeDur}s`,
                               backgroundImage: `url(${lessonDisplayImageUrl(o)})`,
                             }}
                             title={o.name}
@@ -2135,6 +2389,11 @@ export default function LessonPage() {
                             >
                               {o.name}
                             </span>
+                            <LessonStarRating
+                              stars={lessonStars}
+                              size="lg"
+                              className="lesson-map-lesson-chip-stars"
+                            />
                           </button>
                         );
                       })}

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { publicUrl } from "../../lib/publicUrl";
+import { saveLessonProgress } from "../../api";
 import { persistPregamePayload } from "../lib/playSession";
 import {
   buildNextLessonPregamePayload,
@@ -90,6 +91,7 @@ export default function LessonCompleteScreen({
   const [nextLessonAvailable, setNextLessonAvailable] = useState(false);
   const [nextLessonLoading, setNextLessonLoading] = useState(false);
   const [nextLessonError, setNextLessonError] = useState(null);
+  const progressSavedRef = useRef(false);
 
   const isPerfect = correctCount === totalQuestions;
   const goHome =
@@ -117,6 +119,51 @@ export default function LessonCompleteScreen({
       cancelled = true;
     };
   }, [payload?.type?.id, payload?.lesson?.id]);
+
+  useEffect(() => {
+    const userId = payload?.user?.id;
+    const lessonId = payload?.lesson?.id;
+    const gradeId = payload?.grade?.id;
+    const typeId = payload?.type?.id;
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
+
+    if (
+      progressSavedRef.current ||
+      !token ||
+      !userId ||
+      lessonId == null ||
+      gradeId == null ||
+      typeId == null ||
+      !Number.isFinite(Number(totalQuestions)) ||
+      Number(totalQuestions) <= 0
+    ) {
+      return undefined;
+    }
+
+    progressSavedRef.current = true;
+
+    void saveLessonProgress({
+      lessonId: Number(lessonId),
+      gradeId: Number(gradeId),
+      typeId: Number(typeId),
+      correctCount: Math.max(0, Math.floor(Number(correctCount) || 0)),
+      totalCount: Math.floor(Number(totalQuestions)),
+      gameId: payload?.game?.id || null,
+    }).catch((err) => {
+      progressSavedRef.current = false;
+      console.warn("Không lưu được tiến độ bài học:", err);
+    });
+
+    return undefined;
+  }, [
+    payload?.user?.id,
+    payload?.lesson?.id,
+    payload?.grade?.id,
+    payload?.type?.id,
+    payload?.game?.id,
+    correctCount,
+    totalQuestions,
+  ]);
 
   async function handleGoNextLesson() {
     setNextLessonError(null);

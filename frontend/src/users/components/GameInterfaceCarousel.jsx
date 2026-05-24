@@ -238,7 +238,7 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
         }
       `}</style>
 
-      <h2 className="game-carousel-title">Chọn giao diện game</h2>
+      <h2 className="game-carousel-title">Chế độ chơi </h2>
 
       <div
         className="game-carousel-track"

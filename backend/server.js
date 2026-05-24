@@ -996,6 +996,164 @@ async function resetWeeklyScoresIfNeeded() {
   }
 }
 
+function computeStars(correctCount, totalCount) {
+  const correct = Number(correctCount);
+  const total = Number(totalCount);
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(correct) || correct <= 0) {
+    return 0;
+  }
+  const ratio = correct / total;
+  if (ratio >= 0.9) return 3;
+  if (ratio >= 0.6) return 2;
+  return 1;
+}
+
+function mapLessonProgressRow(row) {
+  return {
+    lessonId: Number(row.lesson_id),
+    gradeId: row.grade_id != null ? Number(row.grade_id) : null,
+    typeId: Number(row.type_id),
+    correctCount: Number(row.correct_count) || 0,
+    totalCount: Number(row.total_count) || 0,
+    stars: Number(row.stars) || 0,
+    attemptCount: Number(row.attempt_count) || 0,
+    completedAt: row.completed_at,
+    gameId: row.game_id || null,
+  };
+}
+
+app.get('/api/lesson-progress/last', authenticateToken, async (req, res) => {
+  try {
+    const userId = Number(req.auth?.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT lesson_id, grade_id, type_id, correct_count, total_count, stars,
+              attempt_count, completed_at, game_id
+       FROM user_lesson_progress
+       WHERE user_id = ?
+       ORDER BY completed_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    const row = rows?.[0];
+    return res.json({
+      progress: row ? mapLessonProgressRow(row) : null,
+    });
+  } catch (err) {
+    console.error('Error GET /api/lesson-progress/last:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.get('/api/lesson-progress', authenticateToken, async (req, res) => {
+  try {
+    const userId = Number(req.auth?.sub);
+    const gradeId = Number(req.query.grade_id);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    if (!Number.isFinite(gradeId) || gradeId <= 0) {
+      return res.status(400).json({ success: false, message: 'grade_id (number) required' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT lesson_id, grade_id, type_id, correct_count, total_count, stars, attempt_count, completed_at, game_id
+       FROM user_lesson_progress
+       WHERE user_id = ? AND grade_id = ?
+       ORDER BY completed_at DESC`,
+      [userId, gradeId]
+    );
+
+    return res.json({
+      items: (rows || []).map(mapLessonProgressRow),
+    });
+  } catch (err) {
+    console.error('Error GET /api/lesson-progress:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.post('/api/lesson-progress', authenticateToken, async (req, res) => {
+  try {
+    const userId = Number(req.auth?.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const lessonId = Number(req.body?.lessonId);
+    const gradeId = Number(req.body?.gradeId);
+    const typeId = Number(req.body?.typeId);
+    const correctCount = Math.floor(Number(req.body?.correctCount));
+    const totalCount = Math.floor(Number(req.body?.totalCount));
+    const gameIdRaw = req.body?.gameId;
+    const gameId =
+      gameIdRaw != null && String(gameIdRaw).trim() !== ''
+        ? String(gameIdRaw).trim().slice(0, 32)
+        : null;
+
+    if (!Number.isFinite(lessonId) || lessonId <= 0) {
+      return res.status(400).json({ success: false, message: 'lessonId (number) required' });
+    }
+    if (!Number.isFinite(gradeId) || gradeId <= 0) {
+      return res.status(400).json({ success: false, message: 'gradeId (number) required' });
+    }
+    if (!Number.isFinite(typeId) || typeId <= 0) {
+      return res.status(400).json({ success: false, message: 'typeId (number) required' });
+    }
+    if (!Number.isFinite(totalCount) || totalCount <= 0) {
+      return res.status(400).json({ success: false, message: 'totalCount must be a positive number' });
+    }
+    if (!Number.isFinite(correctCount) || correctCount < 0 || correctCount > totalCount) {
+      return res.status(400).json({
+        success: false,
+        message: 'correctCount must be between 0 and totalCount',
+      });
+    }
+
+    const stars = computeStars(correctCount, totalCount);
+
+    await pool.query(
+      `INSERT INTO user_lesson_progress
+        (user_id, lesson_id, grade_id, type_id, game_id, correct_count, total_count, stars, attempt_count, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE
+        grade_id = VALUES(grade_id),
+        type_id = VALUES(type_id),
+        game_id = VALUES(game_id),
+        correct_count = VALUES(correct_count),
+        total_count = VALUES(total_count),
+        stars = VALUES(stars),
+        attempt_count = attempt_count + 1,
+        completed_at = CURRENT_TIMESTAMP`,
+      [userId, lessonId, gradeId, typeId, gameId, correctCount, totalCount, stars]
+    );
+
+    const [rows] = await pool.query(
+      `SELECT lesson_id, grade_id, type_id, correct_count, total_count, stars, attempt_count, completed_at, game_id
+       FROM user_lesson_progress
+       WHERE user_id = ? AND lesson_id = ?
+       LIMIT 1`,
+      [userId, lessonId]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(500).json({ success: false, message: 'Failed to read saved progress' });
+    }
+
+    return res.json({
+      success: true,
+      progress: mapLessonProgressRow(rows[0]),
+    });
+  } catch (err) {
+    console.error('Error POST /api/lesson-progress:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.post('/api/score/increment', authenticateToken, async (req, res) => {
   try {
     await resetWeeklyScoresIfNeeded();
