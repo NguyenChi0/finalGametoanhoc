@@ -216,7 +216,16 @@ export default function PreGameSetUp() {
   return (
     <>
       <style>{`
-        .pregame-page {
+        .pregame-review-badge {
+          display: inline-block;
+          margin: 0 0 10px;
+          padding: 6px 14px;
+          border-radius: 999px;
+          background: rgba(255, 196, 164, 0.55);
+          color: #8b4cad;
+          font-size: 0.85rem;
+          font-weight: 700;
+        }
           position: relative;
           min-height: 100vh;
           overflow-x: hidden;
@@ -440,6 +449,12 @@ export default function PreGameSetUp() {
                   )}
                 </div>
                 <div className="pregame-body">
+                  {payload.reviewMode ? (
+                    <p className="pregame-review-badge">
+                      Chế độ ôn tập ·{" "}
+                      {payload.reviewQuestionCount ?? payload.questions?.length ?? 5} câu
+                    </p>
+                  ) : null}
                   <h1 className="pregame-title">{lessonMeta.title}</h1>
                   <p className="pregame-desc">{lessonMeta.description}</p>
 

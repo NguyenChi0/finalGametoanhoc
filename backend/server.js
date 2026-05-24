@@ -1022,6 +1022,48 @@ function mapLessonProgressRow(row) {
   };
 }
 
+function mapCompletedLessonRow(row) {
+  return {
+    ...mapLessonProgressRow(row),
+    lessonName: row.lesson_name || null,
+    typeName: row.type_name || null,
+    gradeName: row.grade_name || null,
+  };
+}
+
+app.get('/api/lesson-progress/completed', authenticateToken, async (req, res) => {
+  try {
+    const userId = Number(req.auth?.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const daysRaw = Number(req.query.days);
+    const days = daysRaw === 3 ? 3 : 7;
+
+    const [rows] = await pool.query(
+      `SELECT ulp.lesson_id, ulp.grade_id, ulp.type_id, ulp.correct_count,
+              ulp.total_count, ulp.stars, ulp.completed_at, ulp.attempt_count,
+              ulp.game_id, l.name AS lesson_name, t.name AS type_name, g.name AS grade_name
+       FROM user_lesson_progress ulp
+       JOIN lessons l ON l.id = ulp.lesson_id
+       JOIN types t ON t.id = ulp.type_id
+       JOIN grades g ON g.id = ulp.grade_id
+       WHERE ulp.user_id = ?
+         AND ulp.completed_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       ORDER BY ulp.completed_at DESC`,
+      [userId, days]
+    );
+
+    return res.json({
+      items: (rows || []).map(mapCompletedLessonRow),
+    });
+  } catch (err) {
+    console.error('Error GET /api/lesson-progress/completed:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/api/lesson-progress/last', authenticateToken, async (req, res) => {
   try {
     const userId = Number(req.auth?.sub);

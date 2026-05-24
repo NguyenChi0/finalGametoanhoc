@@ -14,6 +14,7 @@ import {
   getQuestions,
   getLessonProgress,
   getLastLessonProgress,
+  getCompletedLessonsForReview,
   questionImageUrl,
   typeImageUrl,
   lessonImageUrl,
@@ -23,6 +24,7 @@ import {
 import {
   readPregamePayload,
   persistPregamePayload,
+  persistReviewSession,
 } from "../lib/playSession";
 import {
   getKiloviaContext,
@@ -31,6 +33,8 @@ import {
 import { publicUrl } from "../../lib/publicUrl";
 import LessonStarRating from "../components/LessonStarRating";
 import TopicCompleteTick from "../components/TopicCompleteTick";
+import LessonReviewPanel from "../components/LessonReviewPanel";
+import LessonSidebarSlot from "../components/LessonSidebarSlot";
 
 function mapLessonProgressItems(items) {
   const m = {};
@@ -799,6 +803,14 @@ export default function LessonPage() {
   const [expandedTypeId, setExpandedTypeId] = useState(null);
   const [lastChosenLessonId, setLastChosenLessonId] = useState(null);
   const [summaryOpen, setSummaryOpen] = useState(true);
+  const [reviewOpen, setReviewOpen] = useState(true);
+  const [reviewDays, setReviewDays] = useState(7);
+  const [reviewItems, setReviewItems] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSelectedIds, setReviewSelectedIds] = useState(() => new Set());
+  const [reviewQuestionsPerLesson, setReviewQuestionsPerLesson] = useState(5);
+  const [reviewStarting, setReviewStarting] = useState(false);
   const [lessonProgressById, setLessonProgressById] = useState({});
   const [revealedTopicIds, setRevealedTopicIds] = useState(() => new Set());
   const topicNodeRefs = useRef(new Map());
@@ -826,6 +838,51 @@ export default function LessonPage() {
     () => getLessonMapMetrics(viewportW),
     [viewportW]
   );
+
+  const reviewLoggedIn =
+    typeof localStorage !== "undefined" && Boolean(localStorage.getItem("token"));
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!reviewLoggedIn) {
+      setReviewItems([]);
+      setReviewLoading(false);
+      setReviewError("");
+      return undefined;
+    }
+    setReviewLoading(true);
+    setReviewError("");
+    void (async () => {
+      try {
+        const data = await getCompletedLessonsForReview(reviewDays);
+        if (!cancelled) {
+          setReviewItems(Array.isArray(data?.items) ? data.items : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setReviewItems([]);
+          setReviewError(
+            err.response?.data?.message || "Không tải được danh sách ôn tập."
+          );
+        }
+      } finally {
+        if (!cancelled) setReviewLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewDays, reviewLoggedIn]);
+
+  useEffect(() => {
+    setReviewSelectedIds((prev) => {
+      const valid = new Set(
+        reviewItems.map((item) => String(item.lessonId))
+      );
+      const next = new Set([...prev].filter((id) => valid.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [reviewItems]);
 
   useLayoutEffect(() => {
     if (expandedTypeId == null) return;
@@ -1071,6 +1128,99 @@ export default function LessonPage() {
     };
     persistPregamePayload(payload);
     navigate("/play-setup", { state: payload });
+  };
+
+  const handleToggleReviewLesson = (lessonId) => {
+    setReviewSelectedIds((prev) => {
+      const next = new Set(prev);
+      const key = String(lessonId);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleReviewSelectAll = () => {
+    setReviewSelectedIds(
+      new Set(reviewItems.map((item) => String(item.lessonId)))
+    );
+  };
+
+  const handleReviewClearAll = () => {
+    setReviewSelectedIds(new Set());
+  };
+
+  const handleStartBatchReview = async () => {
+    if (reviewStarting || reviewSelectedIds.size === 0) return;
+    setReviewStarting(true);
+    setReviewError("");
+    try {
+      const selected = reviewItems.filter((item) =>
+        reviewSelectedIds.has(String(item.lessonId))
+      );
+      const perLesson = reviewQuestionsPerLesson;
+      const results = await Promise.all(
+        selected.map(async (item) => {
+          const res = await getQuestions({
+            grade_id: item.gradeId,
+            type_id: item.typeId,
+            lesson_id: item.lessonId,
+            randomize: true,
+            limit: perLesson,
+          });
+          const questions = res?.data ?? res;
+          return {
+            item,
+            questions: Array.isArray(questions) ? questions : [],
+          };
+        })
+      );
+
+      const seen = new Set();
+      const merged = [];
+      for (const { questions } of results) {
+        for (const q of questions) {
+          if (q?.id != null && !seen.has(q.id)) {
+            seen.add(q.id);
+            merged.push(withResolvedQuestionMedia(q));
+          }
+        }
+      }
+
+      const shuffledQuestions = shuffleArray(merged);
+      if (shuffledQuestions.length === 0) {
+        setReviewError("Không có câu hỏi để ôn tập.");
+        return;
+      }
+
+      const rawUser = localStorage.getItem("user");
+      const currentUser = rawUser ? JSON.parse(rawUser) : null;
+      const lessons = selected.map((item) => ({
+        lessonId: item.lessonId,
+        lessonName: item.lessonName,
+        typeName: item.typeName,
+        gradeName: item.gradeName,
+        gradeId: item.gradeId,
+        typeId: item.typeId,
+      }));
+
+      const payload = {
+        reviewMode: true,
+        batchReview: true,
+        questionsPerLesson: perLesson,
+        lessons,
+        questions: shuffledQuestions,
+        user: currentUser,
+        ...(kilovia && { kilovia }),
+      };
+
+      persistReviewSession(payload);
+      navigate("/lesson-review", { state: payload });
+    } catch (err) {
+      setReviewError(err.message || "Không tải được câu hỏi ôn tập.");
+    } finally {
+      setReviewStarting(false);
+    }
   };
 
   const isTypeExpanded = (t) =>
@@ -1484,7 +1634,7 @@ export default function LessonPage() {
           align-items: stretch;
           gap: 20px;
           width: 100%;
-          max-width: min(1520px, 100%);
+          max-width: min(1680px, 100%);
           margin: 16px auto 0;
           box-sizing: border-box;
         }
@@ -1510,9 +1660,7 @@ export default function LessonPage() {
         }
         @media (min-width: 960px) {
           .lesson-curriculum-summary {
-            width: min(400px, 40vw);
-            position: sticky;
-            top: 20px;
+            width: min(320px, 28vw);
             max-height: calc(100vh - 48px);
             display: flex;
             flex-direction: column;
@@ -1554,37 +1702,12 @@ export default function LessonPage() {
           transform: translateY(-1px);
           outline: none;
         }
-        .lesson-summary-reopen-btn {
-          flex: 0 0 auto;
-          align-self: flex-start;
-          margin: 0;
-          padding: 10px 16px;
-          border: 1px solid rgba(146, 185, 227, 0.55);
-          border-radius: 12px;
-          background: #fff;
-          color: var(--cl-periwinkle);
-          font-size: 0.9rem;
-          font-weight: 700;
-          font-family: inherit;
-          cursor: pointer;
-          box-shadow: 0 8px 28px rgba(74, 80, 128, 0.08);
-          transition: box-shadow 0.2s ease, transform 0.2s ease;
-        }
-        .lesson-summary-reopen-btn:hover,
-        .lesson-summary-reopen-btn:focus-visible {
-          box-shadow: 0 10px 32px rgba(74, 80, 128, 0.14);
-          transform: translateY(-2px);
-          outline: none;
-        }
-        @media (min-width: 960px) {
-          .lesson-summary-reopen-btn {
-            position: sticky;
-            top: 20px;
-          }
-        }
         .lesson-page-map-layout--summary-collapsed .lesson-map-root {
           flex: 1 1 100%;
           max-width: none;
+        }
+        .lesson-page-map-layout--review-collapsed .lesson-map-root {
+          flex: 1 1 auto;
         }
         .lesson-curriculum-summary__grade {
           margin: 0 0 10px;
@@ -1820,6 +1943,14 @@ export default function LessonPage() {
           margin-right: auto;
           box-sizing: border-box;
           overflow: visible;
+          transition:
+            flex 0.32s cubic-bezier(0.33, 1, 0.68, 1),
+            max-width 0.32s cubic-bezier(0.33, 1, 0.68, 1);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .lesson-map-root {
+            transition-duration: 0.01s !important;
+          }
         }
         @media (max-width: 520px) {
           .lesson-map-root {
@@ -2215,9 +2346,15 @@ export default function LessonPage() {
         <div
           className={`lesson-page-map-layout${
             summaryOpen ? "" : " lesson-page-map-layout--summary-collapsed"
-          }`}
+          }${reviewOpen ? "" : " lesson-page-map-layout--review-collapsed"}`}
         >
-          {summaryOpen ? (
+          <LessonSidebarSlot
+            open={summaryOpen}
+            onOpen={() => setSummaryOpen(true)}
+            side="left"
+            tabLabel="Tóm tắt"
+            panelId="lesson-curriculum-summary"
+          >
             <LessonCurriculumSummary
               gradeName={selectedGradeName}
               types={cache.types[selectedGrade] || []}
@@ -2229,17 +2366,7 @@ export default function LessonPage() {
               progressByLessonId={lessonProgressById}
               onCollapse={() => setSummaryOpen(false)}
             />
-          ) : (
-            <button
-              type="button"
-              className="lesson-summary-reopen-btn"
-              aria-expanded={false}
-              aria-controls="lesson-curriculum-summary"
-              onClick={() => setSummaryOpen(true)}
-            >
-              Tóm tắt
-            </button>
-          )}
+          </LessonSidebarSlot>
           <div className="lesson-map-root" ref={lessonMapRootRef}>
           <p className="lesson-map-title">Lộ trình bài học</p>
           <div className="lesson-map-shell">
@@ -2417,6 +2544,31 @@ export default function LessonPage() {
             </div>
           </div>
           </div>
+          <LessonSidebarSlot
+            open={reviewOpen}
+            onOpen={() => setReviewOpen(true)}
+            side="right"
+            tabLabel="Ôn tập"
+            panelId="lesson-review-panel"
+          >
+            <LessonReviewPanel
+              days={reviewDays}
+              onDaysChange={setReviewDays}
+              items={reviewItems}
+              loading={reviewLoading}
+              error={reviewError}
+              isLoggedIn={reviewLoggedIn}
+              selectedIds={reviewSelectedIds}
+              onToggleLesson={handleToggleReviewLesson}
+              onSelectAll={handleReviewSelectAll}
+              onClearAll={handleReviewClearAll}
+              questionsPerLesson={reviewQuestionsPerLesson}
+              onQuestionsPerLessonChange={setReviewQuestionsPerLesson}
+              onStartReview={() => void handleStartBatchReview()}
+              startingReview={reviewStarting}
+              onCollapse={() => setReviewOpen(false)}
+            />
+          </LessonSidebarSlot>
         </div>
       )}
     </div>

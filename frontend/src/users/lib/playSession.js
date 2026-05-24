@@ -1,5 +1,6 @@
 export const SESSION_KEY = "game_play_state_v1";
 export const PREGAME_SESSION_KEY = "game_pregame_state_v1";
+export const REVIEW_SESSION_KEY = "lesson_review_session_v1";
 export const LAST_GAME_INTERFACE_KEY = "game_interface_last_v1";
 
 const LEGACY_LAST_LESSON_KEY = "lesson_last_selection_v1";
@@ -68,6 +69,29 @@ export function readPregamePayload() {
     return parsed && parsed.payload ? parsed.payload : null;
   } catch (e) {
     console.warn("Lỗi đọc pregame session:", e);
+    return null;
+  }
+}
+
+export function persistReviewSession(payload) {
+  try {
+    sessionStorage.setItem(
+      REVIEW_SESSION_KEY,
+      JSON.stringify({ payload, ts: Date.now() })
+    );
+  } catch (e) {
+    console.warn("Không lưu được phiên ôn tập:", e);
+  }
+}
+
+export function readReviewSession() {
+  try {
+    const raw = sessionStorage.getItem(REVIEW_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && parsed.payload ? parsed.payload : null;
+  } catch (e) {
+    console.warn("Lỗi đọc phiên ôn tập:", e);
     return null;
   }
 }

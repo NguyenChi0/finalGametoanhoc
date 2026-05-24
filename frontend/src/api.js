@@ -724,6 +724,12 @@ export const getLastLessonProgress = async () => {
   return res.data?.progress ?? null;
 };
 
+export const getCompletedLessonsForReview = async (days = 7) => {
+  const d = Number(days) === 3 ? 3 : 7;
+  const res = await api.get("/lesson-progress/completed", { params: { days: d } });
+  return res.data;
+};
+
 export const saveLessonProgress = async ({
   lessonId,
   gradeId,

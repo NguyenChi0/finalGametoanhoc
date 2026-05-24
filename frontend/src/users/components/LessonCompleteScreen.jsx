@@ -101,6 +101,10 @@ export default function LessonCompleteScreen({
     });
 
   useEffect(() => {
+    if (payload?.reviewMode) {
+      setNextLessonAvailable(false);
+      return undefined;
+    }
     if (payload?.type?.id == null || payload?.lesson?.id == null) {
       setNextLessonAvailable(false);
       return undefined;
@@ -118,7 +122,7 @@ export default function LessonCompleteScreen({
     return () => {
       cancelled = true;
     };
-  }, [payload?.type?.id, payload?.lesson?.id]);
+  }, [payload?.reviewMode, payload?.type?.id, payload?.lesson?.id]);
 
   useEffect(() => {
     const userId = payload?.user?.id;
@@ -128,6 +132,7 @@ export default function LessonCompleteScreen({
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
 
     if (
+      payload?.reviewMode ||
       progressSavedRef.current ||
       !token ||
       !userId ||
@@ -344,7 +349,7 @@ export default function LessonCompleteScreen({
               fontWeight: 800,
             }}
           >
-            Hoàn thành bài học
+            {payload?.reviewMode ? "Hoàn thành ôn tập" : "Hoàn thành bài học"}
           </h2>
 
           <div className="lesson-complete-body" style={{ marginBottom: "24px" }}>
@@ -400,7 +405,7 @@ export default function LessonCompleteScreen({
                 <span>Về trang chủ</span>
               </span>
             </button>
-            {nextLessonAvailable && (
+            {nextLessonAvailable && !payload?.reviewMode && (
               <button
                 type="button"
                 className="lesson-complete-btn user-cta-flash"

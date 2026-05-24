@@ -13,6 +13,9 @@ const Contest = lazy(() => import("./users/pages/contest"));
 const ContestDetailPage = lazy(() => import("./users/pages/contestDetailPage"));
 const Exam = lazy(() => import("./users/pages/Exam"));
 const ExamDetailPage = lazy(() => import("./users/pages/ExamDetailPage"));
+const LessonReviewSessionPage = lazy(
+  () => import("./users/pages/LessonReviewSessionPage")
+);
 const GamePage = lazy(() => import("./users/pages/gamepage"));
 const PreGameSetUp = lazy(() => import("./users/pages/preGameSetUp"));
 const Profile = lazy(() => import("./users/pages/profile"));
@@ -45,6 +48,7 @@ function AppShell() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/lessons" element={<LessonPage />} />
+          <Route path="/lesson-review" element={<LessonReviewSessionPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

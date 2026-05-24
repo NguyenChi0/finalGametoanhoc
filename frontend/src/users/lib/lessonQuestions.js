@@ -20,3 +20,12 @@ export function prepareSessionQuestions(
     answers: shuffleArray(q.answers || []),
   }));
 }
+
+/** Ôn tập gộp nhiều bài — không giới hạn 15 câu. */
+export function prepareReviewQuestions(questions) {
+  const list = Array.isArray(questions) ? questions : [];
+  return shuffleArray(list).map((q) => ({
+    ...q,
+    answers: shuffleArray(q.answers || []),
+  }));
+}
