@@ -42,15 +42,22 @@ const EMPTY_ITEM_EFFECTS = {
 async function enrichPayloadWithItemEffects(base) {
   if (!base) return null;
   if (base.reviewMode) {
-    return { ...base, itemEffects: { ...EMPTY_ITEM_EFFECTS } };
+    return { ...base, itemEffects: { ...EMPTY_ITEM_EFFECTS }, selectedItemIds: [] };
   }
   if (!localStorage.getItem("token")) return base;
+  const selectedItemIds = Array.isArray(base.selectedItemIds)
+    ? base.selectedItemIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+        .slice(0, 3)
+    : [];
   try {
-    const data = await getItemEffects();
+    const data = await getItemEffects(selectedItemIds);
     const hintN = Number(data?.hintQuestionsPerLesson) || 0;
     const bonus = Number(data?.lessonBonusPerComplete) || 0;
     return {
       ...base,
+      selectedItemIds,
       itemEffects: {
         lessonBonusPerComplete: bonus,
         hintQuestionsPerLesson: hintN,
@@ -59,7 +66,11 @@ async function enrichPayloadWithItemEffects(base) {
     };
   } catch (e) {
     console.warn("Không tải item-effects:", e);
-    return base;
+    return {
+      ...base,
+      selectedItemIds,
+      itemEffects: { ...EMPTY_ITEM_EFFECTS },
+    };
   }
 }
 

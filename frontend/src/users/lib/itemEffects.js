@@ -55,6 +55,48 @@ export function validateItemEffectsClient(effectType, lessonBonus, hintQuestions
   return "Loại chức năng không hợp lệ.";
 }
 
+/** Mỗi item id chỉ giữ một bản ghi (mua trùng nhiều lần không nhân đôi). */
+export function dedupeItemsById(items) {
+  const list = Array.isArray(items) ? items : [];
+  const byId = new Map();
+  for (const item of list) {
+    const id = Number(item?.id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (!byId.has(id)) byId.set(id, item);
+  }
+  return [...byId.values()];
+}
+
+/** Preview tổng bonus/hint khi chọn loadout (client-side). */
+export function aggregateItemEffectsFromItems(items) {
+  const list = dedupeItemsById(items);
+  let lessonBonusPerComplete = 0;
+  let hintQuestionsPerLesson = 0;
+  for (const item of list) {
+    const type = normalizeEffectType(item?.effect_type);
+    if (type === 1) {
+      lessonBonusPerComplete += Number(item?.lesson_bonus_points) || 0;
+    } else if (type === 2) {
+      hintQuestionsPerLesson += Number(item?.hint_questions) || 0;
+    }
+  }
+  return { lessonBonusPerComplete, hintQuestionsPerLesson };
+}
+
+export function formatLoadoutPreviewSummary(items) {
+  const { lessonBonusPerComplete, hintQuestionsPerLesson } =
+    aggregateItemEffectsFromItems(items);
+  const parts = [];
+  if (lessonBonusPerComplete > 0) {
+    parts.push(`+${lessonBonusPerComplete} điểm khi hoàn thành bài`);
+  }
+  if (hintQuestionsPerLesson > 0) {
+    parts.push(`${hintQuestionsPerLesson} câu có gợi ý`);
+  }
+  if (parts.length === 0) return "Không có hiệu ứng từ vật phẩm đã chọn.";
+  return parts.join(" · ");
+}
+
 export function buildItemEffectPayload(effectType, lessonBonus, hintQuestions) {
   const type = normalizeEffectType(effectType);
   const bonus = Math.floor(Number(lessonBonus) || 0);

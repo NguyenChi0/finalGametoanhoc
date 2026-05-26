@@ -1810,21 +1810,46 @@ app.get('/api/items', async (req, res) => {
   }
 });
 
-// GET /api/item-effects — tổng hợp hiệu ứng từ vật phẩm user đang sở hữu
+// GET /api/item-effects — tổng hợp hiệu ứng từ tối đa 3 vật phẩm user chọn mang vào bài (?itemIds=1,2,3)
 app.get('/api/item-effects', authenticateToken, async (req, res) => {
   try {
     const userId = Number(req.auth?.sub);
     if (!Number.isFinite(userId) || userId <= 0) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
+
+    const rawIds = req.query.itemIds;
+    let itemIds = [];
+    if (Array.isArray(rawIds)) {
+      itemIds = rawIds.flatMap((v) => String(v).split(','));
+    } else if (rawIds != null && String(rawIds).trim() !== '') {
+      itemIds = String(rawIds).split(',');
+    }
+    itemIds = [...new Set(
+      itemIds
+        .map((v) => Math.floor(Number(String(v).trim())))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )].slice(0, 3);
+
+    if (itemIds.length === 0) {
+      return res.json({
+        lessonBonusPerComplete: 0,
+        hintQuestionsPerLesson: 0,
+      });
+    }
+
+    const placeholders = itemIds.map(() => '?').join(', ');
     const [[row]] = await pool.query(
       `SELECT
          COALESCE(SUM(CASE WHEN i.effect_type = 1 THEN i.lesson_bonus_points ELSE 0 END), 0) AS lesson_bonus,
          COALESCE(SUM(CASE WHEN i.effect_type = 2 THEN i.hint_questions ELSE 0 END), 0) AS hint_questions
-       FROM user_items ui
-       INNER JOIN items i ON i.id = ui.item_id
-       WHERE ui.user_id = ?`,
-      [userId]
+       FROM (
+         SELECT DISTINCT ui.item_id
+         FROM user_items ui
+         WHERE ui.user_id = ? AND ui.item_id IN (${placeholders})
+       ) owned
+       INNER JOIN items i ON i.id = owned.item_id`,
+      [userId, ...itemIds]
     );
     const lessonBonusPerComplete = Number(row?.lesson_bonus) || 0;
     const hintQuestionsPerLesson = Number(row?.hint_questions) || 0;
@@ -1883,9 +1908,13 @@ app.get('/api/my-items/:userId', authenticateToken, async (req, res) => {
   }
   try {
     const [rows] = await pool.query(
-      `SELECT items.* FROM items
-       JOIN user_items ON items.id = user_items.item_id
-       WHERE user_items.user_id = ?`,
+      `SELECT i.*
+       FROM items i
+       INNER JOIN (
+         SELECT DISTINCT item_id
+         FROM user_items
+         WHERE user_id = ?
+       ) ui ON i.id = ui.item_id`,
       [userId]
     );
     res.json(rows);

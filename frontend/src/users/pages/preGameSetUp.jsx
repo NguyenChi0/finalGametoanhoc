@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getLessons, getTypes, lessonImageUrl } from "../../api";
+import { getLessons, getMyItems, getTypes, lessonImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import { GAME_OPTIONS } from "../lib/gameInterfaces";
 import GameInterfaceCarousel from "../components/GameInterfaceCarousel";
+import ItemLoadoutModal from "../components/ItemLoadoutModal";
 import {
   persistLastGameInterface,
   persistPlayState,
@@ -76,6 +77,8 @@ export default function PreGameSetUp() {
   );
   const [missing, setMissing] = useState(false);
   const [lessonImgFailed, setLessonImgFailed] = useState(false);
+  const [loadoutOpen, setLoadoutOpen] = useState(false);
+  const [playStarting, setPlayStarting] = useState(false);
   const hydrateAttempted = useRef(false);
 
   useEffect(() => {
@@ -197,12 +200,70 @@ export default function PreGameSetUp() {
     };
   }, [payload]);
 
-  const handlePlay = () => {
+  const startGame = useCallback(
+    (selectedItemIds = []) => {
+      if (!payload || !isValidPlayPayload(payload)) return;
+      const ids = Array.isArray(selectedItemIds)
+        ? selectedItemIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+        : [];
+      const playPayload = {
+        ...payload,
+        game: { id: gameId },
+        selectedItemIds: ids.slice(0, 3),
+      };
+      persistPlayState(gameId, playPayload);
+      setLoadoutOpen(false);
+      navigate(`/game/${gameId}`, { state: playPayload });
+    },
+    [payload, gameId, navigate]
+  );
+
+  const handlePlay = async () => {
     if (!payload || !isValidPlayPayload(payload)) return;
-    const playPayload = { ...payload, game: { id: gameId } };
-    persistPlayState(gameId, playPayload);
-    navigate(`/game/${gameId}`, { state: playPayload });
+    if (payload.reviewMode) {
+      startGame([]);
+      return;
+    }
+    const token = localStorage.getItem("token");
+    let userId = payload?.user?.id;
+    if (!userId) {
+      try {
+        const raw = localStorage.getItem("user");
+        if (raw) userId = JSON.parse(raw)?.id;
+      } catch {
+        /* bỏ qua */
+      }
+    }
+    if (!token || !userId) {
+      startGame([]);
+      return;
+    }
+    setPlayStarting(true);
+    try {
+      const owned = await getMyItems(userId);
+      if (!owned.length) {
+        startGame([]);
+        return;
+      }
+      setLoadoutOpen(true);
+    } catch (e) {
+      console.warn("Không tải kho vật phẩm:", e);
+      startGame([]);
+    } finally {
+      setPlayStarting(false);
+    }
   };
+
+  const loadoutUserId =
+    payload?.user?.id ||
+    (() => {
+      try {
+        const raw = localStorage.getItem("user");
+        return raw ? JSON.parse(raw)?.id : null;
+      } catch {
+        return null;
+      }
+    })();
 
   const lessonUsesDetailBg =
     lessonMeta?.hasLessonDetail && lessonMeta.lessonDetailUrl && !lessonImgFailed;
@@ -475,8 +536,13 @@ export default function PreGameSetUp() {
                   />
                 </div>
                 <div className="pregame-btns">
-                  <button type="button" className="pregame-btn-primary" onClick={handlePlay}>
-                    Chơi
+                  <button
+                    type="button"
+                    className="pregame-btn-primary"
+                    onClick={handlePlay}
+                    disabled={playStarting}
+                  >
+                    {playStarting ? "Đang tải…" : "Chơi"}
                   </button>
                   <button
                     type="button"
@@ -491,6 +557,13 @@ export default function PreGameSetUp() {
           )}
         </div>
       </div>
+
+      <ItemLoadoutModal
+        open={loadoutOpen}
+        userId={loadoutUserId}
+        onClose={() => setLoadoutOpen(false)}
+        onConfirm={(ids) => startGame(ids)}
+      />
     </>
   );
 }

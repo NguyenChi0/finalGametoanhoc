@@ -1,5 +1,6 @@
 // src/api.js
 import axios from "axios";
+import { dedupeItemsById } from "./users/lib/itemEffects";
 
 // Base URL đã có prefix /api
 const API_BASE =
@@ -434,10 +435,29 @@ function appendItemEffectFormFields(fd, rest) {
 }
 
 // ==========================
-// User — item effects (owned items aggregate)
+// User — items & loadout effects
 // ==========================
-export const getItemEffects = async () => {
-  const res = await api.get("/item-effects");
+export const getMyItems = async (userId) => {
+  const uid = Number(userId);
+  if (!uid) return [];
+  const res = await api.get(`/my-items/${uid}`);
+  const rows = Array.isArray(res.data) ? res.data : [];
+  return dedupeItemsById(rows);
+};
+
+/** Tổng hợp hiệu ứng từ tối đa 3 item id user chọn mang vào bài. */
+export const getItemEffects = async (itemIds = []) => {
+  const ids = [...new Set(
+    (Array.isArray(itemIds) ? itemIds : [])
+      .map((id) => Math.floor(Number(id)))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  )].slice(0, 3);
+  if (ids.length === 0) {
+    return { lessonBonusPerComplete: 0, hintQuestionsPerLesson: 0 };
+  }
+  const res = await api.get("/item-effects", {
+    params: { itemIds: ids.join(",") },
+  });
   return res.data;
 };
 
