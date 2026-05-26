@@ -3,6 +3,7 @@ import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onBackToHome, onLessonComplete }) {
@@ -41,17 +42,6 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
     [questions, shuffleSeed]
   );
 
-  // Gọi API cộng điểm
-  async function incrementScoreOnServer(userId, delta = 1) {
-    try {
-      const resp = await api.post("/score/increment", { userId, delta });
-      return resp.data;
-    } catch (e) {
-      console.warn("Lỗi gọi API cộng điểm:", e);
-      return null;
-    }
-  }
-
   // Reset hasScored khi chuyển câu hỏi
   useEffect(() => {
     hasScoredRef.current = false;
@@ -70,22 +60,10 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
       return;
     }
 
-    incrementScoreOnServer(userId, totalCorrect).then((data) => {
-      if (data && data.success) {
+    incrementLessonScore(userId, totalCorrect, payload).then((data) => {
+      if (data?.success) {
         setUserScore(data.score);
         setWeekScore(data.week_score ?? 0);
-
-        const raw = localStorage.getItem("user");
-        if (raw) {
-          try {
-            const u = JSON.parse(raw);
-            u.score = data.score;
-            u.week_score = data.week_score;
-            localStorage.setItem("user", JSON.stringify(u));
-          } catch (err) {
-            console.warn("Không cập nhật được user trong localStorage:", err);
-          }
-        }
       }
       setGameState("finished");
       setGameScreen("finished");

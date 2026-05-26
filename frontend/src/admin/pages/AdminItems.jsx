@@ -8,6 +8,13 @@ import {
   itemImageUrl,
 } from "../../api";
 import { LEVEL_LABELS } from "../../users/lib/itemRarity";
+import {
+  EFFECT_TYPE_LABELS,
+  buildItemEffectPayload,
+  formatItemEffectSummary,
+  normalizeEffectType,
+  validateItemEffectsClient,
+} from "../../users/lib/itemEffects";
 
 const ITEMS_PAGE_SIZE = 10;
 
@@ -42,6 +49,9 @@ function normalizeItemRow(row) {
       row.level != null && row.level !== ""
         ? Math.min(6, Math.max(1, Number(row.level) || 1))
         : 1,
+    effect_type: normalizeEffectType(row.effect_type),
+    lesson_bonus_points: Math.max(0, Math.floor(Number(row.lesson_bonus_points) || 0)),
+    hint_questions: Math.max(0, Math.floor(Number(row.hint_questions) || 0)),
   };
 }
 
@@ -61,6 +71,9 @@ export default function AdminItems() {
   const [formDesc, setFormDesc] = useState("");
   const [formScore, setFormScore] = useState("0");
   const [formLevel, setFormLevel] = useState("1");
+  const [formEffectType, setFormEffectType] = useState("0");
+  const [formLessonBonus, setFormLessonBonus] = useState("0");
+  const [formHintQuestions, setFormHintQuestions] = useState("0");
   /** Giống AdminQuestionCreate: data URL hoặc chuỗi đường dẫn /items-images/... */
   const [itemImage, setItemImage] = useState("");
   const [itemImagePreview, setItemImagePreview] = useState("");
@@ -192,6 +205,9 @@ export default function AdminItems() {
     setFormDesc(it.description || "");
     setFormScore(String(it.require_score ?? 0));
     setFormLevel(String(it.level ?? 1));
+    setFormEffectType(String(normalizeEffectType(it.effect_type)));
+    setFormLessonBonus(String(it.lesson_bonus_points ?? 0));
+    setFormHintQuestions(String(it.hint_questions ?? 0));
     const lk = it.link ? String(it.link).trim() : "";
     setOriginalLink(lk);
     setItemImage(lk);
@@ -209,6 +225,9 @@ export default function AdminItems() {
     setFormDesc("");
     setFormScore("0");
     setFormLevel("1");
+    setFormEffectType("0");
+    setFormLessonBonus("0");
+    setFormHintQuestions("0");
     setOriginalLink("");
     setItemImage("");
     setItemImagePreview("");
@@ -227,6 +246,9 @@ export default function AdminItems() {
     setFormDesc("");
     setFormScore("0");
     setFormLevel("1");
+    setFormEffectType("0");
+    setFormLessonBonus("0");
+    setFormHintQuestions("0");
     setOriginalLink("");
     setItemImage("");
     setItemImagePreview("");
@@ -253,6 +275,20 @@ export default function AdminItems() {
       setFormError("Cấp độ phải từ 1 đến 6.");
       return;
     }
+    const effectErr = validateItemEffectsClient(
+      formEffectType,
+      formLessonBonus,
+      formHintQuestions
+    );
+    if (effectErr) {
+      setFormError(effectErr);
+      return;
+    }
+    const effectFields = buildItemEffectPayload(
+      formEffectType,
+      formLessonBonus,
+      formHintQuestions
+    );
 
     let fileToSend = itemImageFile;
     if (!fileToSend && itemImage.trim().startsWith("data:image")) {
@@ -287,6 +323,7 @@ export default function AdminItems() {
           description: desc || null,
           require_score: scoreNum,
           level: levelNum,
+          ...effectFields,
           ...(fileToSend ? { imageFile: fileToSend } : {}),
           ...(pathOnly ? { item_image_path: pathOnly } : {}),
         });
@@ -297,6 +334,7 @@ export default function AdminItems() {
             description: desc,
             require_score: scoreNum,
             level: levelNum,
+            ...effectFields,
             clear_item_image: true,
           });
         } else if (fileToSend || (pathOnly && pathOnly !== originalLink)) {
@@ -305,6 +343,7 @@ export default function AdminItems() {
             description: desc,
             require_score: scoreNum,
             level: levelNum,
+            ...effectFields,
             ...(fileToSend ? { imageFile: fileToSend } : {}),
             ...(!fileToSend && pathOnly ? { item_image_path: pathOnly } : {}),
           });
@@ -315,6 +354,7 @@ export default function AdminItems() {
             require_score: scoreNum,
             level: levelNum,
             link: originalLink,
+            ...effectFields,
           });
         }
       }
@@ -465,6 +505,12 @@ export default function AdminItems() {
                     <span style={styles.cardLabel}>Cấp</span>
                     <span style={styles.cardValue}>{LEVEL_LABELS[it.level] || it.level}</span>
                   </div>
+                  <div style={styles.cardField}>
+                    <span style={styles.cardLabel}>Chức năng</span>
+                    <span style={{ ...styles.cardValue, fontSize: 13 }}>
+                      {formatItemEffectSummary(it)}
+                    </span>
+                  </div>
                   <div style={styles.cardActions}>
                     <button
                       type="button"
@@ -502,13 +548,14 @@ export default function AdminItems() {
                   <th style={{ ...styles.th, width: 88 }}>Ảnh</th>
                   <th style={{ ...styles.th, width: 110 }}>Giá (điểm)</th>
                   <th style={{ ...styles.th, width: 100 }}>Cấp</th>
+                  <th style={{ ...styles.th, minWidth: 160 }}>Chức năng</th>
                   <th style={{ ...styles.th, textAlign: "right", width: 120 }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={styles.tdEmpty}>
+                    <td colSpan={8} style={styles.tdEmpty}>
                       Không có kết quả phù hợp với “{search}”.
                     </td>
                   </tr>
@@ -531,6 +578,9 @@ export default function AdminItems() {
                       </td>
                       <td style={styles.td}>{it.require_score}</td>
                       <td style={styles.td}>{LEVEL_LABELS[it.level] || it.level}</td>
+                      <td style={{ ...styles.td, fontSize: 13, color: "#57606a" }}>
+                        {formatItemEffectSummary(it)}
+                      </td>
                       <td style={{ ...styles.td, textAlign: "right" }}>
                         <button
                           type="button"
@@ -735,6 +785,59 @@ export default function AdminItems() {
                   ))}
                 </select>
               </label>
+              <label style={styles.label}>
+                Loại chức năng
+                <select
+                  value={formEffectType}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormEffectType(v);
+                    if (v === "0") {
+                      setFormLessonBonus("0");
+                      setFormHintQuestions("0");
+                    } else if (v === "1") {
+                      setFormHintQuestions("0");
+                    } else if (v === "2") {
+                      setFormLessonBonus("0");
+                    }
+                  }}
+                  style={styles.inputLight}
+                >
+                  {Object.entries(EFFECT_TYPE_LABELS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {formEffectType === "1" && (
+                <label style={styles.label}>
+                  Điểm thưởng khi hoàn thành bài
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={formLessonBonus}
+                    onChange={(e) => setFormLessonBonus(e.target.value)}
+                    style={styles.inputLight}
+                    required
+                  />
+                </label>
+              )}
+              {formEffectType === "2" && (
+                <label style={styles.label}>
+                  Số câu có gợi ý (mỗi lần chơi)
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={formHintQuestions}
+                    onChange={(e) => setFormHintQuestions(e.target.value)}
+                    style={styles.inputLight}
+                    required
+                  />
+                </label>
+              )}
               {formError && (
                 <div style={styles.formError} role="alert">
                   {formError}

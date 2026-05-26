@@ -1,9 +1,12 @@
 // src/components/games/game7.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import api, { questionImageUrl } from "../../api";
+import { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
+import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game7({ payload, onLessonComplete, onReturnHome }) {
@@ -22,6 +25,14 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   const gameAreaRef = useRef(null);
   const finishSentRef = useRef(false);
   const [shuffleSeed, setShuffleSeed] = useState(0);
+  const {
+    hintsRemaining,
+    hasHintFeature,
+    canUseHint,
+    applyHint,
+    getHiddenIndices,
+    resetHints,
+  } = useLessonHints(payload);
 
   const qs = useMemo(
     () => prepareSessionQuestions(questions),
@@ -120,17 +131,6 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [gameState, showResult, currentPosition, currentQuestion, doorPositions]);
 
-  // Gọi API cộng điểm
-  async function incrementScoreOnServer(userId, delta = 1) {
-    try {
-      const resp = await api.post("/score/increment", { userId, delta });
-      return resp.data;
-    } catch (e) {
-      console.warn("Lỗi gọi API cộng điểm:", e);
-      return null;
-    }
-  }
-
   function choose(qId, ansIdx) {
     if (selected[qId] !== undefined) return;
     setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
@@ -165,22 +165,10 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
       (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
     
     if (userId && correctCount > 0) {
-      const data = await incrementScoreOnServer(userId, correctCount);
-      if (data && data.success) {
+      const data = await incrementLessonScore(userId, correctCount, payload);
+      if (data?.success) {
         setUserScore(data.score);
         setWeekScore(data.week_score ?? 0);
-        
-        const raw = localStorage.getItem("user");
-        if (raw) {
-          try {
-            const u = JSON.parse(raw);
-            u.score = data.score;
-            u.week_score = data.week_score;
-            localStorage.setItem("user", JSON.stringify(u));
-          } catch (err) {
-            console.warn("Không cập nhật được user trong localStorage:", err);
-          }
-        }
       }
     }
     
@@ -198,6 +186,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
     setCurrentPosition(0);
     setTargetPosition(0);
     finishSentRef.current = false;
+    resetHints();
   }
 
   function restartGame() {
@@ -244,6 +233,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   }
 
   const selectedAnswerIndex = selected[currentQuestion.id];
+  const hiddenDoorIndices = getHiddenIndices(currentQuestion.id);
   const isCorrect = selectedAnswerIndex !== undefined && 
     currentQuestion.answers[selectedAnswerIndex]?.correct;
 
@@ -288,6 +278,17 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
             <p style={{ margin: 0, fontSize: "12px", color: "#fff", maxWidth: "200px" }}>
               Hãy chọn cửa đúng
             </p>
+            {hasHintFeature && (
+              <GameHintButton
+                hintsRemaining={hintsRemaining}
+                disabled={
+                  showResult ||
+                  !canUseHint(currentQuestion.id, currentQuestion.answers)
+                }
+                onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
+                style={{ margin: "8px 0 0", fontSize: 12, padding: "6px 12px" }}
+              />
+            )}
           </div>
 
           {/* Điểm số */}
@@ -375,6 +376,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
             zIndex: 2
           }}>
             {currentQuestion.answers.map((answer, index) => {
+              if (hiddenDoorIndices.has(index)) return null;
               const doorPosition = doorPositions[index];
               const isSelectedDoor = selectedAnswerIndex === index;
               

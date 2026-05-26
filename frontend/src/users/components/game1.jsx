@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import api, { questionImageUrl } from "../../api";
+import { questionImageUrl } from "../../api";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
+import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 const ADVANCE_DELAY_MS = 1000;
@@ -73,6 +76,14 @@ export default function Game10({ payload, onLessonComplete }) {
   const [scoreSent, setScoreSent] = useState(false);
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const advanceTimerRef = useRef(null);
+  const {
+    hintsRemaining,
+    hasHintFeature,
+    canUseHint,
+    applyHint,
+    getHiddenIndices,
+    resetHints,
+  } = useLessonHints(payload);
 
   const qs = useMemo(
     () => prepareSessionQuestions(questions),
@@ -82,16 +93,6 @@ export default function Game10({ payload, onLessonComplete }) {
   const currentQuestion = qs[currentIndex] ?? null;
   const allAnswered =
     qs.length > 0 && Object.keys(selected).length === qs.length;
-
-  async function incrementScoreOnServer(userId, delta = 1) {
-    try {
-      const resp = await api.post("/score/increment", { userId, delta });
-      return resp.data;
-    } catch (e) {
-      console.warn("Lỗi gọi API cộng điểm:", e);
-      return null;
-    }
-  }
 
   const goToNextQuestion = useCallback(() => {
     setCurrentIndex((prev) => Math.min(prev + 1, qs.length));
@@ -107,7 +108,8 @@ export default function Game10({ payload, onLessonComplete }) {
     setSelected({});
     setCorrectCount(0);
     setScoreSent(false);
-  }, []);
+    resetHints();
+  }, [resetHints]);
 
   const choose = useCallback(
     (qId, ansIdx) => {
@@ -152,20 +154,7 @@ export default function Game10({ payload, onLessonComplete }) {
         return;
       }
 
-      incrementScoreOnServer(userId, correctCount).then((data) => {
-        if (data?.success) {
-          const raw = localStorage.getItem("user");
-          if (raw) {
-            try {
-              const u = JSON.parse(raw);
-              u.score = data.score;
-              u.week_score = data.week_score;
-              localStorage.setItem("user", JSON.stringify(u));
-            } catch (err) {
-              console.warn("Không cập nhật được user trong localStorage:", err);
-            }
-          }
-        }
+      incrementLessonScore(userId, correctCount, payload).then(() => {
         setScoreSent(true);
       });
       onLessonComplete?.(correctCount);
@@ -196,6 +185,8 @@ export default function Game10({ payload, onLessonComplete }) {
   }
 
   const sel = selected[currentQuestion.id];
+  const hiddenIndices = getHiddenIndices(currentQuestion.id);
+  const qLocked = sel !== undefined;
   const qImgSrc = currentQuestion.question_image
     ? questionImageUrl(currentQuestion.question_image) || currentQuestion.question_image
     : null;
@@ -262,12 +253,26 @@ export default function Game10({ payload, onLessonComplete }) {
           </div>
         )}
 
+        {hasHintFeature && (
+          <div style={{ textAlign: "center" }}>
+            <GameHintButton
+              hintsRemaining={hintsRemaining}
+              disabled={
+                !canUseHint(currentQuestion.id, currentQuestion.answers) || qLocked
+              }
+              onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
+            />
+          </div>
+        )}
+
         <div className="game10-answer-grid">
-          {currentQuestion.answers.map((a, ai) => (
+          {currentQuestion.answers.map((a, ai) => {
+            if (hiddenIndices.has(ai)) return null;
+            return (
             <button
               key={a.id ?? ai}
               type="button"
-              disabled={sel !== undefined}
+              disabled={qLocked}
               onClick={() => choose(currentQuestion.id, ai)}
               style={answerButtonStyle(sel, ai, a)}
             >
@@ -285,7 +290,8 @@ export default function Game10({ payload, onLessonComplete }) {
               )}
               {!a.text && !a.image && <span>—</span>}
             </button>
-          ))}
+            );
+          })}
         </div>
       </section>
     </div>

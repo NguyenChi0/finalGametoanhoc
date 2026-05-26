@@ -426,6 +426,21 @@ export const deleteAdminContest = async (id) => {
   return res.data;
 };
 
+function appendItemEffectFormFields(fd, rest) {
+  const et = rest.effect_type != null ? Number(rest.effect_type) : 0;
+  fd.append("effect_type", String(et));
+  fd.append("lesson_bonus_points", String(rest.lesson_bonus_points ?? 0));
+  fd.append("hint_questions", String(rest.hint_questions ?? 0));
+}
+
+// ==========================
+// User — item effects (owned items aggregate)
+// ==========================
+export const getItemEffects = async () => {
+  const res = await api.get("/item-effects");
+  return res.data;
+};
+
 // ==========================
 // Admin — Items (shop /api/admin/items)
 // ==========================
@@ -452,6 +467,7 @@ export const createAdminItem = async (payload) => {
     if (rest.level != null && rest.level !== "") {
       fd.append("level", String(rest.level));
     }
+    appendItemEffectFormFields(fd, rest);
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name ? imageFile.name : "item.png";
@@ -495,6 +511,7 @@ export const updateAdminItem = async (id, payload) => {
     if (rest.level != null && rest.level !== "") {
       fd.append("level", String(rest.level));
     }
+    appendItemEffectFormFields(fd, rest);
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name ? imageFile.name : "item.png";
@@ -527,6 +544,22 @@ export const updateAdminItem = async (id, payload) => {
 
 export const deleteAdminItem = async (id) => {
   const res = await api.delete(`/admin/items/${id}`);
+  return res.data;
+};
+
+// ==========================
+// Admin — Dashboard
+// ==========================
+export const getAdminDashboard = async () => {
+  const res = await api.get("/admin/dashboard");
+  return res.data;
+};
+
+export const getAdminDashboardPerformance = async ({ mode, date } = {}) => {
+  const params = {};
+  if (mode) params.mode = mode;
+  if (date) params.date = date;
+  const res = await api.get("/admin/dashboard/performance", { params });
   return res.data;
 };
 

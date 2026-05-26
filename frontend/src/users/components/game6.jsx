@@ -4,6 +4,7 @@ import api, { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onLessonComplete }) {
@@ -138,16 +139,6 @@ export default function Game1({ payload, onLessonComplete }) {
     questionAnsweredRef.current = false;
   }, [currentQuestionIndex, isPlaying, currentQuestion]);
 
-  async function incrementScoreOnServer(userId, delta = 1) {
-    try {
-      const resp = await api.post("/score/increment", { userId, delta });
-      return resp.data;
-    } catch (e) {
-      console.warn("Lỗi gọi API cộng điểm:", e);
-      return null;
-    }
-  }
-
   function finishLesson(newCorrectCount) {
     const userId =
       payload?.user?.id ||
@@ -162,20 +153,10 @@ export default function Game1({ payload, onLessonComplete }) {
     }
 
     if (newCorrectCount > 0) {
-      incrementScoreOnServer(userId, newCorrectCount)
+      incrementLessonScore(userId, newCorrectCount, payload)
         .then((data) => {
-          if (data && data.success) {
-            const raw = localStorage.getItem("user");
-            if (raw) {
-              try {
-                const u = JSON.parse(raw);
-                u.score = data.score;
-                u.week_score = data.week_score;
-                localStorage.setItem("user", JSON.stringify(u));
-              } catch (err) {
-                console.warn("Không cập nhật được user trong localStorage:", err);
-              }
-            }
+          if (data?.success) {
+            /* localStorage cập nhật trong incrementLessonScore */
           }
         })
         .finally(() => {

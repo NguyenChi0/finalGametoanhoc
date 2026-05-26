@@ -1,6 +1,7 @@
 // pages/gamepage.jsx — chỉ tải đúng một game theo gameId (chunk riêng)
 import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
+import { getItemEffects } from "../../api";
 import { sendLessonResultToKilovia, getKiloviaContext } from "../lib/kiloviaBridge";
 import { publicUrl } from "../../lib/publicUrl";
 import { GAME_LABELS } from "../lib/gameInterfaces";
@@ -32,8 +33,34 @@ function getKiloviaFromSearch(search) {
   };
 }
 
-function withSessionPayload(payload) {
-  return payload;
+const EMPTY_ITEM_EFFECTS = {
+  lessonBonusPerComplete: 0,
+  hintQuestionsPerLesson: 0,
+  hintsRemaining: 0,
+};
+
+async function enrichPayloadWithItemEffects(base) {
+  if (!base) return null;
+  if (base.reviewMode) {
+    return { ...base, itemEffects: { ...EMPTY_ITEM_EFFECTS } };
+  }
+  if (!localStorage.getItem("token")) return base;
+  try {
+    const data = await getItemEffects();
+    const hintN = Number(data?.hintQuestionsPerLesson) || 0;
+    const bonus = Number(data?.lessonBonusPerComplete) || 0;
+    return {
+      ...base,
+      itemEffects: {
+        lessonBonusPerComplete: bonus,
+        hintQuestionsPerLesson: hintN,
+        hintsRemaining: hintN,
+      },
+    };
+  } catch (e) {
+    console.warn("Không tải item-effects:", e);
+    return base;
+  }
 }
 
 function GameLoadFallback() {
@@ -54,57 +81,71 @@ export default function GamePage() {
   const gameStartTimeRef = useRef(null);
 
   useEffect(() => {
-    const fromUrl = getKiloviaFromSearch(location.search);
-    const fromPostMessage = getKiloviaContext();
-    const kiloviaFallback =
-      fromUrl ||
-      (fromPostMessage?.token && {
-        ...fromPostMessage,
-        lessonName: "Game",
-      });
+    let cancelled = false;
+    let redirectTimer;
 
-    if (location.state) {
-      const merged = withSessionPayload({
-        ...location.state,
-        kilovia: location.state.kilovia || kiloviaFallback,
-      });
-      setPayload(merged);
-      try {
-        sessionStorage.setItem(
-          SESSION_KEY,
-          JSON.stringify({ gameId, payload: merged, ts: Date.now() })
-        );
-      } catch (e) {
-        console.warn("Không lưu session:", e);
-      }
-      return;
-    }
+    async function resolvePayload() {
+      const fromUrl = getKiloviaFromSearch(location.search);
+      const fromPostMessage = getKiloviaContext();
+      const kiloviaFallback =
+        fromUrl ||
+        (fromPostMessage?.token && {
+          ...fromPostMessage,
+          lessonName: "Game",
+        });
 
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.gameId === gameId && parsed.payload) {
-          const merged = withSessionPayload({
-            ...parsed.payload,
-            kilovia: parsed.payload.kilovia || kiloviaFallback,
-          });
-          setPayload(merged);
-          return;
+      if (location.state) {
+        const merged = {
+          ...location.state,
+          kilovia: location.state.kilovia || kiloviaFallback,
+        };
+        const enriched = await enrichPayloadWithItemEffects(merged);
+        if (cancelled) return;
+        setPayload(enriched);
+        try {
+          sessionStorage.setItem(
+            SESSION_KEY,
+            JSON.stringify({ gameId, payload: enriched, ts: Date.now() })
+          );
+        } catch (e) {
+          console.warn("Không lưu session:", e);
         }
+        return;
       }
-    } catch (e) {
-      console.warn("Lỗi đọc sessionStorage:", e);
+
+      try {
+        const raw = sessionStorage.getItem(SESSION_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.gameId === gameId && parsed.payload) {
+            const merged = {
+              ...parsed.payload,
+              kilovia: parsed.payload.kilovia || kiloviaFallback,
+            };
+            const enriched = await enrichPayloadWithItemEffects(merged);
+            if (cancelled) return;
+            setPayload(enriched);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Lỗi đọc sessionStorage:", e);
+      }
+
+      if (fromUrl) {
+        navigate("/?" + location.search, { replace: true });
+        return;
+      }
+
+      setMessage("Không tìm thấy dữ liệu chơi. Quay về trang chọn...");
+      redirectTimer = setTimeout(() => navigate("/", { replace: true }), 1800);
     }
 
-    if (fromUrl) {
-      navigate("/?" + location.search, { replace: true });
-      return;
-    }
-
-    setMessage("Không tìm thấy dữ liệu chơi. Quay về trang chọn...");
-    const t = setTimeout(() => navigate("/", { replace: true }), 1800);
-    return () => clearTimeout(t);
+    resolvePayload();
+    return () => {
+      cancelled = true;
+      if (redirectTimer) clearTimeout(redirectTimer);
+    };
   }, [location.state, location.search, gameId, navigate]);
 
   useEffect(() => {

@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import api, { itemImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import { levelItemAuraFilter } from "../lib/itemRarity";
+import { formatItemEffectDescription } from "../lib/itemEffects";
 import "../styles/userCtaFlashShine.css";
 
 const PAGE_SIZE = 5;
@@ -167,6 +168,7 @@ export default function Shop() {
               {!loading &&
                 pageItems.map((item) => {
                   const price = Number(item.require_score) || 0;
+                  const effectDesc = formatItemEffectDescription(item);
                   return (
                     <div key={item.id} className="shop-card">
                       <div className="card-content">
@@ -182,6 +184,14 @@ export default function Shop() {
                           <p className="shop-desc">
                             {item.description?.trim() || "Vật phẩm dùng trong trò chơi."}
                           </p>
+                          {effectDesc ? (
+                            <p
+                              className="shop-desc"
+                              style={{ color: "#6C7EE1", fontWeight: 600, marginTop: -4 }}
+                            >
+                              {effectDesc}
+                            </p>
+                          ) : null}
                           <div className="meta">
                             <span className="shop-price-row">
                               <DiamondIcon />

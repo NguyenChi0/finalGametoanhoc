@@ -1810,6 +1810,34 @@ app.get('/api/items', async (req, res) => {
   }
 });
 
+// GET /api/item-effects — tổng hợp hiệu ứng từ vật phẩm user đang sở hữu
+app.get('/api/item-effects', authenticateToken, async (req, res) => {
+  try {
+    const userId = Number(req.auth?.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    const [[row]] = await pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN i.effect_type = 1 THEN i.lesson_bonus_points ELSE 0 END), 0) AS lesson_bonus,
+         COALESCE(SUM(CASE WHEN i.effect_type = 2 THEN i.hint_questions ELSE 0 END), 0) AS hint_questions
+       FROM user_items ui
+       INNER JOIN items i ON i.id = ui.item_id
+       WHERE ui.user_id = ?`,
+      [userId]
+    );
+    const lessonBonusPerComplete = Number(row?.lesson_bonus) || 0;
+    const hintQuestionsPerLesson = Number(row?.hint_questions) || 0;
+    return res.json({
+      lessonBonusPerComplete,
+      hintQuestionsPerLesson,
+    });
+  } catch (err) {
+    console.error('Error GET /api/item-effects:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // POST /api/buy
 app.post('/api/buy', authenticateToken, async (req, res) => {
   const { userId, itemId } = req.body;

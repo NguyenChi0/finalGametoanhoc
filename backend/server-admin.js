@@ -287,6 +287,74 @@ function parseItemLevel(raw, { defaultVal = 1 } = {}) {
   return n;
 }
 
+/** effect_type: 0=trang trí, 1=lesson bonus, 2=hint */
+function parseItemEffects(body) {
+  const b = body || {};
+  const hasType = b.effect_type !== undefined && b.effect_type !== '';
+  const effectType = hasType ? Number(b.effect_type) : 0;
+  if (!Number.isInteger(effectType) || effectType < 0 || effectType > 2) {
+    const e = new Error('effect_type phải là 0, 1 hoặc 2');
+    e.statusCode = 400;
+    throw e;
+  }
+
+  let lessonBonus =
+    b.lesson_bonus_points !== undefined && b.lesson_bonus_points !== ''
+      ? Number(b.lesson_bonus_points)
+      : 0;
+  let hintQuestions =
+    b.hint_questions !== undefined && b.hint_questions !== ''
+      ? Number(b.hint_questions)
+      : 0;
+
+  if (Number.isNaN(lessonBonus) || lessonBonus < 0) {
+    const e = new Error('lesson_bonus_points phải là số ≥ 0');
+    e.statusCode = 400;
+    throw e;
+  }
+  if (Number.isNaN(hintQuestions) || hintQuestions < 0) {
+    const e = new Error('hint_questions phải là số ≥ 0');
+    e.statusCode = 400;
+    throw e;
+  }
+
+  lessonBonus = Math.floor(lessonBonus);
+  hintQuestions = Math.floor(hintQuestions);
+
+  if (effectType === 0) {
+    lessonBonus = 0;
+    hintQuestions = 0;
+  } else if (effectType === 1) {
+    if (lessonBonus <= 0) {
+      const e = new Error('lesson_bonus_points phải > 0 khi effect_type=1');
+      e.statusCode = 400;
+      throw e;
+    }
+    hintQuestions = 0;
+  } else if (effectType === 2) {
+    if (hintQuestions <= 0) {
+      const e = new Error('hint_questions phải > 0 khi effect_type=2');
+      e.statusCode = 400;
+      throw e;
+    }
+    lessonBonus = 0;
+  }
+
+  return { effectType, lessonBonus, hintQuestions };
+}
+
+function appendItemEffectUpdates(updates, params, body) {
+  const b = body || {};
+  const hasAny =
+    b.effect_type !== undefined ||
+    b.lesson_bonus_points !== undefined ||
+    b.hint_questions !== undefined;
+  if (!hasAny) return;
+  const { effectType, lessonBonus, hintQuestions } = parseItemEffects(body);
+  updates.push('effect_type = ?', 'lesson_bonus_points = ?', 'hint_questions = ?');
+  params.push(effectType, lessonBonus, hintQuestions);
+}
+
 function parseSortOrder(raw, { required = false } = {}) {
   if (raw === undefined || raw === null || raw === '') {
     if (required) {
@@ -353,6 +421,496 @@ module.exports = function mountAdminCrud(app, pool) {
     if (nowMs >= startMs) return CONTEST_STATUS_ACTIVE;
     return CONTEST_STATUS_SCHEDULED;
   }
+
+  const ALERT_SAMPLE_LIMIT = 5;
+
+  function parseDateParam(raw) {
+    if (!raw || typeof raw !== 'string') {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const dt = new Date(y, mo, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo || dt.getDate() !== d) return null;
+    return dt;
+  }
+
+  function formatDateISO(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function addDays(d, n) {
+    const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    r.setDate(r.getDate() + n);
+    return r;
+  }
+
+  function startOfWeekMonday(d) {
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    return addDays(d, diff);
+  }
+
+  function endOfWeekSunday(d) {
+    return addDays(startOfWeekMonday(d), 6);
+  }
+
+  function formatDateVi(d) {
+    return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+  }
+
+  function formatRangeLabel(start, end) {
+    return `${formatDateVi(start)} - ${formatDateVi(end)}`;
+  }
+
+  const VI_DAY_NAMES = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+
+  function rowDayKey(row) {
+    const v = row.day;
+    if (v instanceof Date) return formatDateISO(v);
+    return String(v).slice(0, 10);
+  }
+
+  function monthWeekBuckets(year, monthIndex) {
+    const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+    return [
+      { weekNum: 1, startDay: 1, endDay: 7 },
+      { weekNum: 2, startDay: 8, endDay: 14 },
+      { weekNum: 3, startDay: 15, endDay: 21 },
+      { weekNum: 4, startDay: 22, endDay: lastDay },
+    ];
+  }
+
+  async function fetchCompletionCountsByDay(rangeStart, rangeEndExclusive) {
+    const [rows] = await pool.query(
+      `SELECT DATE(completed_at) AS day, COUNT(*) AS count
+       FROM user_lesson_progress
+       WHERE completed_at >= ? AND completed_at < ?
+       GROUP BY DATE(completed_at)`,
+      [rangeStart, rangeEndExclusive]
+    );
+    const map = {};
+    for (const row of rows || []) {
+      map[rowDayKey(row)] = Number(row.count) || 0;
+    }
+    return map;
+  }
+
+  const PERFORMANCE_GRADE_IDS = [1, 2, 3, 4, 5];
+  const SERIES_COLORS_GRADE = [
+    '#dc2626',
+    '#ea580c',
+    '#ca8a04',
+    '#16a34a',
+    '#0891b2',
+  ];
+
+  async function fetchCompletionCountsByGradeAndDay(rangeStart, rangeEndExclusive) {
+    const [rows] = await pool.query(
+      `SELECT ulp.grade_id, g.name AS grade_name,
+              DATE(ulp.completed_at) AS day, COUNT(*) AS count
+       FROM user_lesson_progress ulp
+       INNER JOIN grades g ON g.id = ulp.grade_id
+       WHERE ulp.completed_at >= ? AND ulp.completed_at < ?
+       GROUP BY ulp.grade_id, g.name, DATE(ulp.completed_at)
+       ORDER BY ulp.grade_id ASC, day ASC`,
+      [rangeStart, rangeEndExclusive]
+    );
+    const map = {};
+    const gradeNames = {};
+    for (const row of rows || []) {
+      const gid = Number(row.grade_id);
+      const dayKey = rowDayKey(row);
+      gradeNames[gid] = row.grade_name || `Lớp ${gid}`;
+      map[`${gid}:${dayKey}`] = Number(row.count) || 0;
+    }
+    return { map, gradeNames };
+  }
+
+  async function fetchPerformanceGradeLabels() {
+    const [rows] = await pool.query(
+      'SELECT id, name FROM grades WHERE id IN (1, 2, 3, 4, 5) ORDER BY id ASC'
+    );
+    const labels = {};
+    for (const row of rows || []) {
+      labels[Number(row.id)] = row.name || `Lớp ${row.id}`;
+    }
+    for (const id of PERFORMANCE_GRADE_IDS) {
+      if (!labels[id]) labels[id] = `Lớp ${id}`;
+    }
+    return labels;
+  }
+
+  function buildGradeSeries(gradeLabels, gradeNames) {
+    return PERFORMANCE_GRADE_IDS.map((gradeId, i) => ({
+      key: String(gradeId),
+      gradeId,
+      label: gradeLabels[gradeId] || gradeNames[gradeId] || `Lớp ${gradeId}`,
+      color: SERIES_COLORS_GRADE[i],
+    }));
+  }
+
+  function buildWeekTimeColumns(weekStart, dayCountMap, gradeSeries) {
+    const columns = [];
+    for (let i = 0; i < 7; i += 1) {
+      const d = addDays(weekStart, i);
+      const dayKey = formatDateISO(d);
+      const segments = gradeSeries.map((s) => ({
+        seriesKey: s.key,
+        count: dayCountMap[`${s.gradeId}:${dayKey}`] || 0,
+      }));
+      const total = segments.reduce((sum, seg) => sum + seg.count, 0);
+      columns.push({
+        key: dayKey,
+        label: `${VI_DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`,
+        total,
+        segments,
+      });
+    }
+    return columns;
+  }
+
+  function buildMonthTimeColumns(buckets, year, monthIndex, dayCountMap, gradeSeries) {
+    return buckets.map(({ weekNum, startDay, endDay }) => {
+      const segments = gradeSeries.map((s) => {
+        let count = 0;
+        for (let day = startDay; day <= endDay; day += 1) {
+          const dayKey = formatDateISO(new Date(year, monthIndex, day));
+          count += dayCountMap[`${s.gradeId}:${dayKey}`] || 0;
+        }
+        return {
+          seriesKey: s.key,
+          count,
+        };
+      });
+      const total = segments.reduce((sum, seg) => sum + seg.count, 0);
+      return {
+        key: `week-${weekNum}`,
+        label: `Tuần ${weekNum} (${startDay}–${endDay}/${monthIndex + 1})`,
+        total,
+        segments,
+      };
+    });
+  }
+
+  // ---------- DASHBOARD ----------
+  app.get('/api/admin/dashboard', async (req, res) => {
+    try {
+      await syncContestStatuses();
+
+      const [
+        [[countsRow]],
+        [[lessonsNoQCountRow]],
+        [lessonsNoQItems],
+        [[emptyExamCountRow]],
+        [emptyExamItems],
+        [contestStatusRows],
+        [contestActiveItems],
+        [contestUpcomingItems],
+        [[activityTodayRow]],
+        [[activity7dRow]],
+        [topLessons7dRows],
+        [[unplayedCountRow]],
+        [unplayedItems],
+        [[usersNew7Row]],
+        [[usersNew30Row]],
+        [topWeekScoreRows],
+      ] = await Promise.all([
+        pool.query(`
+          SELECT
+            (SELECT COUNT(*) FROM users) AS users,
+            (SELECT COUNT(*) FROM users WHERE role = 0) AS students,
+            (SELECT COUNT(*) FROM users WHERE role = 1) AS admins,
+            (SELECT COUNT(*) FROM questions) AS questions,
+            (SELECT COUNT(*) FROM grades) AS grades,
+            (SELECT COUNT(*) FROM types) AS types,
+            (SELECT COUNT(*) FROM lessons) AS lessons,
+            (SELECT COUNT(*) FROM exam_templates) AS examTemplates,
+            (SELECT COUNT(*) FROM contests) AS contests,
+            (SELECT COUNT(*) FROM items) AS items
+        `),
+        pool.query(`
+          SELECT COUNT(*) AS total
+          FROM lessons l
+          WHERE NOT EXISTS (SELECT 1 FROM questions q WHERE q.lesson_id = l.id)
+        `),
+        pool.query(`
+          SELECT l.id, l.name,
+                 g.name AS grade_name, t.name AS type_name
+          FROM lessons l
+          INNER JOIN types t ON t.id = l.type_id
+          INNER JOIN grades g ON g.id = t.grade_id
+          WHERE NOT EXISTS (SELECT 1 FROM questions q WHERE q.lesson_id = l.id)
+          ORDER BY g.id ASC, t.sort_order ASC, l.sort_order ASC, l.id ASC
+          LIMIT ?
+        `, [ALERT_SAMPLE_LIMIT]),
+        pool.query(`
+          SELECT COUNT(*) AS total
+          FROM exam_templates t
+          WHERE NOT EXISTS (
+            SELECT 1 FROM exam_template_questions etq WHERE etq.template_id = t.id
+          )
+        `),
+        pool.query(`
+          SELECT t.id, t.name, g.name AS grade_name
+          FROM exam_templates t
+          LEFT JOIN grades g ON g.id = t.grade_id
+          WHERE NOT EXISTS (
+            SELECT 1 FROM exam_template_questions etq WHERE etq.template_id = t.id
+          )
+          ORDER BY t.id DESC
+          LIMIT ?
+        `, [ALERT_SAMPLE_LIMIT]),
+        pool.query(`
+          SELECT status, COUNT(*) AS cnt
+          FROM contests
+          GROUP BY status
+        `),
+        pool.query(`
+          SELECT c.id, c.name, c.end_time,
+                 g.name AS grade_name
+          FROM contests c
+          INNER JOIN exam_templates t ON t.id = c.template_id
+          LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
+          WHERE c.status = ?
+          ORDER BY c.end_time ASC, c.id ASC
+          LIMIT ?
+        `, [CONTEST_STATUS_ACTIVE, ALERT_SAMPLE_LIMIT]),
+        pool.query(`
+          SELECT c.id, c.name, c.start_time,
+                 g.name AS grade_name
+          FROM contests c
+          INNER JOIN exam_templates t ON t.id = c.template_id
+          LEFT JOIN grades g ON g.id = COALESCE(c.grade_id, t.grade_id)
+          WHERE c.status = ?
+          ORDER BY c.start_time ASC, c.id ASC
+          LIMIT ?
+        `, [CONTEST_STATUS_SCHEDULED, ALERT_SAMPLE_LIMIT]),
+        pool.query(`
+          SELECT COUNT(*) AS total
+          FROM user_lesson_progress
+          WHERE completed_at >= CURDATE()
+        `),
+        pool.query(`
+          SELECT COUNT(*) AS total
+          FROM user_lesson_progress
+          WHERE completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        `),
+        pool.query(`
+          SELECT ulp.lesson_id, COUNT(*) AS completions,
+                 l.name AS lesson_name, g.name AS grade_name, ty.name AS type_name
+          FROM user_lesson_progress ulp
+          INNER JOIN lessons l ON l.id = ulp.lesson_id
+          INNER JOIN types ty ON ty.id = ulp.type_id
+          INNER JOIN grades g ON g.id = ulp.grade_id
+          WHERE ulp.completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+          GROUP BY ulp.lesson_id, l.name, g.name, ty.name
+          ORDER BY completions DESC, ulp.lesson_id ASC
+          LIMIT 5
+        `),
+        pool.query(`
+          SELECT COUNT(*) AS total
+          FROM lessons l
+          WHERE NOT EXISTS (
+            SELECT 1 FROM user_lesson_progress ulp WHERE ulp.lesson_id = l.id
+          )
+        `),
+        pool.query(`
+          SELECT l.id, l.name, g.name AS grade_name, ty.name AS type_name
+          FROM lessons l
+          INNER JOIN types ty ON ty.id = l.type_id
+          INNER JOIN grades g ON g.id = ty.grade_id
+          WHERE NOT EXISTS (
+            SELECT 1 FROM user_lesson_progress ulp WHERE ulp.lesson_id = l.id
+          )
+          ORDER BY g.id ASC, ty.sort_order ASC, l.sort_order ASC, l.id ASC
+          LIMIT ?
+        `, [ALERT_SAMPLE_LIMIT]),
+        pool.query(`
+          SELECT COUNT(*) AS total FROM users
+          WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        `).catch(() => [[{ total: 0 }]]),
+        pool.query(`
+          SELECT COUNT(*) AS total FROM users
+          WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        `).catch(() => [[{ total: 0 }]]),
+        pool.query(`
+          SELECT id, username, week_score
+          FROM users
+          ORDER BY COALESCE(week_score, 0) DESC, id ASC
+          LIMIT 5
+        `),
+      ]);
+
+      const contestCounts = { scheduled: 0, active: 0, ended: 0 };
+      for (const row of contestStatusRows || []) {
+        const st = Number(row.status);
+        const cnt = Number(row.cnt) || 0;
+        if (st === CONTEST_STATUS_SCHEDULED) contestCounts.scheduled = cnt;
+        else if (st === CONTEST_STATUS_ACTIVE) contestCounts.active = cnt;
+        else if (st === CONTEST_STATUS_ENDED) contestCounts.ended = cnt;
+      }
+
+      res.json({
+        counts: {
+          users: Number(countsRow?.users) || 0,
+          students: Number(countsRow?.students) || 0,
+          admins: Number(countsRow?.admins) || 0,
+          questions: Number(countsRow?.questions) || 0,
+          grades: Number(countsRow?.grades) || 0,
+          types: Number(countsRow?.types) || 0,
+          lessons: Number(countsRow?.lessons) || 0,
+          examTemplates: Number(countsRow?.examTemplates) || 0,
+          contests: Number(countsRow?.contests) || 0,
+          items: Number(countsRow?.items) || 0,
+        },
+        alerts: {
+          lessonsWithoutQuestions: {
+            total: Number(lessonsNoQCountRow?.total) || 0,
+            items: (lessonsNoQItems || []).map((r) => ({
+              id: r.id,
+              name: r.name,
+              gradeName: r.grade_name || null,
+              typeName: r.type_name || null,
+            })),
+          },
+          emptyExamTemplates: {
+            total: Number(emptyExamCountRow?.total) || 0,
+            items: (emptyExamItems || []).map((r) => ({
+              id: r.id,
+              name: r.name,
+              gradeName: r.grade_name || null,
+            })),
+          },
+          contests: {
+            ...contestCounts,
+            activeItems: (contestActiveItems || []).map((r) => ({
+              id: r.id,
+              name: r.name,
+              gradeName: r.grade_name || null,
+              endTime: r.end_time,
+            })),
+            upcomingItems: (contestUpcomingItems || []).map((r) => ({
+              id: r.id,
+              name: r.name,
+              gradeName: r.grade_name || null,
+              startTime: r.start_time,
+            })),
+          },
+        },
+        activity: {
+          completionsToday: Number(activityTodayRow?.total) || 0,
+          completions7d: Number(activity7dRow?.total) || 0,
+          topLessons7d: (topLessons7dRows || []).map((r) => ({
+            lessonId: r.lesson_id,
+            lessonName: r.lesson_name || null,
+            gradeName: r.grade_name || null,
+            typeName: r.type_name || null,
+            completions: Number(r.completions) || 0,
+          })),
+          unplayedLessons: {
+            total: Number(unplayedCountRow?.total) || 0,
+            items: (unplayedItems || []).map((r) => ({
+              id: r.id,
+              name: r.name,
+              gradeName: r.grade_name || null,
+              typeName: r.type_name || null,
+            })),
+          },
+        },
+        users: {
+          new7d: Number(usersNew7Row?.total) || 0,
+          new30d: Number(usersNew30Row?.total) || 0,
+          topWeekScore: (topWeekScoreRows || []).map((r) => ({
+            id: r.id,
+            username: r.username,
+            weekScore: Number(r.week_score) || 0,
+          })),
+        },
+      });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy thống kê dashboard');
+    }
+  });
+
+  app.get('/api/admin/dashboard/performance', async (req, res) => {
+    try {
+      const mode = String(req.query.mode || 'week').toLowerCase();
+      const refDate = parseDateParam(req.query.date ? String(req.query.date) : null);
+      if (!refDate) {
+        return res.status(400).json({ message: 'Tham số date không hợp lệ (YYYY-MM-DD).' });
+      }
+      if (mode !== 'week' && mode !== 'month') {
+        return res.status(400).json({ message: 'Tham số mode phải là week hoặc month.' });
+      }
+
+      if (mode === 'week') {
+        const weekStart = startOfWeekMonday(refDate);
+        const weekEnd = endOfWeekSunday(refDate);
+        const rangeStart = `${formatDateISO(weekStart)} 00:00:00`;
+        const rangeEndExclusive = `${formatDateISO(addDays(weekEnd, 1))} 00:00:00`;
+        const [{ map: dayCountMap, gradeNames }, gradeLabels] = await Promise.all([
+          fetchCompletionCountsByGradeAndDay(rangeStart, rangeEndExclusive),
+          fetchPerformanceGradeLabels(),
+        ]);
+
+        const series = buildGradeSeries(gradeLabels, gradeNames);
+        const columns = buildWeekTimeColumns(weekStart, dayCountMap, series);
+        const total = columns.reduce((sum, col) => sum + col.total, 0);
+
+        return res.json({
+          mode: 'week',
+          rangeLabel: formatRangeLabel(weekStart, weekEnd),
+          startDate: formatDateISO(weekStart),
+          endDate: formatDateISO(weekEnd),
+          total,
+          series,
+          columns,
+        });
+      }
+
+      const year = refDate.getFullYear();
+      const monthIndex = refDate.getMonth();
+      const monthStart = new Date(year, monthIndex, 1);
+      const monthEnd = new Date(year, monthIndex + 1, 0);
+      const rangeStart = `${formatDateISO(monthStart)} 00:00:00`;
+      const rangeEndExclusive = `${formatDateISO(addDays(monthEnd, 1))} 00:00:00`;
+      const [{ map: dayCountMap, gradeNames }, gradeLabels] = await Promise.all([
+        fetchCompletionCountsByGradeAndDay(rangeStart, rangeEndExclusive),
+        fetchPerformanceGradeLabels(),
+      ]);
+
+      const buckets = monthWeekBuckets(year, monthIndex);
+      const series = buildGradeSeries(gradeLabels, gradeNames);
+      const columns = buildMonthTimeColumns(
+        buckets,
+        year,
+        monthIndex,
+        dayCountMap,
+        series
+      );
+      const total = columns.reduce((sum, col) => sum + col.total, 0);
+
+      return res.json({
+        mode: 'month',
+        rangeLabel: `${monthIndex + 1}/${year}`,
+        startDate: formatDateISO(monthStart),
+        endDate: formatDateISO(monthEnd),
+        total,
+        series,
+        columns,
+      });
+    } catch (err) {
+      sendErr(res, err, 'Lỗi khi lấy thống kê hiệu suất');
+    }
+  });
 
   // ---------- USERS ----------
   app.get('/api/admin/users', async (req, res) => {
@@ -1675,8 +2233,9 @@ module.exports = function mountAdminCrud(app, pool) {
         const [[{ mx }]] = await pool.query('SELECT COALESCE(MAX(id), 0) AS mx FROM items');
         const nextId = Number(mx) + 1;
         const levelVal = parseItemLevel(level);
+        const { effectType, lessonBonus, hintQuestions } = parseItemEffects(req.body);
         await pool.query(
-          'INSERT INTO items (id, name, description, link, require_score, level) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO items (id, name, description, link, require_score, level, effect_type, lesson_bonus_points, hint_questions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             nextId,
             String(name).trim(),
@@ -1686,6 +2245,9 @@ module.exports = function mountAdminCrud(app, pool) {
             linkVal,
             score,
             levelVal,
+            effectType,
+            lessonBonus,
+            hintQuestions,
           ]
         );
         const [rows] = await pool.query('SELECT * FROM items WHERE id = ?', [nextId]);
@@ -1801,6 +2363,7 @@ module.exports = function mountAdminCrud(app, pool) {
             updates.push('level = ?');
             params.push(parseItemLevel(level));
           }
+          appendItemEffectUpdates(updates, params, req.body);
         } else {
           const { name, description, link, require_score, level } = req.body || {};
           if (name != null) {
@@ -1833,6 +2396,7 @@ module.exports = function mountAdminCrud(app, pool) {
             updates.push('level = ?');
             params.push(parseItemLevel(level));
           }
+          appendItemEffectUpdates(updates, params, req.body);
         }
 
         if (!updates.length) {

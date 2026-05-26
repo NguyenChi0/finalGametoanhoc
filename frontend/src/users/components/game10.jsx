@@ -1,9 +1,12 @@
 // Game 3: đáp án trên bóng bay trượt ngang; phi tiêu dưới bắn lên; sai → explode, đúng → pop
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
-import api, { questionImageUrl } from "../../api";
+import { questionImageUrl } from "../../api";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import GameHintButton from "./GameHintButton";
 import { publicUrl } from "../../lib/publicUrl";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
+import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 const BALLOON_SRC = [
@@ -67,6 +70,14 @@ export default function Game3({ payload, onLessonComplete }) {
   const fireTimersRef = useRef([]);
   /** Số vòng lặp full `answers` trong mỗi đoạn — đủ rộng để luôn phủ kín khung (không bị trắng một nửa) */
   const [segmentRepeat, setSegmentRepeat] = useState(3);
+  const {
+    hintsRemaining,
+    hasHintFeature,
+    canUseHint,
+    applyHint,
+    getHiddenIndices,
+    resetHints,
+  } = useLessonHints(payload);
 
   const qs = useMemo(
     () => prepareSessionQuestions(questions),
@@ -86,16 +97,19 @@ export default function Game3({ payload, onLessonComplete }) {
   const currentQuestion = qs[currentQuestionIndex];
   const answers = currentQuestion?.answers || [];
 
+  const hiddenBalloonIndices = getHiddenIndices(currentQuestion?.id);
+
   const segmentItems = useMemo(() => {
     const items = [];
     const reps = Math.max(2, segmentRepeat);
     for (let t = 0; t < reps; t++) {
       answers.forEach((answer, origIdx) => {
+        if (hiddenBalloonIndices.has(origIdx)) return;
         items.push({ answer, origIdx, tile: t });
       });
     }
     return items;
-  }, [answers, segmentRepeat]);
+  }, [answers, segmentRepeat, hiddenBalloonIndices]);
 
   useLayoutEffect(() => {
     const vp = viewportRef.current;
@@ -117,16 +131,6 @@ export default function Game3({ payload, onLessonComplete }) {
     ro.observe(vp);
     return () => ro.disconnect();
   }, [answers, currentQuestionIndex]);
-
-  async function incrementScoreOnServer(userId, delta = 1) {
-    try {
-      const resp = await api.post("/score/increment", { userId, delta });
-      return resp.data;
-    } catch (e) {
-      console.warn("Lỗi gọi API cộng điểm:", e);
-      return null;
-    }
-  }
 
   const handleFireClick = () => {
     const cq = qs[currentQuestionIndex];
@@ -189,21 +193,10 @@ export default function Game3({ payload, onLessonComplete }) {
             setGameStarted(false);
             onLessonComplete?.(nextScore);
           } else if (nextScore > 0) {
-            incrementScoreOnServer(userId, nextScore).then((data) => {
-              if (data && data.success) {
+            incrementLessonScore(userId, nextScore, payload).then((data) => {
+              if (data?.success) {
                 setUserScore(data.score);
                 setWeekScore(data.week_score ?? 0);
-                const raw = localStorage.getItem("user");
-                if (raw) {
-                  try {
-                    const u = JSON.parse(raw);
-                    u.score = data.score;
-                    u.week_score = data.week_score;
-                    localStorage.setItem("user", JSON.stringify(u));
-                  } catch (err) {
-                    console.warn("Không cập nhật được user trong localStorage:", err);
-                  }
-                }
               }
               setGameEnded(true);
               setGameStarted(false);
@@ -229,6 +222,7 @@ export default function Game3({ payload, onLessonComplete }) {
     setCorrectCount(0);
     setHitEffect(null);
     setDartPhase("idle");
+    resetHints();
   }
 
   function restartGame() {
@@ -464,6 +458,21 @@ export default function Game3({ payload, onLessonComplete }) {
           Câu {currentQuestionIndex + 1}/{qs.length}
         </span>
       </div>
+
+      {hasHintFeature && currentQuestion && (
+        <div style={{ textAlign: "center", marginBottom: 8 }}>
+          <GameHintButton
+            hintsRemaining={hintsRemaining}
+            disabled={
+              selected[currentQuestion.id] !== undefined ||
+              dartPhase !== "idle" ||
+              !canUseHint(currentQuestion.id, currentQuestion.answers)
+            }
+            onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
+            style={{ margin: 0 }}
+          />
+        </div>
+      )}
 
       <div style={styles.gameSquare} className="game3-square">
         <div style={styles.questionInSquare}>

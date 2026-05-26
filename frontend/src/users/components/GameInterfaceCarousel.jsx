@@ -27,12 +27,61 @@ function ImagePlaceholderIcon() {
   );
 }
 
-function GameCarouselCard({ game, isActive, index, cardRefs, onSelect }) {
+function GameGuideModal({ game, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!game) return null;
+
+  return (
+    <div className="game-guide-overlay" onClick={onClose} role="presentation">
+      <div
+        className="game-guide-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="game-guide-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="game-guide-title" className="game-guide-title">
+          {game.label}
+        </h3>
+        <p className="game-guide-kicker">Giới thiệu &amp; hướng dẫn</p>
+        <p className="game-guide-body">
+          {game.guide || "Chưa có mô tả cho chế độ chơi này."}
+        </p>
+        <button type="button" className="game-guide-close" onClick={onClose}>
+          Đóng
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GameCarouselCard({ game, isActive, index, cardRefs, onSelect, onGuide }) {
   const [imgFailed, setImgFailed] = useState(false);
   const previewSrc =
     game.previewImage && !imgFailed
       ? `${publicUrl}/${String(game.previewImage).replace(/^\//, "")}`
       : null;
+
+  const openGuide = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onGuide(game);
+  };
+
+  const onGuideKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      onGuide(game);
+    }
+  };
 
   return (
     <button
@@ -65,7 +114,20 @@ function GameCarouselCard({ game, isActive, index, cardRefs, onSelect }) {
           )}
         </div>
         <div className="game-carousel-text">
-          <p className="game-carousel-label">{game.label}</p>
+          <p className="game-carousel-label-wrap">
+            <span className="game-carousel-label">{game.label}</span>
+            <span
+              className="game-carousel-help"
+              role="button"
+              tabIndex={0}
+              aria-label={`Hướng dẫn ${game.label}`}
+              title="Hướng dẫn & giới thiệu"
+              onClick={openGuide}
+              onKeyDown={onGuideKeyDown}
+            >
+              ?
+            </span>
+          </p>
         </div>
       </div>
     </button>
@@ -79,6 +141,7 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
   const trackRef = useRef(null);
   const cardRefs = useRef([]);
   const initialScrollDone = useRef(false);
+  const [guideGame, setGuideGame] = useState(null);
 
   const scrollToIndex = useCallback((index, behavior = "auto") => {
     const track = trackRef.current;
@@ -223,8 +286,16 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
           justify-content: center;
           box-sizing: border-box;
         }
-        .game-carousel-label {
+        .game-carousel-label-wrap {
           margin: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          max-width: 100%;
+          pointer-events: none;
+        }
+        .game-carousel-label {
           font-size: 0.82rem;
           font-weight: 700;
           color: #3d3a55;
@@ -234,7 +305,86 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
-          pointer-events: none;
+          min-width: 0;
+        }
+        .game-carousel-help {
+          pointer-events: auto;
+          flex: 0 0 auto;
+          width: 18px;
+          height: 18px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          background: rgba(108, 126, 225, 0.14);
+          color: #6c7ee1;
+          font-size: 0.72rem;
+          font-weight: 800;
+          line-height: 1;
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .game-carousel-help:hover {
+          background: rgba(108, 126, 225, 0.24);
+          color: #5a6ed4;
+        }
+        .game-carousel-help:focus-visible {
+          outline: 2px solid #6c7ee1;
+          outline-offset: 2px;
+        }
+        .game-guide-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          background: rgba(26, 29, 38, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          box-sizing: border-box;
+        }
+        .game-guide-modal {
+          width: min(420px, 100%);
+          background: #fff;
+          border-radius: 16px;
+          padding: 22px 20px 18px;
+          box-shadow: 0 16px 48px rgba(26, 29, 38, 0.2);
+          border: 1px solid #e8eaed;
+        }
+        .game-guide-title {
+          margin: 0 0 6px;
+          font-size: 1.15rem;
+          font-weight: 800;
+          color: #1a1d26;
+        }
+        .game-guide-kicker {
+          margin: 0 0 10px;
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: #6c7ee1;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .game-guide-body {
+          margin: 0 0 18px;
+          font-size: 0.92rem;
+          line-height: 1.55;
+          color: #4a5080;
+        }
+        .game-guide-close {
+          width: 100%;
+          padding: 12px 16px;
+          border: none;
+          border-radius: 10px;
+          background: #6c7ee1;
+          color: #fff;
+          font-weight: 700;
+          font-size: 0.95rem;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .game-guide-close:hover {
+          background: #5a6ed4;
         }
       `}</style>
 
@@ -254,9 +404,12 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
             isActive={value === game.id}
             cardRefs={cardRefs}
             onSelect={activateIndex}
+            onGuide={setGuideGame}
           />
         ))}
       </div>
+
+      <GameGuideModal game={guideGame} onClose={() => setGuideGame(null)} />
     </div>
   );
 }

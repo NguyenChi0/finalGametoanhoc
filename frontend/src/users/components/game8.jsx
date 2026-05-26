@@ -1,8 +1,11 @@
 // src/components/games/game8.jsx
 import React, { useMemo, useState } from "react";
-import api, { questionImageUrl } from "../../api";
+import { questionImageUrl } from "../../api";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
+import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onReturnHome, onLessonComplete }) {
@@ -16,6 +19,14 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [finalScore, setFinalScore] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
+  const {
+    hintsRemaining,
+    hasHintFeature,
+    canUseHint,
+    applyHint,
+    getHiddenIndices,
+    resetHints,
+  } = useLessonHints(payload);
 
   // Lấy thông tin người dùng
   const userName = payload?.user?.name || 
@@ -31,17 +42,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const totalPages = Math.ceil(qs.length / questionsPerPage);
   const startIndex = currentPage * questionsPerPage;
   const currentQuestions = qs.slice(startIndex, startIndex + questionsPerPage);
-
-  // Gọi API cộng điểm
-  async function incrementScoreOnServer(userId, delta = 1) {
-    try {
-      const resp = await api.post("/score/increment", { userId, delta });
-      return resp.data;
-    } catch (e) {
-      console.warn("Lỗi gọi API cộng điểm:", e);
-      return null;
-    }
-  }
 
   // Tính điểm và gửi lên server, sau đó chuyển sang màn hình kết thúc
   async function handleSubmit() {
@@ -65,23 +65,10 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     onLessonComplete?.(correctAnswers);
 
     if (userId && correctAnswers > 0) {
-      const data = await incrementScoreOnServer(userId, correctAnswers);
-      if (data && data.success) {
+      const data = await incrementLessonScore(userId, correctAnswers, payload);
+      if (data?.success) {
         setUserScore(data.score);
         setWeekScore(data.week_score ?? 0);
-
-        // Cập nhật localStorage
-        const raw = localStorage.getItem("user");
-        if (raw) {
-          try {
-            const u = JSON.parse(raw);
-            u.score = data.score;
-            u.week_score = data.week_score;
-            localStorage.setItem("user", JSON.stringify(u));
-          } catch (err) {
-            console.warn("Không cập nhật được user trong localStorage:", err);
-          }
-        }
       }
     }
 
@@ -116,6 +103,7 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     setAnswers({});
     setCurrentPage(0);
     setFinalScore(0);
+    resetHints();
   }
 
   function handleReturnHome() {
@@ -341,8 +329,17 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                     thumbStyle={{ maxWidth: "200px", margin: "10px 0" }}
                   />
                 )}
+                {hasHintFeature && (
+                  <GameHintButton
+                    hintsRemaining={hintsRemaining}
+                    disabled={!canUseHint(q.id, q.answers)}
+                    onUse={() => applyHint(q.id, q.answers)}
+                    style={{ margin: "0 0 8px" }}
+                  />
+                )}
                 <div style={answersStyle}>
                   {q.answers.map((a, ai) => {
+                    if (getHiddenIndices(q.id).has(ai)) return null;
                     const isSelected = selectedAnswer === ai;
                     const answerStyleFinal = {
                       ...answerStyle,

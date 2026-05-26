@@ -1,9 +1,12 @@
 // src/components/games/Game1.jsx
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import api, { questionImageUrl } from "../../api";
+import { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
+import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onLessonComplete }) {
@@ -14,7 +17,16 @@ export default function Game1({ payload, onLessonComplete }) {
   const [locked, setLocked] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
-  
+  const [shuffleSeed, setShuffleSeed] = useState(0);
+  const {
+    hintsRemaining,
+    hasHintFeature,
+    canUseHint,
+    applyHint,
+    getHiddenIndices,
+    resetHints,
+  } = useLessonHints(payload);
+
   // Quái vật
   const [monsterX, setMonsterX] = useState(null);
   const [monsterShape, setMonsterShape] = useState("circle");
@@ -69,23 +81,7 @@ export default function Game1({ payload, onLessonComplete }) {
 
   const saveScore = async () => {
     if (!user?.id) return;
-    try {
-      const res = await api.post("/score/increment", { userId: user.id, delta: correctCount });
-      if (res.data?.success) {
-        const raw = localStorage.getItem("user");
-        const existing = raw ? JSON.parse(raw) : {};
-        localStorage.setItem(
-          "user",
-          JSON.stringify({
-            ...existing,
-            score: res.data.score,
-            week_score: res.data.week_score,
-          })
-        );
-      }
-    } catch (err) {
-      console.error("Lỗi cộng điểm:", err);
-    }
+    await incrementLessonScore(user.id, correctCount, payload);
   };
 
   const playSound = (isCorrect) => {
@@ -159,6 +155,7 @@ export default function Game1({ payload, onLessonComplete }) {
     setExploding(false);
     setBulletProgress(null);
     if (moveIntervalRef.current) clearInterval(moveIntervalRef.current);
+    resetHints();
   };
 
   if (!gameQuestions.length) {
@@ -338,6 +335,19 @@ export default function Game1({ payload, onLessonComplete }) {
             </div>
           )}
 
+          {hasHintFeature && (
+            <div style={{ textAlign: "center", marginBottom: 12 }}>
+              <GameHintButton
+                hintsRemaining={hintsRemaining}
+                disabled={
+                  locked || !canUseHint(currentQuestion.id, currentQuestion.answers)
+                }
+                onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
+                style={{ margin: 0 }}
+              />
+            </div>
+          )}
+
           {/* Đáp án - chia 2 cột cố định, mỗi hàng 2 đáp án */}
           <div
             style={{
@@ -348,6 +358,7 @@ export default function Game1({ payload, onLessonComplete }) {
             }}
           >
             {currentQuestion.answers.map((ans, i) => {
+              if (getHiddenIndices(currentQuestion.id).has(i)) return null;
               let bg = "linear-gradient(135deg, #2c3e50, #1a2632)";
               let border = "#7f8c8d";
               if (selected !== null) {

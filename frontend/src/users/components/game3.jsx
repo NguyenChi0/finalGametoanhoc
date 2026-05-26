@@ -1,9 +1,12 @@
 // src/components/games/Game1.jsx
 import React, { useState, useMemo, useRef } from "react";
-import api, { questionImageUrl } from "../../api";
+import { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
+import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
+import { incrementLessonScore } from "../lib/lessonScore";
+import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
 
 export default function Game1({ payload, onLessonComplete }) {
@@ -22,35 +25,20 @@ export default function Game1({ payload, onLessonComplete }) {
   // Refs cho âm thanh
   const correctSoundRef = useRef(null);
   const wrongSoundRef = useRef(null);
+  const {
+    hintsRemaining,
+    hasHintFeature,
+    canUseHint,
+    applyHint,
+    getHiddenIndices,
+    resetHints,
+  } = useLessonHints(payload);
 
   const gameQuestions = useMemo(
     () => prepareSessionQuestions(questions),
     [questions, shuffleSeed]
   );
   const currentQuestion = gameQuestions[current];
-
-  async function incrementScore(userId, delta = 1) {
-    try {
-      const res = await api.post("/score/increment", { userId, delta });
-      if (res.data?.success) {
-        setUserScore(res.data.score);
-        setWeekScore(res.data.week_score);
-
-        const raw = localStorage.getItem("user");
-        const existing = raw ? JSON.parse(raw) : (user ? { ...user } : {});
-        localStorage.setItem(
-          "user",
-          JSON.stringify({
-            ...existing,
-            score: res.data.score,
-            week_score: res.data.week_score,
-          })
-        );
-      }
-    } catch (err) {
-      console.error("API cộng điểm lỗi:", err);
-    }
-  }
 
   // Hàm phát âm thanh
   const playSound = (isCorrect) => {
@@ -99,7 +87,12 @@ export default function Game1({ payload, onLessonComplete }) {
         setBackground(isCorrect ? "game1-winner.png" : "game1-loser.png");
 
         if (user?.id && newCorrectCount > 0) {
-          incrementScore(user.id, newCorrectCount);
+          incrementLessonScore(user.id, newCorrectCount, payload).then((data) => {
+            if (data?.success) {
+              setUserScore(data.score);
+              setWeekScore(data.week_score);
+            }
+          });
         }
         onLessonComplete?.(newCorrectCount);
       }
@@ -114,6 +107,7 @@ export default function Game1({ payload, onLessonComplete }) {
     setLocked(false);
     setBackground("game1-asker.png");
     setCorrectCount(0);
+    resetHints();
   }
 
   if (!gameQuestions.length) {
@@ -367,9 +361,24 @@ export default function Game1({ payload, onLessonComplete }) {
             )}
           </div>
 
+          {hasHintFeature && (
+            <div style={{ textAlign: "center", marginBottom: 8 }}>
+              <GameHintButton
+                hintsRemaining={hintsRemaining}
+                disabled={
+                  locked ||
+                  !canUseHint(currentQuestion.id, currentQuestion.answers)
+                }
+                onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
+                style={{ margin: 0 }}
+              />
+            </div>
+          )}
+
           {/* Đáp án: desktop 2 cột; mobile 1 đáp án / hàng */}
           <div className="game1-answers-grid">
             {currentQuestion.answers.map((ans, i) => {
+              if (getHiddenIndices(currentQuestion.id).has(i)) return null;
               const chosen = selected === i;
               let bg = "linear-gradient(135deg, rgba(54, 150, 230, 0.8), rgba(24, 122, 221, 0.8))";
               let borderColor = "#1e88e5";

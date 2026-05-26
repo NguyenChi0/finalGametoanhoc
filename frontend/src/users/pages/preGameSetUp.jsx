@@ -226,6 +226,7 @@ export default function PreGameSetUp() {
           font-size: 0.85rem;
           font-weight: 700;
         }
+        .pregame-page {
           position: relative;
           min-height: 100vh;
           overflow-x: hidden;
