@@ -1,10 +1,10 @@
 /**
- * Gửi kết quả bài chơi (lesson result) về Kilovia khi user chơi từ Kilovia.
- * Token Kilovia ký HS512, gửi kèm trong header Authorization.
+ * Tích hợp Kilovia: nhận token từ iframe/URL, lưu context, gửi kết quả bài chơi
+ * về API Kilovia khi user mở game từ nền tảng Kilovia.
  *
- * Kilovia có thể gửi token qua:
- * - URL: ?kilovia_token=...&ma_tre_em=...
- * - postMessage: { type: 'KILOVIA_CHILD_TOKEN', childToken }
+ * Token có thể đến từ:
+ * - URL: `?kilovia_token=...&ma_tre_em=...`
+ * - postMessage: `{ type: 'KILOVIA_CHILD_TOKEN', childToken }`
  */
 
 const KILOVIA_CONTEXT_KEY = "kilovia_context_v1";
@@ -15,7 +15,16 @@ const KILOVIA_API_BASE =
     ""
   );
 
-/** Giải mã payload JWT (không verify, chỉ đọc). Kilovia có thể gửi ma_tre_em trong payload. */
+/**
+ * Giải mã phần payload JWT (base64) — không verify chữ ký, chỉ đọc claim.
+ *
+ * Luồng:
+ * - Token không đúng format 3 phần → `null`.
+ * - Parse JSON payload → trả object (có thể chứa `ma_tre_em`, `sub`, …).
+ *
+ * @param {string} token - JWT Kilovia.
+ * @returns {object|null}
+ */
 export function decodeJwtPayload(token) {
   if (!token || typeof token !== "string") return null;
   try {
@@ -28,7 +37,18 @@ export function decodeJwtPayload(token) {
   }
 }
 
-/** Lưu context Kilovia (token + childCode) từ postMessage để dùng khi chơi và gửi kết quả. */
+/**
+ * Lưu context Kilovia sau postMessage từ parent frame.
+ *
+ * Luồng:
+ * - Decode JWT lấy mã trẻ (`ma_tre_em` / `sub` / …) nếu không truyền `explicitMaTreEm`.
+ * - Ghi `{ token, childCode }` vào sessionStorage.
+ * - Return context vừa lưu (dùng ngay nếu cần).
+ *
+ * @param {string} childToken - JWT từ Kilovia.
+ * @param {string} [explicitMaTreEm] - Mã trẻ em ưu tiên hơn claim JWT.
+ * @returns {{ token: string, childCode: string|null }}
+ */
 export function setKiloviaContextFromMessage(childToken, explicitMaTreEm) {
   const payload = decodeJwtPayload(childToken);
   const fromJwt =
@@ -43,7 +63,11 @@ export function setKiloviaContextFromMessage(childToken, explicitMaTreEm) {
   return context;
 }
 
-/** Đọc context Kilovia đã lưu (từ postMessage hoặc URL). */
+/**
+ * Đọc context Kilovia đã lưu (sau postMessage hoặc thiết lập thủ công).
+ *
+ * @returns {{ token: string, childCode: string|null }|null}
+ */
 export function getKiloviaContext() {
   try {
     const raw = sessionStorage.getItem(KILOVIA_CONTEXT_KEY);
@@ -54,13 +78,22 @@ export function getKiloviaContext() {
 }
 
 /**
- * Gửi kết quả lên Kilovia: POST /lesson-results/add
- * @param {Object} params
- * @param {string} params.token - JWT từ Kilovia (HS512)
- * @param {string} [params.maTreEm] - Mã trẻ em (từ Kilovia) để Kilovia ghép kết quả
- * @param {number} params.score - Điểm (số câu đúng)
- * @param {string} params.startAt - ISO string
- * @param {string} params.endAt - ISO string
+ * Gửi kết quả lượt chơi lên Kilovia: `POST .../lesson-results/add`.
+ *
+ * Luồng:
+ * - Không có `token` → log, return `null`.
+ * - Body: tên bài, điểm, thời gian bắt đầu/kết thúc, `lessonType: game`, optional `maTreEm`.
+ * - Header `Authorization: Bearer <token>`.
+ * - HTTP không OK → log; 401/403 → alert hết phiên → return `null`.
+ * - Thành công → parse JSON response.
+ *
+ * @param {object} params
+ * @param {string} params.token - JWT Kilovia.
+ * @param {string} [params.maTreEm] - Mã trẻ em.
+ * @param {number} params.score - Điểm (thường = số câu đúng).
+ * @param {string} params.startAt - ISO thời điểm bắt đầu.
+ * @param {string} params.endAt - ISO thời điểm kết thúc.
+ * @returns {Promise<object|null>} Response JSON hoặc `null`.
  */
 export async function sendLessonResultToKilovia({
   token,

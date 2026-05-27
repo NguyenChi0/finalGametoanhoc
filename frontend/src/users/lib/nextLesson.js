@@ -1,5 +1,15 @@
+/**
+ * Tìm bài học kế tiếp trong cùng chủ đề và build payload pre-game
+ * cho nút "Bài tiếp" trên `LessonCompleteScreen`.
+ */
 import { getLessons, getQuestions, questionImageUrl } from "../../api";
 
+/**
+ * Sắp danh sách bài theo `sort_order` tăng dần; hòa thì theo `id`.
+ *
+ * @param {Array} rows - Danh sách lesson từ API.
+ * @returns {Array} Bản sao đã sort.
+ */
 function sortBySortOrder(rows) {
   const list = Array.isArray(rows) ? rows.slice() : [];
   list.sort((a, b) => {
@@ -11,6 +21,12 @@ function sortBySortOrder(rows) {
   return list;
 }
 
+/**
+ * Chuẩn hóa URL ảnh câu hỏi và đáp án (prefix origin API) trước khi đưa vào game.
+ *
+ * @param {object} q - Object câu hỏi từ API.
+ * @returns {object} Câu hỏi với `question_image` và `answers[].image` đã resolve.
+ */
 function resolveQuestionMedia(q) {
   if (!q || typeof q !== "object") return q;
   return {
@@ -31,6 +47,12 @@ function resolveQuestionMedia(q) {
   };
 }
 
+/**
+ * Xáo trộn mảng (dùng nội bộ khi build payload bài kế).
+ *
+ * @param {Array} arr
+ * @returns {Array}
+ */
 function shuffleArray(arr) {
   const a = Array.isArray(arr) ? arr.slice() : [];
   for (let i = a.length - 1; i > 0; i -= 1) {
@@ -41,7 +63,17 @@ function shuffleArray(arr) {
 }
 
 /**
- * Bài kế trong cùng chủ đề (sort_order), null nếu đang là bài cuối.
+ * Lấy bài học ngay sau bài hiện tại trong cùng `typeId` (theo thứ tự curriculum).
+ *
+ * Luồng:
+ * - Gọi `getLessons(typeId)` → sort.
+ * - Tìm index bài `currentLessonId`.
+ * - Không tìm thấy hoặc đã là bài cuối → `null`.
+ * - Ngược lại → return lesson kế tiếp.
+ *
+ * @param {number|string} typeId - ID chủ đề.
+ * @param {number|string} currentLessonId - ID bài vừa hoàn thành.
+ * @returns {Promise<object|null>} Row lesson kế hoặc `null`.
  */
 export async function findNextLessonInType(typeId, currentLessonId) {
   const tid = typeId;
@@ -54,8 +86,18 @@ export async function findNextLessonInType(typeId, currentLessonId) {
 }
 
 /**
- * Tạo payload pregame cho bài kế; null nếu không còn bài trong chủ đề.
- * @throws {Error} khi không tải được câu hỏi hoặc bài trống
+ * Tạo payload pre-game sẵn sàng navigate cho bài kế trong chủ đề.
+ *
+ * Luồng:
+ * - Thiếu `grade` / `type` / `lesson` trên payload hiện tại → `null`.
+ * - `findNextLessonInType` không có bài kế → `null`.
+ * - `getQuestions` cho bài kế; rỗng → throw Error.
+ * - Shuffle câu + resolve media; lấy `user` từ localStorage hoặc payload.
+ * - Giữ `kilovia` nếu có (embed Kilovia).
+ *
+ * @param {object} currentPayload - Payload lượt chơi vừa xong.
+ * @returns {Promise<object|null>} Payload pre-game mới hoặc `null`.
+ * @throws {Error} Khi bài kế không có câu hỏi.
  */
 export async function buildNextLessonPregamePayload(currentPayload) {
   if (!currentPayload?.grade?.id || !currentPayload?.type?.id || !currentPayload?.lesson?.id) {

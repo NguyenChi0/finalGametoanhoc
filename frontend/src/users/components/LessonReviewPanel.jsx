@@ -134,7 +134,7 @@ export default function LessonReviewPanel({
         </p>
       ) : list.length === 0 ? (
         <p className="lesson-review-panel__muted">
-          Chưa có bài hoàn thành trong {days} ngày qua. Hãy chơi trên bản đồ trước nhé!
+          Chưa có dữ liệu
         </p>
       ) : (
         <ul className="lesson-review-panel__list">

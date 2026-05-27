@@ -1,5 +1,15 @@
+/**
+ * React hook quản lý pool gợi ý (hint) trong một lượt chơi bài.
+ * Ẩn ngẫu nhiên 2 đáp án sai mỗi lần dùng; mỗi câu tối đa 1 lần hint.
+ */
 import { useCallback, useState } from "react";
 
+/**
+ * Chọn ngẫu nhiên tối đa 2 chỉ số đáp án có `correct !== true`.
+ *
+ * @param {Array} answers - Mảng đáp án câu hiện tại.
+ * @returns {number[]} Mảng index (0-based) cần ẩn trên UI.
+ */
 function pickTwoWrongIndices(answers) {
   const wrong = answers
     .map((a, i) => (!a?.correct ? i : -1))
@@ -9,8 +19,22 @@ function pickTwoWrongIndices(answers) {
 }
 
 /**
- * Pool hint theo phiên chơi bài (từ itemEffects trên payload).
- * Không dùng khi reviewMode.
+ * Hook hint theo phiên — đọc pool từ `payload.itemEffects.hintQuestionsPerLesson`.
+ *
+ * Luồng khởi tạo:
+ * - `reviewMode` → pool = 0 (không hint).
+ * - Ngược lại → `hintsRemaining` = tổng hint từ vật phẩm đã chọn mang vào bài.
+ *
+ * API trả về:
+ * - `hintsRemaining` — lượt còn lại trong lượt chơi.
+ * - `hasHintFeature` — có item hint hay không (ẩn/hiện nút Gợi ý).
+ * - `canUseHint(questionId, answers)` — đủ điều kiện bấm (còn lượt, chưa dùng câu này, ≥3 đáp án, ≥2 sai).
+ * - `applyHint(questionId, answers)` — trừ 1 lượt, lưu index ẩn vào Map theo `questionId`.
+ * - `getHiddenIndices(questionId)` — Set index cần không render / disable nút đáp án.
+ * - `resetHints()` — replay bài: reset pool và state đã dùng.
+ *
+ * @param {object} [payload] - Payload game từ `gamepage`.
+ * @returns {object} API hint cho component MCQ.
  */
 export function useLessonHints(payload) {
   const total = payload?.reviewMode

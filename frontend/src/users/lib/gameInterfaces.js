@@ -1,4 +1,9 @@
-/** Màu nền thẻ khi chưa có ảnh preview */
+/**
+ * Registry cấu hình 11 giao diện game (metadata UI, không phải logic câu hỏi).
+ * Dùng ở `preGameSetUp` (carousel + modal hướng dẫn) và `gamepage` (tên header).
+ */
+
+/** Bảng màu nền thẻ carousel khi không dùng ảnh preview. */
 export const GAME_CARD_COLORS = [
   "#C4B5FD",
   "#A78BFA",
@@ -13,12 +18,20 @@ export const GAME_CARD_COLORS = [
   "#FECDD3",
 ];
 
-/** Ảnh xem trước carousel — `frontend/public/game-preview-images/` */
+/**
+ * Đường ảnh preview tương đối trong `public/` (Vite serve static).
+ *
+ * @param {string} id - `game1` … `game11`.
+ * @returns {string} Ví dụ `game-preview-images/game1.png`.
+ */
 function gamePreviewImage(id) {
   return `game-preview-images/${id}.png`;
 }
 
-/** Danh sách giao diện game — dùng chung pre-game + gamepage */
+/**
+ * Danh sách đầy đủ giao diện chơi: `id` khớp route `/game/:gameId` và lazy import component.
+ * Mỗi phần tử: `label`, `color`, `previewImage`, `guide` (nội dung nút `?`).
+ */
 export const GAME_OPTIONS = [
   {
     id: "game1",
@@ -110,6 +123,10 @@ export const GAME_OPTIONS = [
   },
 ];
 
+/**
+ * Map nhanh `gameId` → tên hiển thị (sinh từ `GAME_OPTIONS`).
+ * Dùng header trang game khi payload không có `game.name`.
+ */
 export const GAME_LABELS = Object.fromEntries(
   GAME_OPTIONS.map((o) => [o.id, o.label])
 );
