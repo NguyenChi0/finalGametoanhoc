@@ -34,7 +34,7 @@ export default function AdminQuestionCreate() {
   /** File gốc để upload multipart (khác data URL chỉ để xem trước) */
   const [questionImageFile, setQuestionImageFile] = useState(null);
   const [answers, setAnswers] = useState(initialAnswers);
-  const [correctIndex, setCorrectIndex] = useState(0);
+  const [correctIndices, setCorrectIndices] = useState(() => new Set([0]));
 
   const [loadingGrades, setLoadingGrades] = useState(true);
   const [loadingTypes, setLoadingTypes] = useState(false);
@@ -224,13 +224,15 @@ export default function AdminQuestionCreate() {
         setSaving(false);
         return;
       }
-      if (!nonEmptyIndices.includes(correctIndex)) {
-        setError("Vui lòng chọn đáp án đúng nằm trong các đáp án đã nhập.");
+      const compactCorrectIndices = nonEmptyIndices
+        .map((origIdx, compactPos) => (correctIndices.has(origIdx) ? compactPos : -1))
+        .filter((idx) => idx >= 0);
+      if (compactCorrectIndices.length === 0) {
+        setError("Vui lòng chọn ít nhất một đáp án đúng.");
         setSaving(false);
         return;
       }
       const compactAnswers = nonEmptyIndices.map((idx) => normalizedAnswers[idx]);
-      const compactCorrectIndex = nonEmptyIndices.indexOf(correctIndex);
 
       await createQuestion({
         grade_id: Number(gradeId),
@@ -238,7 +240,7 @@ export default function AdminQuestionCreate() {
         lesson_id: Number(lessonId),
         question_text: questionText,
         answers: compactAnswers,
-        correct_index: compactCorrectIndex,
+        correct_indices: compactCorrectIndices,
         ...(fileToSend ? { imageFile: fileToSend } : {}),
         ...(pathOnly ? { question_image_path: pathOnly } : {}),
       });
@@ -279,7 +281,7 @@ export default function AdminQuestionCreate() {
           <h1 style={styles.title}>Tạo câu hỏi</h1>
           <p style={styles.lead}>
             Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và bốn đáp án
-            trắc nghiệm, đánh dấu đáp án đúng.
+            trắc nghiệm, đánh dấu một hoặc nhiều đáp án đúng.
           </p>
         </div>
       </header>
@@ -470,13 +472,19 @@ export default function AdminQuestionCreate() {
               <div key={i} style={styles.answerRow}>
                 <label style={styles.radioWrap}>
                   <input
-                    type="radio"
-                    name="correct"
-                    checked={correctIndex === i}
-                    onChange={() => setCorrectIndex(i)}
+                    type="checkbox"
+                    checked={correctIndices.has(i)}
+                    onChange={() => {
+                      setCorrectIndices((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        return next;
+                      });
+                    }}
                     disabled={!String(answers[i] ?? "").trim()}
                   />
-                  <span style={styles.answerBadge}>{label}</span>
+                  <span style={styles.answerBadge}>{label} đúng</span>
                 </label>
                 <input
                   type="text"

@@ -6,6 +6,7 @@ import { publicUrl } from "../../lib/publicUrl";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import { isSelectionCorrect } from "../lib/questionScoring";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -130,7 +131,11 @@ const [, forceRender] = useState(0); // chỉ để render
 
     setSelected((prev) => ({ ...prev, [qId]: fly.answerIndex }));
 
-    const isCorrect = fly.answer.correct;
+    const idx =
+      typeof fly.answerIndex === "number"
+        ? fly.answerIndex
+        : currentQuestion.answers.indexOf(fly.answer);
+    const isCorrect = isSelectionCorrect([idx], currentQuestion.answers);
   const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
 
     if (isCorrect) {

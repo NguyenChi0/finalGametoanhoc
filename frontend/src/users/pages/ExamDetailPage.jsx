@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { API_ORIGIN, getExamById } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
+import QuestionAnswerPicker from "../components/QuestionAnswerPicker";
+import { isAnswerSetFullyCorrect } from "../lib/questionScoring";
 
 function shuffle(arr) {
   const a = [...arr];
@@ -29,16 +31,13 @@ function mapApiQuestionsToQuiz(rawList) {
   const mapped = rawList
     .map((q) => {
       const answers = Array.isArray(q.answers) ? q.answers : [];
-      const correct = answers.find((a) => a.correct);
-      const correctAnswerId = correct?.id ?? null;
-      if (!correctAnswerId || answers.length === 0) return null;
+      if (answers.length === 0 || !answers.some((a) => a.correct)) return null;
       const options = shuffle(answers);
       return {
         id: q.id,
         question: q.question_text?.trim() || `Câu hỏi #${q.id}`,
         question_image: q.question_image || null,
         options,
-        correctAnswerId,
       };
     })
     .filter(Boolean);
@@ -82,10 +81,10 @@ export default function ExamDetailPage() {
     const qs = questionsRef.current;
     const ans = answersRef.current;
     const totalQ = qs.length || 1;
-    const correctCount = qs.reduce(
-      (acc, q) => acc + (ans[q.id] === q.correctAnswerId ? 1 : 0),
-      0
-    );
+    const correctCount = qs.reduce((acc, q) => {
+      const sel = ans[q.id];
+      return acc + (sel != null && isAnswerSetFullyCorrect(sel, q.options) ? 1 : 0);
+    }, 0);
     setScore(correctCount);
     setSubmitted(true);
   }, []);
@@ -160,12 +159,12 @@ export default function ExamDetailPage() {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
-  const handleAnswerChange = (answerId) => {
+  const handleAnswerConfirm = (selectedIndices) => {
     const q = questions[currentQuestion];
     if (!q) return;
     setAnswers({
       ...answers,
-      [q.id]: answerId,
+      [q.id]: selectedIndices,
     });
   };
 
@@ -405,15 +404,56 @@ export default function ExamDetailPage() {
       >
         <main>
           <style>{`
-            .exam-detail-answer-grid {
+            .exam-detail-picker__list {
               display: grid;
               grid-template-columns: 1fr 1fr;
               gap: 12px;
             }
             @media (max-width: 640px) {
-              .exam-detail-answer-grid {
+              .exam-detail-picker__list {
                 grid-template-columns: 1fr;
               }
+            }
+            .exam-detail-picker__multi-hint {
+              margin: 0 0 12px;
+              color: #3282b8;
+              font-weight: 600;
+            }
+            .exam-detail-picker__option {
+              padding: 12px 16px;
+              background: #f0f6fa;
+              color: #0f4c75;
+              border: 2px solid #d0dfe8;
+              border-radius: 40px;
+              font-size: 18px;
+              font-weight: 600;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              min-height: 48px;
+              font-family: inherit;
+            }
+            .exam-detail-picker__option--selected {
+              background: #0f4c75;
+              color: #fff;
+              border-color: #0f4c75;
+            }
+            .exam-detail-picker__confirm {
+              margin-top: 12px;
+              padding: 10px 20px;
+              border: none;
+              border-radius: 40px;
+              background: #0f4c75;
+              color: #fff;
+              font-weight: 600;
+              cursor: pointer;
+              font-family: inherit;
+            }
+            .exam-detail-picker__confirm:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
             }
           `}</style>
           {exam && (
@@ -469,48 +509,12 @@ export default function ExamDetailPage() {
             )}
 
             <div style={{ marginBottom: 32 }}>
-              <div className="exam-detail-answer-grid">
-                {currentQ.options.map((opt) => {
-                  const selected = currentAnswer === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => handleAnswerChange(opt.id)}
-                      style={{
-                        padding: "12px 16px",
-                        backgroundColor: selected ? "#0f4c75" : "#f0f6fa",
-                        color: selected ? "#fff" : "#0f4c75",
-                        border: selected
-                          ? "2px solid #0f4c75"
-                          : "2px solid #d0dfe8",
-                        borderRadius: 40,
-                        fontSize: 18,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        minHeight: 48,
-                      }}
-                    >
-                      {opt.text && <span>{opt.text}</span>}
-                      {opt.image && (
-                        <img
-                          src={staticAssetUrl(opt.image)}
-                          alt=""
-                          style={{
-                            maxHeight: 44,
-                            maxWidth: "100%",
-                            objectFit: "contain",
-                          }}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <QuestionAnswerPicker
+                answers={currentQ.options}
+                value={currentAnswer}
+                onConfirm={handleAnswerConfirm}
+                classNamePrefix="exam-detail-picker"
+              />
             </div>
 
             <div

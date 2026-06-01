@@ -71,14 +71,14 @@ function pickNameFromRowOrMap(apiName, fkId, idToName) {
  */
 function buildQuestionEditDraft(row, lookup) {
   const parts = row.answers || [];
-  const correct = parts.find((a) => a.correct);
-  const wrong = parts.filter((a) => !a.correct);
-  const fourTexts = [
-    correct?.text ?? "",
-    wrong[0]?.text ?? "",
-    wrong[1]?.text ?? "",
-    wrong[2]?.text ?? "",
-  ];
+  const fourTexts = ["", "", "", ""];
+  const correctSlots = [];
+  parts.forEach((a, i) => {
+    if (i < 4) {
+      fourTexts[i] = a.text ?? "";
+      if (a.correct) correctSlots.push(i);
+    }
+  });
   const img = row.question_image ? String(row.question_image).trim() : "";
   const g = pickNameFromRowOrMap(row.grade_name, row.grade_id, lookup?.gradeById);
   const t = pickNameFromRowOrMap(row.type_name, row.type_id, lookup?.typeById);
@@ -101,15 +101,20 @@ function buildQuestionEditDraft(row, lookup) {
     typeLabel: t || "Trắc nghiệm",
     questionText: row.question_text || "",
     answers: fourTexts,
-    correctIndex: 0,
+    correctIndices: correctSlots.length > 0 ? correctSlots : [0],
     questionImage: img,
     questionImagePreview: img,
   };
 }
 
 function formatAnswerLabel(row) {
-  const t = row.answers?.find((a) => a.correct)?.text;
-  return t ? `A. ${t}` : "—";
+  const correct = (row.answers || []).filter((a) => a.correct);
+  if (correct.length === 0) return "—";
+  if (correct.length === 1) {
+    const t = correct[0]?.text;
+    return t ? `A. ${t}` : "—";
+  }
+  return `${correct.length} đáp án đúng`;
 }
 
 /** Chuẩn hóa phản hồi GET /questions (một số proxy/client có thể khác shape). */

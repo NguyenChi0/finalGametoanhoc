@@ -6,16 +6,18 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import { isSelectionCorrect, normalizeSelected } from "../lib/questionScoring";
+import { useMultiMcqSelection } from "../lib/useMultiMcqSelection";
 
 const ADVANCE_DELAY_MS = 1000;
 
-function answerButtonStyle(sel, ai, answer) {
+function answerButtonStyle(sel, ai, answer, pendingMulti, isPending) {
   const base = {
     padding: "12px 16px",
     borderRadius: 40,
     fontSize: 18,
     fontWeight: 600,
-    cursor: sel === undefined ? "pointer" : "default",
+    cursor: sel === undefined && !pendingMulti ? "pointer" : pendingMulti ? "pointer" : "default",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -25,16 +27,26 @@ function answerButtonStyle(sel, ai, answer) {
     boxSizing: "border-box",
   };
 
-  if (sel === undefined) {
+  if (sel === undefined && !pendingMulti) {
     return {
       ...base,
-      backgroundColor: "#f0f6fa",
+      backgroundColor: isPending ? "#d0dfe8" : "#f0f6fa",
       color: "#0f4c75",
-      border: "2px solid #d0dfe8",
+      border: isPending ? "2px solid #0f4c75" : "2px solid #d0dfe8",
     };
   }
 
-  const chosen = sel === ai;
+  if (pendingMulti && isPending) {
+    return {
+      ...base,
+      backgroundColor: "#0f4c75",
+      color: "#fff",
+      border: "2px solid #0f4c75",
+    };
+  }
+
+  const norm = normalizeSelected(sel);
+  const chosen = norm.includes(ai);
   if (chosen && answer.correct) {
     return {
       ...base,
@@ -112,13 +124,13 @@ export default function Game10({ payload, onLessonComplete }) {
   }, [resetHints]);
 
   const choose = useCallback(
-    (qId, ansIdx) => {
+    (qId, indices) => {
       if (selected[qId] !== undefined) return;
 
       const q = qs.find((x) => x.id === qId);
-      const a = q?.answers?.[ansIdx];
-      setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
-      if (a?.correct) {
+      const isCorrect = isSelectionCorrect(indices, q?.answers || []);
+      setSelected((prev) => ({ ...prev, [qId]: normalizeSelected(indices) }));
+      if (isCorrect) {
         setCorrectCount((prev) => prev + 1);
       }
 
@@ -187,6 +199,15 @@ export default function Game10({ payload, onLessonComplete }) {
   const sel = selected[currentQuestion.id];
   const hiddenIndices = getHiddenIndices(currentQuestion.id);
   const qLocked = sel !== undefined;
+  const {
+    multi: multiCurrent,
+    onOptionClick,
+    confirmMulti,
+    isOptionSelected,
+    canConfirmMulti,
+  } = useMultiMcqSelection(currentQuestion.answers, (indices) =>
+    choose(currentQuestion.id, indices)
+  );
   const qImgSrc = currentQuestion.question_image
     ? questionImageUrl(currentQuestion.question_image) || currentQuestion.question_image
     : null;
@@ -265,6 +286,11 @@ export default function Game10({ payload, onLessonComplete }) {
           </div>
         )}
 
+        {multiCurrent && !qLocked ? (
+          <p style={{ textAlign: "center", color: "#3282b8", fontWeight: 600, margin: "0 0 8px" }}>
+            Chọn tất cả đáp án đúng rồi bấm Xác nhận
+          </p>
+        ) : null}
         <div className="game10-answer-grid">
           {currentQuestion.answers.map((a, ai) => {
             if (hiddenIndices.has(ai)) return null;
@@ -273,8 +299,14 @@ export default function Game10({ payload, onLessonComplete }) {
               key={a.id ?? ai}
               type="button"
               disabled={qLocked}
-              onClick={() => choose(currentQuestion.id, ai)}
-              style={answerButtonStyle(sel, ai, a)}
+              onClick={() => onOptionClick(ai)}
+              style={answerButtonStyle(
+                sel,
+                ai,
+                a,
+                multiCurrent && !qLocked,
+                isOptionSelected(ai)
+              )}
             >
               {a.text && <span>{a.text}</span>}
               {a.image && (
@@ -293,6 +325,27 @@ export default function Game10({ payload, onLessonComplete }) {
             );
           })}
         </div>
+        {multiCurrent && !qLocked && (
+          <button
+            type="button"
+            disabled={!canConfirmMulti}
+            onClick={confirmMulti}
+            style={{
+              display: "block",
+              margin: "12px auto 0",
+              padding: "10px 24px",
+              borderRadius: 40,
+              border: "none",
+              background: "#0f4c75",
+              color: "#fff",
+              fontWeight: 600,
+              cursor: canConfirmMulti ? "pointer" : "not-allowed",
+              opacity: canConfirmMulti ? 1 : 0.5,
+            }}
+          >
+            Xác nhận
+          </button>
+        )}
       </section>
     </div>
   );

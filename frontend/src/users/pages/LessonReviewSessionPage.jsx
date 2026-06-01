@@ -2,8 +2,10 @@ import React, { useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { questionImageUrl } from "../../api";
 import GameQuestionImageZoom from "../components/GameQuestionImageZoom";
+import QuestionAnswerPicker from "../components/QuestionAnswerPicker";
 import { prepareReviewQuestions } from "../lib/lessonQuestions";
 import { readReviewSession } from "../lib/playSession";
+import { isAnswerSetFullyCorrect } from "../lib/questionScoring";
 
 const QUESTIONS_PER_PAGE = 5;
 
@@ -67,9 +69,9 @@ function LessonReviewQuiz({ payload, onBack }) {
   const startIndex = currentPage * QUESTIONS_PER_PAGE;
   const currentQuestions = qs.slice(startIndex, startIndex + QUESTIONS_PER_PAGE);
 
-  function choose(qId, ansIdx) {
+  function choose(qId, selectedIndices) {
     if (finished) return;
-    setAnswers((prev) => ({ ...prev, [qId]: ansIdx }));
+    setAnswers((prev) => ({ ...prev, [qId]: selectedIndices }));
   }
 
   function goToNextPage() {
@@ -83,8 +85,8 @@ function LessonReviewQuiz({ payload, onBack }) {
   function handleSubmit() {
     let correct = 0;
     for (const q of qs) {
-      const idx = answers[q.id];
-      if (idx != null && q.answers?.[idx]?.correct) correct += 1;
+      const sel = answers[q.id];
+      if (sel != null && isAnswerSetFullyCorrect(sel, q.answers || [])) correct += 1;
     }
     setScore(correct);
     setFinished(true);
@@ -157,7 +159,6 @@ function LessonReviewQuiz({ payload, onBack }) {
         <section className="lesson-review-session__paper">
           {currentQuestions.map((q, index) => {
             const globalIndex = startIndex + index;
-            const selectedAnswer = answers[q.id];
             return (
               <article key={q.id} className="lesson-review-session__question">
                 <p className="lesson-review-session__question-text">
@@ -170,33 +171,14 @@ function LessonReviewQuiz({ payload, onBack }) {
                     thumbStyle={{ maxWidth: "220px", margin: "8px 0 12px" }}
                   />
                 ) : null}
-                <div className="lesson-review-session__answers">
-                  {(q.answers || []).map((a, ai) => {
-                    const isSelected = selectedAnswer === ai;
-                    return (
-                      <button
-                        key={a.id ?? ai}
-                        type="button"
-                        className={`lesson-review-session__answer${
-                          isSelected ? " lesson-review-session__answer--selected" : ""
-                        }`}
-                        onClick={() => choose(q.id, ai)}
-                      >
-                        <span className="lesson-review-session__answer-prefix">
-                          {String.fromCharCode(65 + ai)}.
-                        </span>
-                        <span>{a.text || (a.image ? "Xem hình" : "")}</span>
-                        {a.image ? (
-                          <img
-                            src={questionImageUrl(a.image) || a.image}
-                            alt=""
-                            className="lesson-review-session__answer-img"
-                          />
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
+                <QuestionAnswerPicker
+                  answers={q.answers || []}
+                  value={answers[q.id]}
+                  disabled={finished}
+                  onConfirm={(indices) => choose(q.id, indices)}
+                  classNamePrefix="lesson-review-session"
+                  renderPrefix={(ai) => `${String.fromCharCode(65 + ai)}.`}
+                />
               </article>
             );
           })}
@@ -292,12 +274,35 @@ function ReviewSessionStyles() {
         line-height: 1.5;
         color: #4a5080;
       }
-      .lesson-review-session__answers {
+      .lesson-review-session__answers,
+      .lesson-review-session__list {
         display: flex;
         flex-direction: column;
         gap: 8px;
       }
-      .lesson-review-session__answer {
+      .lesson-review-session__multi-hint {
+        margin: 0 0 8px;
+        font-size: 0.85rem;
+        color: #6b7099;
+        font-weight: 600;
+      }
+      .lesson-review-session__confirm {
+        margin-top: 8px;
+        border: none;
+        border-radius: 10px;
+        padding: 8px 14px;
+        background: #6c7ee1;
+        color: #fff;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .lesson-review-session__confirm:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .lesson-review-session__answer,
+      .lesson-review-session__option {
         display: flex;
         align-items: center;
         flex-wrap: wrap;
@@ -314,18 +319,22 @@ function ReviewSessionStyles() {
         cursor: pointer;
         transition: background 0.15s ease, border-color 0.15s ease;
       }
-      .lesson-review-session__answer:hover {
+      .lesson-review-session__answer:hover,
+      .lesson-review-session__option:hover {
         background: rgba(146, 185, 227, 0.1);
       }
-      .lesson-review-session__answer--selected {
+      .lesson-review-session__answer--selected,
+      .lesson-review-session__option--selected {
         border-color: #6c7ee1;
         background: rgba(108, 126, 225, 0.12);
       }
-      .lesson-review-session__answer-prefix {
+      .lesson-review-session__answer-prefix,
+      .lesson-review-session__prefix {
         font-weight: 700;
         min-width: 1.5em;
       }
-      .lesson-review-session__answer-img {
+      .lesson-review-session__answer-img,
+      .lesson-review-session__img {
         max-width: 100px;
         margin-left: auto;
       }

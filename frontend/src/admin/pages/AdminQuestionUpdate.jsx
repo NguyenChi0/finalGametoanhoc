@@ -50,7 +50,7 @@ export default function AdminQuestionUpdate() {
   /** Người dùng xóa ảnh (để gửi clear_question_image khi lưu). */
   const [imageCleared, setImageCleared] = useState(false);
   const [answers, setAnswers] = useState(initialAnswers);
-  const [correctIndex, setCorrectIndex] = useState(0);
+  const [correctIndices, setCorrectIndices] = useState(() => new Set([0]));
 
   const [loadingGrades, setLoadingGrades] = useState(true);
   const [loadingTypes, setLoadingTypes] = useState(false);
@@ -109,11 +109,12 @@ export default function AdminQuestionUpdate() {
         ? [...draft.answers.slice(0, 4), ...initialAnswers].slice(0, 4)
         : initialAnswers
     );
-    setCorrectIndex(
-      typeof draft.correctIndex === "number" && draft.correctIndex >= 0 && draft.correctIndex < 4
-        ? draft.correctIndex
-        : 0
-    );
+    const ci = Array.isArray(draft.correctIndices)
+      ? draft.correctIndices.filter((x) => Number.isInteger(x) && x >= 0 && x < 4)
+      : typeof draft.correctIndex === "number" && draft.correctIndex >= 0
+        ? [draft.correctIndex]
+        : [0];
+    setCorrectIndices(new Set(ci.length > 0 ? ci : [0]));
   }, [draft, location.key]);
 
   useEffect(() => {
@@ -301,13 +302,15 @@ export default function AdminQuestionUpdate() {
         setSaving(false);
         return;
       }
-      if (!nonEmptyIndices.includes(correctIndex)) {
-        setError("Vui lòng chọn đáp án đúng nằm trong các đáp án đã nhập.");
+      const compactCorrectIndices = nonEmptyIndices
+        .map((origIdx, compactPos) => (correctIndices.has(origIdx) ? compactPos : -1))
+        .filter((idx) => idx >= 0);
+      if (compactCorrectIndices.length === 0) {
+        setError("Vui lòng chọn ít nhất một đáp án đúng.");
         setSaving(false);
         return;
       }
       const compactAnswers = nonEmptyIndices.map((idx) => normalizedAnswers[idx]);
-      const compactCorrectIndex = nonEmptyIndices.indexOf(correctIndex);
 
       await updateQuestion(questionId, {
         grade_id: Number(gradeId),
@@ -315,7 +318,7 @@ export default function AdminQuestionUpdate() {
         lesson_id: Number(lessonId),
         question_text: questionText,
         answers: compactAnswers,
-        correct_index: compactCorrectIndex,
+        correct_indices: compactCorrectIndices,
         ...(fileToSend ? { imageFile: fileToSend } : {}),
         ...(pathOnly ? { question_image_path: pathOnly } : {}),
         ...(imageCleared && !fileToSend ? { clear_question_image: true } : {}),
@@ -575,13 +578,19 @@ export default function AdminQuestionUpdate() {
               <div key={i} style={styles.answerRow}>
                 <label style={styles.radioWrap}>
                   <input
-                    type="radio"
-                    name="correct"
-                    checked={correctIndex === i}
-                    onChange={() => setCorrectIndex(i)}
+                    type="checkbox"
+                    checked={correctIndices.has(i)}
+                    onChange={() => {
+                      setCorrectIndices((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        return next;
+                      });
+                    }}
                     disabled={!String(answers[i] ?? "").trim()}
                   />
-                  <span style={styles.answerBadge}>{label}</span>
+                  <span style={styles.answerBadge}>{label} đúng</span>
                 </label>
                 <input
                   type="text"

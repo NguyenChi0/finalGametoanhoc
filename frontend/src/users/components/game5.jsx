@@ -6,6 +6,8 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import { isSelectionCorrect } from "../lib/questionScoring";
+import { useMultiMcqSelection } from "../lib/useMultiMcqSelection";
 
 const gameShellStyle = {
   width: "100%",
@@ -50,6 +52,15 @@ export default function Game5({ payload, onLessonComplete }) {
 
   const currentQuestion = questions[currentQuestionIndex] ?? null;
 
+  const {
+    multi: multiCurrent,
+    onOptionClick,
+    confirmMulti,
+    canConfirmMulti,
+  } = useMultiMcqSelection(currentQuestion?.answers || [], (indices) => {
+    choose(currentQuestion?.id, indices);
+  });
+
   function finishGameWithScore(totalCorrect) {
     const userId =
       payload?.user?.id ||
@@ -60,14 +71,14 @@ export default function Game5({ payload, onLessonComplete }) {
     incrementLessonScore(userId, totalCorrect, payload);
   }
 
-  function choose(qId, ansIdx) {
+  function choose(qId, indices) {
     if (selected[qId] !== undefined) return;
 
-    setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
+    setSelected((prev) => ({ ...prev, [qId]: indices }));
 
-    const a = currentQuestion?.answers?.[ansIdx];
+    const isCorrect = isSelectionCorrect(indices, currentQuestion?.answers || []);
 
-    if (a && a.correct) {
+    if (isCorrect) {
       correctSound.play().catch((e) => console.warn("Âm thanh:", e));
       setCorrectCount((prev) => prev + 1);
       setFeedbackFlash("correct");
@@ -339,7 +350,7 @@ export default function Game5({ payload, onLessonComplete }) {
                     key={a.id || ai}
                     type="button"
                     className="game5-sbtn"
-                    onClick={() => choose(currentQuestion.id, ai)}
+                    onClick={() => onOptionClick(ai)}
                     disabled={sel !== undefined || !!feedbackFlash}
                     style={{
                       backgroundImage: fishCard,
@@ -369,6 +380,27 @@ export default function Game5({ payload, onLessonComplete }) {
                 );
               })}
             </div>
+            {multiCurrent && sel === undefined && !feedbackFlash && (
+              <button
+                type="button"
+                className="game5-confirm-btn"
+                disabled={!canConfirmMulti}
+                onClick={confirmMulti}
+                style={{
+                  marginTop: 12,
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "#fff",
+                  color: "#01579b",
+                  fontWeight: 700,
+                  cursor: canConfirmMulti ? "pointer" : "not-allowed",
+                  opacity: canConfirmMulti ? 1 : 0.5,
+                }}
+              >
+                Xác nhận
+              </button>
+            )}
           </div>
         </div>
         </div>

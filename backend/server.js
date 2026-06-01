@@ -223,29 +223,41 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
-// Helper: build answers array from question row (DB columns: answercorrect_*, answer2_*, ...)
+// Helper: build answers array from question row (4 slots cố định + answer_correct_mask)
 function buildAnswers(row) {
-  const answers = [];
-
-  if (row.answercorrect_text || row.answercorrect_image) {
-    answers.push({
-      id: 'correct',
+  const mask = Number(row.answer_correct_mask ?? 1);
+  const slots = [
+    {
+      id: 'a0',
       text: row.answercorrect_text || null,
       image: row.answercorrect_image || null,
-      correct: true
-    });
+    },
+    {
+      id: 'a1',
+      text: row.answer2_text || null,
+      image: row.answer2_image || null,
+    },
+    {
+      id: 'a2',
+      text: row.answer3_text || null,
+      image: row.answer3_image || null,
+    },
+    {
+      id: 'a3',
+      text: row.answer4_text || null,
+      image: row.answer4_image || null,
+    },
+  ];
+  const answers = [];
+  for (let i = 0; i < slots.length; i += 1) {
+    const s = slots[i];
+    if (s.text || s.image) {
+      answers.push({
+        ...s,
+        correct: !!(mask & (1 << i)),
+      });
+    }
   }
-
-  if (row.answer2_text || row.answer2_image) {
-    answers.push({ id: 'a2', text: row.answer2_text || null, image: row.answer2_image || null, correct: false });
-  }
-  if (row.answer3_text || row.answer3_image) {
-    answers.push({ id: 'a3', text: row.answer3_text || null, image: row.answer3_image || null, correct: false });
-  }
-  if (row.answer4_text || row.answer4_image) {
-    answers.push({ id: 'a4', text: row.answer4_text || null, image: row.answer4_image || null, correct: false });
-  }
-
   return answers;
 }
 
@@ -367,6 +379,7 @@ app.get('/api/questions', async (req, res) => {
          q.question_text, q.question_image,
          q.answercorrect_text, q.answer2_text, q.answer3_text, q.answer4_text,
          q.answercorrect_image, q.answer2_image, q.answer3_image, q.answer4_image,
+         q.answer_correct_mask,
          g.name AS grade_name, t.name AS type_name, l.name AS lesson_name,
          TRIM(CONCAT_WS(' > ',
            NULLIF(TRIM(g.name), ''),
@@ -541,31 +554,63 @@ app.get('/api/questions/:id', async (req, res) => {
 
 /**
  * POST /api/questions — tạo câu hỏi trắc nghiệm 2..4 đáp án
- * multipart/form-data: grade_id, type_id, lesson_id, question_text, answers (JSON string), correct_index,
- *   optional file field question_image, optional text question_image_path (khi không gửi file)
- * Hoặc JSON (application/json) như cũ — question_image là chuỗi path/URL nếu có
+ * multipart/form-data: answers (JSON), correct_indices (JSON array) hoặc correct_index (legacy)
  */
-function mapFourAnswersToColumns(answers, correctIndex) {
-  const all = Array.isArray(answers) ? answers : [];
-  const a = all
-    .map((x) => (x != null ? String(x).trim() : ''))
-    .filter((x) => x !== '');
-  if (a.length < 2) {
+function parseCorrectIndicesBody(raw, correctIndexLegacy, answerCount) {
+  let indices = null;
+  if (raw != null) {
+    if (Array.isArray(raw)) indices = raw;
+    else if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) indices = parsed;
+      } catch {
+        indices = null;
+      }
+    }
+  }
+  if (!indices || indices.length === 0) {
+    const ci = Number(correctIndexLegacy);
+    if (Number.isInteger(ci) && ci >= 0 && ci < answerCount) {
+      indices = [ci];
+    }
+  }
+  if (!indices || indices.length === 0) {
+    throw new Error('Cần ít nhất một đáp án đúng');
+  }
+  const normalized = [...new Set(indices.map((x) => Number(x)).filter((n) => Number.isInteger(n)))];
+  for (const idx of normalized) {
+    if (idx < 0 || idx >= answerCount) {
+      throw new Error('Đáp án đúng không hợp lệ');
+    }
+  }
+  if (normalized.length === 0) {
+    throw new Error('Cần ít nhất một đáp án đúng');
+  }
+  return normalized;
+}
+
+function mapAnswersInOrder(answersRaw, correctIndicesRaw, correctIndexLegacy) {
+  const all = Array.isArray(answersRaw) ? answersRaw : [];
+  const texts = all.map((x) => (x != null ? String(x).trim() : '')).slice(0, 4);
+  const n = texts.length;
+  if (n < 2) {
     throw new Error('Cần tối thiểu 2 đáp án');
   }
-  if (a.length > 4) {
+  if (n > 4) {
     throw new Error('Tối đa 4 đáp án');
   }
-  const ci = Number(correctIndex);
-  if (!Number.isInteger(ci) || ci < 0 || ci >= a.length) {
-    throw new Error('Đáp án đúng không hợp lệ');
+  const indices = parseCorrectIndicesBody(correctIndicesRaw, correctIndexLegacy, n);
+  let mask = 0;
+  for (const idx of indices) {
+    mask |= 1 << idx;
   }
-  const rest = a.filter((_, i) => i !== ci);
   return {
-    answercorrect_text: a[ci],
-    answer2_text: rest[0] ?? null,
-    answer3_text: rest[1] ?? null,
-    answer4_text: rest[2] ?? null,
+    answercorrect_text: texts[0] || null,
+    answer2_text: texts[1] || null,
+    answer3_text: texts[2] || null,
+    answer4_text: texts[3] || null,
+    answer_correct_mask: mask,
   };
 }
 
@@ -606,6 +651,7 @@ async function insertQuestionRow(req, res) {
     question_text,
     answers: answersRaw,
     correct_index,
+    correct_indices: correctIndicesRaw,
   } = req.body;
 
   const answers = parseAnswersBody(answersRaw);
@@ -632,7 +678,7 @@ async function insertQuestionRow(req, res) {
 
   let cols;
   try {
-    cols = mapFourAnswersToColumns(answers, correct_index);
+    cols = mapAnswersInOrder(answers, correctIndicesRaw, correct_index);
   } catch (e) {
     if (req.file && req.file.path) {
       try {
@@ -649,8 +695,9 @@ async function insertQuestionRow(req, res) {
         grade_id, type_id, lesson_id,
         question_text, question_image,
         answercorrect_text, answer2_text, answer3_text, answer4_text,
-        answercorrect_image, answer2_image, answer3_image, answer4_image
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
+        answercorrect_image, answer2_image, answer3_image, answer4_image,
+        answer_correct_mask
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
     `;
   const params = [
     gid,
@@ -662,6 +709,7 @@ async function insertQuestionRow(req, res) {
     cols.answer2_text,
     cols.answer3_text,
     cols.answer4_text,
+    cols.answer_correct_mask,
   ];
 
   try {
@@ -712,6 +760,7 @@ async function updateQuestionRow(req, res) {
     question_text,
     answers: answersRaw,
     correct_index,
+    correct_indices: correctIndicesRaw,
   } = req.body;
 
   const answers = parseAnswersBody(answersRaw);
@@ -738,7 +787,7 @@ async function updateQuestionRow(req, res) {
 
   let cols;
   try {
-    cols = mapFourAnswersToColumns(answers, correct_index);
+    cols = mapAnswersInOrder(answers, correctIndicesRaw, correct_index);
   } catch (e) {
     if (req.file && req.file.path) {
       try {
@@ -770,7 +819,8 @@ async function updateQuestionRow(req, res) {
       UPDATE questions SET
         grade_id = ?, type_id = ?, lesson_id = ?,
         question_text = ?, question_image = ?,
-        answercorrect_text = ?, answer2_text = ?, answer3_text = ?, answer4_text = ?
+        answercorrect_text = ?, answer2_text = ?, answer3_text = ?, answer4_text = ?,
+        answer_correct_mask = ?
       WHERE id = ?
     `;
   const params = [
@@ -783,6 +833,7 @@ async function updateQuestionRow(req, res) {
     cols.answer2_text,
     cols.answer3_text,
     cols.answer4_text,
+    cols.answer_correct_mask,
     id,
   ];
 
