@@ -6,7 +6,6 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import { isSelectionCorrect } from "../lib/questionScoring";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -269,11 +268,7 @@ export default function Game1({ payload, onLessonComplete }) {
       prev.map((f) => (f.id === fruitId ? { ...f, hit: true, sliced: true } : f))
     );
 
-    const idx =
-      typeof fruit.answerIndex === "number"
-        ? fruit.answerIndex
-        : currentQuestion.answers.indexOf(fruit.answer);
-    const isCorrect = isSelectionCorrect([idx], currentQuestion.answers);
+    const isCorrect = fruit.answer.correct;
     const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
     setCorrectCount(newCorrectCount);
 

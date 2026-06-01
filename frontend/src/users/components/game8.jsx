@@ -7,8 +7,6 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import { isAnswerSetFullyCorrect } from "../lib/questionScoring";
-import QuestionAnswerPicker from "./QuestionAnswerPicker";
 
 export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -49,11 +47,11 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   async function handleSubmit() {
     // Tính số câu đúng
     let correctAnswers = 0;
-    Object.keys(answers).forEach((questionId) => {
-      const question = qs.find((q) => q.id === parseInt(questionId, 10));
-      const sel = answers[questionId];
-      if (question && sel != null && isAnswerSetFullyCorrect(sel, question.answers)) {
-        correctAnswers += 1;
+    Object.keys(answers).forEach(questionId => {
+      const question = qs.find(q => q.id === parseInt(questionId));
+      const answerIndex = answers[questionId];
+      if (question && question.answers[answerIndex]?.correct) {
+        correctAnswers++;
       }
     });
 
@@ -78,9 +76,9 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     setGameState('finished');
   }
 
-  function choose(qId, selectedIndices) {
-    if (gameState !== "playing") return;
-    setAnswers((prev) => ({ ...prev, [qId]: selectedIndices }));
+  function choose(qId, ansIdx) {
+    if (gameState !== 'playing') return;
+    setAnswers(prev => ({ ...prev, [qId]: ansIdx }));
   }
 
   function goToNextPage() {
@@ -291,21 +289,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
     ...finishButtonStyle,
     backgroundColor: "#2196F3"
   };
-  const game8PickerStyles = `
-    .game8-picker__list { display: flex; flex-direction: column; gap: 8px; }
-    .game8-picker__option {
-      padding: 12px 15px; background: #f8f9fa; border: 2px solid #e9ecef;
-      border-radius: 8px; cursor: pointer; display: flex; align-items: center;
-      font-family: inherit; font-size: 16px; width: 100%; box-sizing: border-box;
-    }
-    .game8-picker__option--selected { background: #e3f2fd; border-color: #2196F3; }
-    .game8-picker__confirm {
-      margin-top: 8px; padding: 8px 16px; border: none; border-radius: 8px;
-      background: #4CAF50; color: #fff; font-weight: bold; cursor: pointer;
-    }
-    .game8-picker__confirm:disabled { opacity: 0.5; cursor: not-allowed; }
-  `;
-
   if (gameState === "finished") {
     return (
       <LessonCompleteScreen
@@ -321,7 +304,6 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   // Giao diện bài kiểm tra (gameState === 'playing')
   return (
     <div style={containerStyle}>
-      <style>{game8PickerStyles}</style>
       <div style={paperStyle}>
         {/* Header */}
         <div style={headerStyle}>
@@ -355,14 +337,46 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                     style={{ margin: "0 0 8px" }}
                   />
                 )}
-                <QuestionAnswerPicker
-                  answers={q.answers}
-                  value={selectedAnswer}
-                  hiddenIndices={getHiddenIndices(q.id)}
-                  onConfirm={(indices) => choose(q.id, indices)}
-                  classNamePrefix="game8-picker"
-                  renderPrefix={(ai) => `${String.fromCharCode(65 + ai)}.`}
-                />
+                <div style={answersStyle}>
+                  {q.answers.map((a, ai) => {
+                    if (getHiddenIndices(q.id).has(ai)) return null;
+                    const isSelected = selectedAnswer === ai;
+                    const answerStyleFinal = {
+                      ...answerStyle,
+                      ...(isSelected ? answerSelectedStyle : {})
+                    };
+
+                    return (
+                      <div
+                        key={a.id || ai}
+                        style={answerStyleFinal}
+                        onClick={() => choose(q.id, ai)}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            Object.assign(e.target.style, answerHoverStyle);
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.target.style.backgroundColor = answerStyle.backgroundColor;
+                          }
+                        }}
+                      >
+                        <span style={answerPrefixStyle}>
+                          {String.fromCharCode(65 + ai)}.
+                        </span>
+                        <span>{a.text || (a.image ? "Xem hình" : "")}</span>
+                        {a.image && (
+                          <img
+                            src={questionImageUrl(a.image) || undefined}
+                            alt=""
+                            style={{ maxWidth: "100px", marginLeft: "10px" }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}

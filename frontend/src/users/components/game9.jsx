@@ -6,7 +6,6 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import { isSelectionCorrect } from "../lib/questionScoring";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -477,9 +476,7 @@ function RabbitGame({ question, onAnswerSelected, isAnswered, isCorrect }) {
             if (currentHouse) {
               // Thỏ về nhà
               setRabbitPosition({ x: currentHouse.x, y: currentHouse.y });
-              onAnswerSelected(
-                isSelectionCorrect([currentHouse.id], question.answers || [])
-              );
+              onAnswerSelected(currentHouse.answer.correct);
               cancelAnimationFrame(animationRef.current);
               setIsMoving(false);
               return;

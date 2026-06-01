@@ -8,8 +8,6 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import { isSelectionCorrect, normalizeSelected } from "../lib/questionScoring";
-import { useMultiMcqSelection } from "../lib/useMultiMcqSelection";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -94,21 +92,11 @@ export default function Game1({ payload, onLessonComplete }) {
     }
   };
 
-  const {
-    multi: multiCurrent,
-    onOptionClick,
-    confirmMulti,
-    isOptionSelected,
-    canConfirmMulti,
-  } = useMultiMcqSelection(currentQuestion?.answers || [], (indices) => {
-    handleAnswer(indices);
-  });
-
-  const handleAnswer = (indices) => {
+  const handleAnswer = (answer, idx) => {
     if (locked || showResult || !isAlive) return;
     setLocked(true);
-    setSelected(indices);
-    const isCorrect = isSelectionCorrect(indices, currentQuestion?.answers || []);
+    setSelected(idx);
+    const isCorrect = !!answer.correct;
     playSound(isCorrect);
 
     const proceedToNext = () => {
@@ -369,38 +357,24 @@ export default function Game1({ payload, onLessonComplete }) {
               marginBottom: "24px",
             }}
           >
-            {multiCurrent && !locked ? (
-              <p style={{ gridColumn: "1 / -1", textAlign: "center", margin: 0, fontSize: "0.85rem" }}>
-                Chọn tất cả đáp án đúng rồi bấm Xác nhận
-              </p>
-            ) : null}
             {currentQuestion.answers.map((ans, i) => {
               if (getHiddenIndices(currentQuestion.id).has(i)) return null;
-              const selectedNorm = normalizeSelected(selected);
-              const pending = multiCurrent && !locked && isOptionSelected(i);
-              const isSelected =
-                selected !== null ? selectedNorm.includes(i) : pending;
               let bg = "linear-gradient(135deg, #2c3e50, #1a2632)";
               let border = "#7f8c8d";
               if (selected !== null) {
+                const isSelected = selected === i;
                 if (isSelected && ans.correct) {
                   bg = "linear-gradient(135deg, #2ecc71, #27ae60)";
                   border = "#f1c40f";
                 } else if (isSelected && !ans.correct) {
                   bg = "linear-gradient(135deg, #e74c3c, #c0392b)";
                   border = "#e74c3c";
-                } else if (!isSelected && ans.correct) {
-                  bg = "linear-gradient(135deg, #2ecc71, #27ae60)";
-                  border = "#f1c40f";
                 }
-              } else if (pending) {
-                bg = "linear-gradient(135deg, #3498db, #2980b9)";
-                border = "#f1c40f";
               }
               return (
                 <button
                   key={i}
-                  onClick={() => onOptionClick(i)}
+                  onClick={() => handleAnswer(ans, i)}
                   disabled={locked}
                   style={{
                     background: bg,
@@ -426,27 +400,6 @@ export default function Game1({ payload, onLessonComplete }) {
               );
             })}
           </div>
-          {multiCurrent && !locked && (
-            <button
-              type="button"
-              disabled={!canConfirmMulti}
-              onClick={confirmMulti}
-              style={{
-                display: "block",
-                margin: "0 auto 16px",
-                padding: "10px 20px",
-                borderRadius: 16,
-                border: "none",
-                background: "#f1c40f",
-                color: "#1a2632",
-                fontWeight: "bold",
-                cursor: canConfirmMulti ? "pointer" : "not-allowed",
-                opacity: canConfirmMulti ? 1 : 0.5,
-              }}
-            >
-              Xác nhận
-            </button>
-          )}
         </div>
       </div>
 

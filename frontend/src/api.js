@@ -651,16 +651,7 @@ export const createQuestion = async (payload) => {
     fd.append("lesson_id", String(rest.lesson_id));
     fd.append("question_text", rest.question_text ?? "");
     fd.append("answers", JSON.stringify(rest.answers ?? []));
-    if (rest.correct_indices != null) {
-      fd.append(
-        "correct_indices",
-        JSON.stringify(
-          Array.isArray(rest.correct_indices) ? rest.correct_indices : []
-        )
-      );
-    } else if (rest.correct_index != null) {
-      fd.append("correct_index", String(rest.correct_index));
-    }
+    fd.append("correct_index", String(rest.correct_index ?? 0));
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name
@@ -708,16 +699,7 @@ export const updateQuestion = async (id, payload) => {
     fd.append("lesson_id", String(rest.lesson_id));
     fd.append("question_text", rest.question_text ?? "");
     fd.append("answers", JSON.stringify(rest.answers ?? []));
-    if (rest.correct_indices != null) {
-      fd.append(
-        "correct_indices",
-        JSON.stringify(
-          Array.isArray(rest.correct_indices) ? rest.correct_indices : []
-        )
-      );
-    } else if (rest.correct_index != null) {
-      fd.append("correct_index", String(rest.correct_index));
-    }
+    fd.append("correct_index", String(rest.correct_index ?? 0));
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name

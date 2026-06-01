@@ -8,12 +8,6 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import {
-  getCorrectIndices,
-  isMultiCorrect,
-  isSelectionCorrect,
-  normalizeSelected,
-} from "../lib/questionScoring";
 
 export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   const questions = payload?.questions || [];
@@ -137,13 +131,14 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [gameState, showResult, currentPosition, currentQuestion, doorPositions]);
 
-  function choose(qId, ansIdxOrIndices) {
+  function choose(qId, ansIdx) {
     if (selected[qId] !== undefined) return;
-    const q = qs.find((x) => x.id === qId);
-    const indices = Array.isArray(ansIdxOrIndices) ? ansIdxOrIndices : [ansIdxOrIndices];
-    setSelected((prev) => ({ ...prev, [qId]: indices }));
+    setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
 
-    if (isSelectionCorrect(indices, q?.answers || [])) {
+    const q = qs.find((x) => x.id === qId);
+    const a = q?.answers?.[ansIdx];
+    
+    if (a && a.correct) {
       setCorrectCount((prev) => prev + 1);
     }
     setShowResult(true);
@@ -239,10 +234,8 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
 
   const selectedAnswerIndex = selected[currentQuestion.id];
   const hiddenDoorIndices = getHiddenIndices(currentQuestion.id);
-  const selectedForQ = selected[currentQuestion?.id];
-  const isCorrect =
-    selectedForQ !== undefined &&
-    isSelectionCorrect(selectedForQ, currentQuestion?.answers || []);
+  const isCorrect = selectedAnswerIndex !== undefined && 
+    currentQuestion.answers[selectedAnswerIndex]?.correct;
 
   return (
     <div style={{ 
@@ -385,9 +378,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
             {currentQuestion.answers.map((answer, index) => {
               if (hiddenDoorIndices.has(index)) return null;
               const doorPosition = doorPositions[index];
-              const isSelectedDoor = normalizeSelected(selectedAnswerIndex).includes(
-                index
-              );
+              const isSelectedDoor = selectedAnswerIndex === index;
               
               return (
                 <div

@@ -5,7 +5,6 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import { getCorrectIndices } from "../lib/questionScoring";
 
 export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -144,9 +143,9 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
         
         if (newPos <= 120 && newPos >= 60) {
           const currentQ = qs[currentQuestion];
-          const correctLanes = getCorrectIndices(currentQ?.answers || []);
-
-          if (correctLanes.includes(playerLane)) {
+          const correctLane = currentQ?.answers.findIndex(a => a.correct);
+          
+          if (playerLane === correctLane) {
             if (!isJumping && !hasScoredRef.current) {
               hasScoredRef.current = true;
               setIsJumping(true);

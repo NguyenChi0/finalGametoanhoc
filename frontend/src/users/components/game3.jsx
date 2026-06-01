@@ -8,8 +8,6 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import { isSelectionCorrect, normalizeSelected } from "../lib/questionScoring";
-import { useMultiMcqSelection } from "../lib/useMultiMcqSelection";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -57,22 +55,13 @@ export default function Game1({ payload, onLessonComplete }) {
     }
   };
 
-  const {
-    multi: multiCurrent,
-    onOptionClick,
-    confirmMulti,
-    isOptionSelected,
-    canConfirmMulti,
-  } = useMultiMcqSelection(currentQuestion?.answers || [], (indices) => {
-    handleAnswer(indices);
-  });
-
-  function handleAnswer(indices) {
+  // xử lý trả lời: giờ nhận (answer, index)
+  function handleAnswer(answer, idx) {
     if (locked) return;
     setLocked(true);
-    setSelected(indices);
+    setSelected(idx);
 
-    const isCorrect = isSelectionCorrect(indices, currentQuestion?.answers || []);
+    const isCorrect = !!answer.correct;
     const isLast = current + 1 >= gameQuestions.length;
     const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
 
@@ -388,16 +377,9 @@ export default function Game1({ payload, onLessonComplete }) {
 
           {/* Đáp án: desktop 2 cột; mobile 1 đáp án / hàng */}
           <div className="game1-answers-grid">
-            {multiCurrent && !locked ? (
-              <p style={{ gridColumn: "1 / -1", textAlign: "center", margin: "0 0 8px", fontSize: "0.9em" }}>
-                Chọn tất cả đáp án đúng rồi bấm Xác nhận
-              </p>
-            ) : null}
             {currentQuestion.answers.map((ans, i) => {
               if (getHiddenIndices(currentQuestion.id).has(i)) return null;
-              const selectedNorm = normalizeSelected(selected);
-              const pending = multiCurrent && !locked && isOptionSelected(i);
-              const chosen = selected !== null ? selectedNorm.includes(i) : pending;
+              const chosen = selected === i;
               let bg = "linear-gradient(135deg, rgba(54, 150, 230, 0.8), rgba(24, 122, 221, 0.8))";
               let borderColor = "#1e88e5";
               if (selected !== null) {
@@ -420,7 +402,7 @@ export default function Game1({ payload, onLessonComplete }) {
               return (
                 <button
                   key={i}
-                  onClick={() => onOptionClick(i)}
+                  onClick={() => handleAnswer(ans, i)}
                   disabled={locked}
                   style={{
                     background: bg,
@@ -451,27 +433,6 @@ export default function Game1({ payload, onLessonComplete }) {
               );
             })}
           </div>
-          {multiCurrent && !locked && (
-            <button
-              type="button"
-              disabled={!canConfirmMulti}
-              onClick={confirmMulti}
-              style={{
-                display: "block",
-                margin: "12px auto 0",
-                padding: "10px 20px",
-                borderRadius: 8,
-                border: "none",
-                background: "#1e88e5",
-                color: "#fff",
-                fontWeight: "bold",
-                cursor: canConfirmMulti ? "pointer" : "not-allowed",
-                opacity: canConfirmMulti ? 1 : 0.5,
-              }}
-            >
-              Xác nhận
-            </button>
-          )}
         </div>
     </div>
   );

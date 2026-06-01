@@ -8,7 +8,6 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import { isSelectionCorrect } from "../lib/questionScoring";
 
 const BALLOON_SRC = [
   "game3-ballon1.png",
@@ -161,7 +160,7 @@ export default function Game3({ payload, onLessonComplete }) {
     const t1 = setTimeout(() => {
       const q = qs.find((x) => x.id === qId);
       const a = q?.answers?.[ansIdx];
-      const isCorrect = isSelectionCorrect([ansIdx], q?.answers || []);
+      const isCorrect = !!(a && a.correct);
 
       setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
       setHitEffect({
