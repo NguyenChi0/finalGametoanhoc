@@ -223,8 +223,41 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
-// Helper: build answers array from question row (4 slots cố định + answer_correct_mask)
+const MAX_QUESTION_ANSWERS = 11;
+
+function parseAnswersJsonField(row) {
+  let raw = row.answers_json;
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const answers = [];
+  for (let i = 0; i < raw.length && i < MAX_QUESTION_ANSWERS; i += 1) {
+    const item = raw[i];
+    if (!item || typeof item !== 'object') continue;
+    const text = item.text != null ? String(item.text).trim() : '';
+    const image = item.image != null ? String(item.image).trim() : null;
+    if (!text && !image) continue;
+    answers.push({
+      id: `a${i}`,
+      text: text || null,
+      image: image || null,
+      correct: !!item.correct,
+    });
+  }
+  return answers.length > 0 ? answers : null;
+}
+
+// Helper: build answers array — ưu tiên answers_json, fallback 4 cột + mask
 function buildAnswers(row) {
+  const fromJson = parseAnswersJsonField(row);
+  if (fromJson) return fromJson;
+
   const mask = Number(row.answer_correct_mask ?? 1);
   const slots = [
     {
@@ -553,7 +586,7 @@ app.get('/api/questions/:id', async (req, res) => {
 });
 
 /**
- * POST /api/questions — tạo câu hỏi trắc nghiệm 2..4 đáp án
+ * POST /api/questions — tạo câu hỏi trắc nghiệm 2..11 đáp án (tối đa 4 đúng + 7 sai)
  * multipart/form-data: answers (JSON), correct_indices (JSON array) hoặc correct_index (legacy)
  */
 function parseCorrectIndicesBody(raw, correctIndexLegacy, answerCount) {
@@ -592,25 +625,30 @@ function parseCorrectIndicesBody(raw, correctIndexLegacy, answerCount) {
 
 function mapAnswersInOrder(answersRaw, correctIndicesRaw, correctIndexLegacy) {
   const all = Array.isArray(answersRaw) ? answersRaw : [];
-  const texts = all.map((x) => (x != null ? String(x).trim() : '')).slice(0, 4);
+  const texts = all.map((x) => (x != null ? String(x).trim() : '')).slice(0, MAX_QUESTION_ANSWERS);
   const n = texts.length;
   if (n < 2) {
     throw new Error('Cần tối thiểu 2 đáp án');
   }
-  if (n > 4) {
-    throw new Error('Tối đa 4 đáp án');
+  if (n > MAX_QUESTION_ANSWERS) {
+    throw new Error(`Tối đa ${MAX_QUESTION_ANSWERS} đáp án`);
   }
   const indices = parseCorrectIndicesBody(correctIndicesRaw, correctIndexLegacy, n);
   let mask = 0;
   for (const idx of indices) {
-    mask |= 1 << idx;
+    if (idx < 4) mask |= 1 << idx;
   }
+  const answersJson = texts.map((text, i) => ({
+    text,
+    correct: indices.includes(i),
+  }));
   return {
     answercorrect_text: texts[0] || null,
     answer2_text: texts[1] || null,
     answer3_text: texts[2] || null,
     answer4_text: texts[3] || null,
     answer_correct_mask: mask,
+    answers_json: JSON.stringify(answersJson),
   };
 }
 
@@ -696,8 +734,8 @@ async function insertQuestionRow(req, res) {
         question_text, question_image,
         answercorrect_text, answer2_text, answer3_text, answer4_text,
         answercorrect_image, answer2_image, answer3_image, answer4_image,
-        answer_correct_mask
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
+        answer_correct_mask, answers_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)
     `;
   const params = [
     gid,
@@ -710,6 +748,7 @@ async function insertQuestionRow(req, res) {
     cols.answer3_text,
     cols.answer4_text,
     cols.answer_correct_mask,
+    cols.answers_json,
   ];
 
   try {
@@ -820,7 +859,7 @@ async function updateQuestionRow(req, res) {
         grade_id = ?, type_id = ?, lesson_id = ?,
         question_text = ?, question_image = ?,
         answercorrect_text = ?, answer2_text = ?, answer3_text = ?, answer4_text = ?,
-        answer_correct_mask = ?
+        answer_correct_mask = ?, answers_json = ?
       WHERE id = ?
     `;
   const params = [
@@ -834,6 +873,7 @@ async function updateQuestionRow(req, res) {
     cols.answer3_text,
     cols.answer4_text,
     cols.answer_correct_mask,
+    cols.answers_json,
     id,
   ];
 

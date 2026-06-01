@@ -13,6 +13,7 @@ import {
   persistAdminQuestionsFilter,
   readAdminQuestionsFilter,
 } from "../lib/adminQuestionsFilter";
+import { answersToMcqForm } from "../components/AdminMcqAnswersEditor";
 
 /** Số câu hỏi tối đa mỗi trang (đồng bộ với API limit). */
 const QUESTIONS_PAGE_SIZE = 10;
@@ -71,14 +72,7 @@ function pickNameFromRowOrMap(apiName, fkId, idToName) {
  */
 function buildQuestionEditDraft(row, lookup) {
   const parts = row.answers || [];
-  const fourTexts = ["", "", "", ""];
-  const correctSlots = [];
-  parts.forEach((a, i) => {
-    if (i < 4) {
-      fourTexts[i] = a.text ?? "";
-      if (a.correct) correctSlots.push(i);
-    }
-  });
+  const mcqForm = answersToMcqForm(parts);
   const img = row.question_image ? String(row.question_image).trim() : "";
   const g = pickNameFromRowOrMap(row.grade_name, row.grade_id, lookup?.gradeById);
   const t = pickNameFromRowOrMap(row.type_name, row.type_id, lookup?.typeById);
@@ -100,8 +94,15 @@ function buildQuestionEditDraft(row, lookup) {
     topicLine: "",
     typeLabel: t || "Trắc nghiệm",
     questionText: row.question_text || "",
-    answers: fourTexts,
-    correctIndices: correctSlots.length > 0 ? correctSlots : [0],
+    mcqForm,
+    answers: [
+      ...mcqForm.correctTexts.map((t) => String(t ?? "").trim()).filter(Boolean),
+      ...mcqForm.wrongTexts.map((t) => String(t ?? "").trim()).filter(Boolean),
+    ],
+    correctIndices: mcqForm.correctTexts
+      .map((t) => String(t ?? "").trim())
+      .filter(Boolean)
+      .map((_, i) => i),
     questionImage: img,
     questionImagePreview: img,
   };

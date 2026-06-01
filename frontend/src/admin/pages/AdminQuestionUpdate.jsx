@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getGrades, getTypes, getLessons, updateQuestion } from "../../api";
-
-const initialAnswers = ["", "", "", ""];
+import AdminMcqAnswersEditor, {
+  answersToMcqForm,
+  createEmptyMcqForm,
+  mcqFormToApiPayload,
+} from "../components/AdminMcqAnswersEditor";
 
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() =>
@@ -49,8 +52,7 @@ export default function AdminQuestionUpdate() {
   const [questionImageFile, setQuestionImageFile] = useState(null);
   /** Người dùng xóa ảnh (để gửi clear_question_image khi lưu). */
   const [imageCleared, setImageCleared] = useState(false);
-  const [answers, setAnswers] = useState(initialAnswers);
-  const [correctIndices, setCorrectIndices] = useState(() => new Set([0]));
+  const [mcqForm, setMcqForm] = useState(() => createEmptyMcqForm());
 
   const [loadingGrades, setLoadingGrades] = useState(true);
   const [loadingTypes, setLoadingTypes] = useState(false);
@@ -90,8 +92,7 @@ export default function AdminQuestionUpdate() {
       setQuestionImagePreview("");
       setQuestionImageFile(null);
       setImageCleared(false);
-      setAnswers(initialAnswers);
-      setCorrectIndex(0);
+      setMcqForm(createEmptyMcqForm());
       return;
     }
     setQuestionId(draft.id);
@@ -104,17 +105,21 @@ export default function AdminQuestionUpdate() {
     setQuestionImagePreview(draft.questionImagePreview != null ? String(draft.questionImagePreview).trim() : img);
     setQuestionImageFile(null);
     setImageCleared(false);
-    setAnswers(
-      Array.isArray(draft.answers) && draft.answers.length > 0
-        ? [...draft.answers.slice(0, 4), ...initialAnswers].slice(0, 4)
-        : initialAnswers
-    );
-    const ci = Array.isArray(draft.correctIndices)
-      ? draft.correctIndices.filter((x) => Number.isInteger(x) && x >= 0 && x < 4)
-      : typeof draft.correctIndex === "number" && draft.correctIndex >= 0
-        ? [draft.correctIndex]
-        : [0];
-    setCorrectIndices(new Set(ci.length > 0 ? ci : [0]));
+    if (draft.mcqForm?.correctTexts != null) {
+      setMcqForm(answersToMcqForm(draft.mcqForm));
+    } else if (Array.isArray(draft.answerRows) && draft.answerRows.length > 0) {
+      setMcqForm(answersToMcqForm(draft.answerRows));
+    } else if (
+      Array.isArray(draft.answers) &&
+      draft.answers.length > 0 &&
+      typeof draft.answers[0] === "object"
+    ) {
+      setMcqForm(answersToMcqForm(draft.answers));
+    } else {
+      setMcqForm(
+        answersToMcqForm(draft.answers || [], draft.correctIndices ?? draft.correctIndex ?? [0])
+      );
+    }
   }, [draft, location.key]);
 
   useEffect(() => {
@@ -196,14 +201,6 @@ export default function AdminQuestionUpdate() {
   const refGradeId = gradeId ? Number(gradeId) : null;
   const refTypeId = typeId ? Number(typeId) : null;
   const refLessonId = lessonId ? Number(lessonId) : null;
-
-  const setAnswerAt = (idx, value) => {
-    setAnswers((prev) => {
-      const next = [...prev];
-      next[idx] = value;
-      return next;
-    });
-  };
 
   const readImageFile = (file) => {
     setQuestionImageFile(file);
@@ -293,32 +290,20 @@ export default function AdminQuestionUpdate() {
           ? questionImage.trim()
           : undefined;
 
-      const normalizedAnswers = answers.map((a) => String(a ?? "").trim());
-      const nonEmptyIndices = normalizedAnswers
-        .map((text, idx) => (text ? idx : -1))
-        .filter((idx) => idx >= 0);
-      if (nonEmptyIndices.length < 2) {
-        setError("Cần ít nhất 2 đáp án.");
+      const answerPayload = mcqFormToApiPayload(mcqForm);
+      if (answerPayload.error) {
+        setError(answerPayload.error);
         setSaving(false);
         return;
       }
-      const compactCorrectIndices = nonEmptyIndices
-        .map((origIdx, compactPos) => (correctIndices.has(origIdx) ? compactPos : -1))
-        .filter((idx) => idx >= 0);
-      if (compactCorrectIndices.length === 0) {
-        setError("Vui lòng chọn ít nhất một đáp án đúng.");
-        setSaving(false);
-        return;
-      }
-      const compactAnswers = nonEmptyIndices.map((idx) => normalizedAnswers[idx]);
 
       await updateQuestion(questionId, {
         grade_id: Number(gradeId),
         type_id: Number(typeId),
         lesson_id: Number(lessonId),
         question_text: questionText,
-        answers: compactAnswers,
-        correct_indices: compactCorrectIndices,
+        answers: answerPayload.answers,
+        correct_indices: answerPayload.correct_indices,
         ...(fileToSend ? { imageFile: fileToSend } : {}),
         ...(pathOnly ? { question_image_path: pathOnly } : {}),
         ...(imageCleared && !fileToSend ? { clear_question_image: true } : {}),
@@ -379,7 +364,8 @@ export default function AdminQuestionUpdate() {
         <div>
           <h1 style={styles.title}>Cập nhật câu hỏi #{questionId}</h1>
           <p style={styles.lead}>
-            Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và bốn đáp án trắc nghiệm, đánh dấu đáp
+            Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và đáp án: A luôn đúng, B/C/D
+            mặc định sai; có thể thêm ô đúng hoặc hàng sai.
             án đúng.
           </p>
         </div>
@@ -572,36 +558,7 @@ export default function AdminQuestionUpdate() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Đáp án trắc nghiệm</h2>
-          {[0, 1, 2, 3].map((i) => {
-            const label = ["A", "B", "C", "D"][i];
-            return (
-              <div key={i} style={styles.answerRow}>
-                <label style={styles.radioWrap}>
-                  <input
-                    type="checkbox"
-                    checked={correctIndices.has(i)}
-                    onChange={() => {
-                      setCorrectIndices((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(i)) next.delete(i);
-                        else next.add(i);
-                        return next;
-                      });
-                    }}
-                    disabled={!String(answers[i] ?? "").trim()}
-                  />
-                  <span style={styles.answerBadge}>{label} đúng</span>
-                </label>
-                <input
-                  type="text"
-                  value={answers[i]}
-                  onChange={(e) => setAnswerAt(i, e.target.value)}
-                  style={styles.inputFlex}
-                  placeholder={`Đáp án ${label}`}
-                />
-              </div>
-            );
-          })}
+          <AdminMcqAnswersEditor value={mcqForm} onChange={setMcqForm} />
         </section>
 
         <div style={styles.actions}>

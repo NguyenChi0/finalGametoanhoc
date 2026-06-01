@@ -145,6 +145,22 @@ export default function Game10({ payload, onLessonComplete }) {
     [selected, qs, goToNextQuestion]
   );
 
+  const handleConfirmSelection = useCallback(
+    (indices) => {
+      const q = qs[currentIndex];
+      if (q?.id != null) choose(q.id, indices);
+    },
+    [qs, currentIndex, choose]
+  );
+
+  const {
+    multi: multiCurrent,
+    onOptionClick,
+    confirmMulti,
+    isOptionSelected,
+    canConfirmMulti,
+  } = useMultiMcqSelection(currentQuestion?.answers ?? [], handleConfirmSelection);
+
   useEffect(() => {
     return () => {
       if (advanceTimerRef.current) {
@@ -199,15 +215,6 @@ export default function Game10({ payload, onLessonComplete }) {
   const sel = selected[currentQuestion.id];
   const hiddenIndices = getHiddenIndices(currentQuestion.id);
   const qLocked = sel !== undefined;
-  const {
-    multi: multiCurrent,
-    onOptionClick,
-    confirmMulti,
-    isOptionSelected,
-    canConfirmMulti,
-  } = useMultiMcqSelection(currentQuestion.answers, (indices) =>
-    choose(currentQuestion.id, indices)
-  );
   const qImgSrc = currentQuestion.question_image
     ? questionImageUrl(currentQuestion.question_image) || currentQuestion.question_image
     : null;
