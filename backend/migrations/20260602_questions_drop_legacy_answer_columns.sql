@@ -1,0 +1,14 @@
+-- TÙY CHỌN — chỉ chạy sau khi:
+-- 1) Đã chạy 20260601_questions_answers_json.sql
+-- 2) Đã chạy: node backend/scripts/migrate-questions-answers-json.js
+-- 3) Đã kiểm tra API/game/admin hiển thị đáp án đúng
+
+-- ALTER TABLE `questions`
+--   DROP COLUMN `answercorrect_text`,
+--   DROP COLUMN `answer2_text`,
+--   DROP COLUMN `answer3_text`,
+--   DROP COLUMN `answer4_text`,
+--   DROP COLUMN `answercorrect_image`,
+--   DROP COLUMN `answer2_image`,
+--   DROP COLUMN `answer3_image`,
+--   DROP COLUMN `answer4_image`;

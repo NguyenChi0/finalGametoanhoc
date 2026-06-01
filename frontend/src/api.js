@@ -641,6 +641,19 @@ export const getQuestionById = async (id) => {
  * - Nếu có `question_image_path` (chuỗi path/URL, không file): gửi kèm trong form.
  * - Ngược lại: JSON như cũ (tương thích script / không ảnh).
  */
+function appendQuestionCorrectFields(fd, rest) {
+  if (rest.correct_indices != null) {
+    fd.append(
+      "correct_indices",
+      typeof rest.correct_indices === "string"
+        ? rest.correct_indices
+        : JSON.stringify(rest.correct_indices)
+    );
+  } else {
+    fd.append("correct_index", String(rest.correct_index ?? 0));
+  }
+}
+
 export const createQuestion = async (payload) => {
   const { imageFile, question_image_path, ...rest } = payload;
 
@@ -651,7 +664,7 @@ export const createQuestion = async (payload) => {
     fd.append("lesson_id", String(rest.lesson_id));
     fd.append("question_text", rest.question_text ?? "");
     fd.append("answers", JSON.stringify(rest.answers ?? []));
-    fd.append("correct_index", String(rest.correct_index ?? 0));
+    appendQuestionCorrectFields(fd, rest);
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name
@@ -699,7 +712,7 @@ export const updateQuestion = async (id, payload) => {
     fd.append("lesson_id", String(rest.lesson_id));
     fd.append("question_text", rest.question_text ?? "");
     fd.append("answers", JSON.stringify(rest.answers ?? []));
-    fd.append("correct_index", String(rest.correct_index ?? 0));
+    appendQuestionCorrectFields(fd, rest);
     if (imageFile instanceof Blob) {
       const name =
         imageFile instanceof File && imageFile.name

@@ -11,6 +11,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
 const mountAdminCrud = require('./server-admin');
+const { buildAnswers, answersTextsToJson } = require('./lib/questionAnswers');
 
 const QUESTIONS_IMAGES_DIR = path.join(__dirname, 'questions-images');
 fs.mkdirSync(QUESTIONS_IMAGES_DIR, { recursive: true });
@@ -223,32 +224,6 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
-// Helper: build answers array from question row (DB columns: answercorrect_*, answer2_*, ...)
-function buildAnswers(row) {
-  const answers = [];
-
-  if (row.answercorrect_text || row.answercorrect_image) {
-    answers.push({
-      id: 'correct',
-      text: row.answercorrect_text || null,
-      image: row.answercorrect_image || null,
-      correct: true
-    });
-  }
-
-  if (row.answer2_text || row.answer2_image) {
-    answers.push({ id: 'a2', text: row.answer2_text || null, image: row.answer2_image || null, correct: false });
-  }
-  if (row.answer3_text || row.answer3_image) {
-    answers.push({ id: 'a3', text: row.answer3_text || null, image: row.answer3_image || null, correct: false });
-  }
-  if (row.answer4_text || row.answer4_image) {
-    answers.push({ id: 'a4', text: row.answer4_text || null, image: row.answer4_image || null, correct: false });
-  }
-
-  return answers;
-}
-
 // ====== Endpoints ======
 
 // 1) Lấy danh sách lớp (grades)
@@ -365,8 +340,7 @@ app.get('/api/questions', async (req, res) => {
     let sql = `
   SELECT q.id, q.grade_id, q.type_id, q.lesson_id,
          q.question_text, q.question_image,
-         q.answercorrect_text, q.answer2_text, q.answer3_text, q.answer4_text,
-         q.answercorrect_image, q.answer2_image, q.answer3_image, q.answer4_image,
+         q.answers_json,
          g.name AS grade_name, t.name AS type_name, l.name AS lesson_name,
          TRIM(CONCAT_WS(' > ',
            NULLIF(TRIM(g.name), ''),
@@ -541,34 +515,12 @@ app.get('/api/questions/:id', async (req, res) => {
 
 /**
  * POST /api/questions — tạo câu hỏi trắc nghiệm 2..4 đáp án
- * multipart/form-data: grade_id, type_id, lesson_id, question_text, answers (JSON string), correct_index,
+ * multipart/form-data: grade_id, type_id, lesson_id, question_text, answers (JSON string),
+ *   correct_indices (JSON mảng) hoặc correct_index (một số — tương thích cũ),
  *   optional file field question_image, optional text question_image_path (khi không gửi file)
  * Hoặc JSON (application/json) như cũ — question_image là chuỗi path/URL nếu có
+ * Lưu DB: một cột answers_json (mảng {id,text,image,correct}).
  */
-function mapFourAnswersToColumns(answers, correctIndex) {
-  const all = Array.isArray(answers) ? answers : [];
-  const a = all
-    .map((x) => (x != null ? String(x).trim() : ''))
-    .filter((x) => x !== '');
-  if (a.length < 2) {
-    throw new Error('Cần tối thiểu 2 đáp án');
-  }
-  if (a.length > 4) {
-    throw new Error('Tối đa 4 đáp án');
-  }
-  const ci = Number(correctIndex);
-  if (!Number.isInteger(ci) || ci < 0 || ci >= a.length) {
-    throw new Error('Đáp án đúng không hợp lệ');
-  }
-  const rest = a.filter((_, i) => i !== ci);
-  return {
-    answercorrect_text: a[ci],
-    answer2_text: rest[0] ?? null,
-    answer3_text: rest[1] ?? null,
-    answer4_text: rest[2] ?? null,
-  };
-}
-
 function parseAnswersBody(rawAnswers) {
   if (rawAnswers == null) return null;
   if (Array.isArray(rawAnswers)) return rawAnswers;
@@ -606,6 +558,7 @@ async function insertQuestionRow(req, res) {
     question_text,
     answers: answersRaw,
     correct_index,
+    correct_indices,
   } = req.body;
 
   const answers = parseAnswersBody(answersRaw);
@@ -630,9 +583,9 @@ async function insertQuestionRow(req, res) {
     return res.status(400).json({ message: 'Nội dung câu hỏi không được để trống' });
   }
 
-  let cols;
+  let answersJson;
   try {
-    cols = mapFourAnswersToColumns(answers, correct_index);
+    answersJson = answersTextsToJson(answers, correct_indices, correct_index);
   } catch (e) {
     if (req.file && req.file.path) {
       try {
@@ -648,21 +601,10 @@ async function insertQuestionRow(req, res) {
       INSERT INTO questions (
         grade_id, type_id, lesson_id,
         question_text, question_image,
-        answercorrect_text, answer2_text, answer3_text, answer4_text,
-        answercorrect_image, answer2_image, answer3_image, answer4_image
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
+        answers_json
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `;
-  const params = [
-    gid,
-    tid,
-    lid,
-    qtext,
-    qimg,
-    cols.answercorrect_text,
-    cols.answer2_text,
-    cols.answer3_text,
-    cols.answer4_text,
-  ];
+  const params = [gid, tid, lid, qtext, qimg, answersJson];
 
   try {
     const [result] = await pool.query(sql, params);
@@ -712,6 +654,7 @@ async function updateQuestionRow(req, res) {
     question_text,
     answers: answersRaw,
     correct_index,
+    correct_indices,
   } = req.body;
 
   const answers = parseAnswersBody(answersRaw);
@@ -736,9 +679,9 @@ async function updateQuestionRow(req, res) {
     return res.status(400).json({ message: 'Nội dung câu hỏi không được để trống' });
   }
 
-  let cols;
+  let answersJson;
   try {
-    cols = mapFourAnswersToColumns(answers, correct_index);
+    answersJson = answersTextsToJson(answers, correct_indices, correct_index);
   } catch (e) {
     if (req.file && req.file.path) {
       try {
@@ -770,21 +713,10 @@ async function updateQuestionRow(req, res) {
       UPDATE questions SET
         grade_id = ?, type_id = ?, lesson_id = ?,
         question_text = ?, question_image = ?,
-        answercorrect_text = ?, answer2_text = ?, answer3_text = ?, answer4_text = ?
+        answers_json = ?
       WHERE id = ?
     `;
-  const params = [
-    gid,
-    tid,
-    lid,
-    qtext,
-    qimg,
-    cols.answercorrect_text,
-    cols.answer2_text,
-    cols.answer3_text,
-    cols.answer4_text,
-    id,
-  ];
+  const params = [gid, tid, lid, qtext, qimg, answersJson, id];
 
   try {
     const [result] = await pool.query(sql, params);
