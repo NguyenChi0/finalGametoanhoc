@@ -6,11 +6,13 @@ import { publicUrl } from "../../lib/publicUrl";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import { useGameMcqSelection } from "../lib/useGameMcqSelection";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
 
-  const [selected, setSelected] = useState({});
+  const mcq = useGameMcqSelection();
   const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -94,7 +96,7 @@ const [, forceRender] = useState(0); // chỉ để render
 
   // Di chuyển các con ong
   useEffect(() => {
-  if (!showQuestionBox || selected[currentQuestion?.id] !== undefined) return;
+  if (!showQuestionBox || !currentQuestion || mcq.isLocked(currentQuestion.id)) return;
 
   let rafId;
 
@@ -115,31 +117,10 @@ const [, forceRender] = useState(0); // chỉ để render
 
   rafId = requestAnimationFrame(move);
   return () => cancelAnimationFrame(rafId);
-}, [showQuestionBox, selected, currentQuestion]);
+}, [showQuestionBox, mcq, currentQuestion]);
 
 
-  function hitFly(fly) {
-    const qId = currentQuestion.id;
-    if (selected[qId] !== undefined) return; // already answered
-
-    // Phát âm thanh đập ong
-    if (hitSoundRef.current) {
-      hitSoundRef.current.currentTime = 0;
-      hitSoundRef.current.play().catch(e => console.log("Lỗi phát âm thanh:", e));
-    }
-
-    setSelected((prev) => ({ ...prev, [qId]: fly.answerIndex }));
-
-    const isCorrect = fly.answer.correct;
-  const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
-
-    if (isCorrect) {
-      setCorrectCount(newCorrectCount);
-    } else {
-      setCorrectCount(newCorrectCount);
-    }
-
-    // Chuyển câu hỏi sau 1.5s
+  function advanceFlyQuestion(newCorrectCount) {
     setTimeout(() => {
       if (currentQuestionIndex < qs.length - 1) {
         setCurrentQuestionIndex((prev) => prev + 1);
@@ -178,10 +159,34 @@ const [, forceRender] = useState(0); // chỉ để render
     }, 1500);
   }
 
+  function hitFly(fly) {
+    const qId = currentQuestion.id;
+    if (mcq.isLocked(qId)) return;
+    if (hitSoundRef.current) {
+      hitSoundRef.current.currentTime = 0;
+      hitSoundRef.current.play().catch(() => {});
+    }
+    const ok = mcq.toggleIndex(qId, currentQuestion.answers, fly.answerIndex);
+    if (ok !== null) {
+      const newCorrectCount = ok ? correctCount + 1 : correctCount;
+      if (ok) setCorrectCount(newCorrectCount);
+      advanceFlyQuestion(newCorrectCount);
+    }
+  }
+
+  function confirmFlyAnswer() {
+    const qId = currentQuestion.id;
+    if (mcq.isLocked(qId)) return;
+    const ok = mcq.confirmPending(qId, currentQuestion.answers);
+    const newCorrectCount = ok ? correctCount + 1 : correctCount;
+    if (ok) setCorrectCount(newCorrectCount);
+    advanceFlyQuestion(newCorrectCount);
+  }
+
   function startGame() {
     setGameStarted(true);
     setGameEnded(false);
-    setSelected({});
+    mcq.resetAll();
     setCurrentQuestionIndex(0);
     setCorrectCount(0);
     setShowFarmer(false);
@@ -192,7 +197,7 @@ const [, forceRender] = useState(0); // chỉ để render
     setShuffleSeed((s) => s + 1);
     setGameStarted(true);
     setGameEnded(false);
-    setSelected({});
+    mcq.resetAll();
     setCurrentQuestionIndex(0);
     setCorrectCount(0);
     setShowFarmer(false);
@@ -218,8 +223,8 @@ const [, forceRender] = useState(0); // chỉ để render
     return <div style={{ padding: 20 }}>Không có câu hỏi nào!</div>;
   }
 
-  const isAnswered = selected[currentQuestion.id] !== undefined;
-  const selectedAnswer = isAnswered ? currentQuestion.answers[selected[currentQuestion.id]] : null;
+  const isAnswered = mcq.isLocked(currentQuestion.id);
+  const answerOk = mcq.getLastResult(currentQuestion.id) === "correct";
 
   return (
     <div
@@ -302,7 +307,16 @@ const [, forceRender] = useState(0); // chỉ để render
       )}
 
       {/* Nền câu hỏi - SỬA DÙNG getImageSrc */}
-      {showQuestionBox && (
+      {showQuestionBox && mcq.isMultiCorrectQuestion(currentQuestion.answers) && !mcq.isLocked(currentQuestion.id) && (
+          <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", zIndex: 20, width: "90%" }}>
+            <GameMcqConfirmBar
+              answers={currentQuestion.answers}
+              pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
+              onConfirm={confirmFlyAnswer}
+            />
+          </div>
+        )}
+        {showQuestionBox && (
         <div style={{
           position: 'absolute',
           top: '30%',
@@ -441,12 +455,12 @@ const [, forceRender] = useState(0); // chỉ để render
         <div
           className="game2-feedback"
           style={{
-            background: selectedAnswer?.correct
+            background: answerOk
               ? "rgba(46, 204, 113, 0.95)"
               : "rgba(231, 76, 60, 0.95)",
           }}
         >
-          {selectedAnswer?.correct
+          {answerOk
             ? "✅ Bạn đã đập trúng ruồi!"
             : "❌ Ôi không, bạn đập trúng ong rồi!"}
         </div>

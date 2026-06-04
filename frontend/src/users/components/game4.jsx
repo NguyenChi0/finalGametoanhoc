@@ -4,12 +4,15 @@ import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
-import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import { prepareSessionQuestions, getAnswerLabel } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import { useGameMcqSelection } from "../lib/useGameMcqSelection";
+import { getCorrectIndices, isAnswerSetFullyCorrect } from "../lib/questionScoring";
 
 export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   const questions = payload?.questions || [];
   
-  const [selected, setSelected] = useState({});
+  const mcq = useGameMcqSelection();
   const [userScore, setUserScore] = useState(payload?.user?.score ?? 0);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [correctCount, setCorrectCount] = useState(0);
@@ -45,7 +48,15 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   // Reset hasScored khi chuyển câu hỏi
   useEffect(() => {
     hasScoredRef.current = false;
-  }, [currentQuestion]);
+    const q = qs[currentQuestion];
+    if (q && getCorrectIndices(q.answers).length > 1) {
+      setGameState("selecting");
+    } else if (gameState !== "crashed" && gameState !== "finished") {
+      setGameState("running");
+    }
+    const n = q?.answers?.length ?? 1;
+    setPlayerLane((prev) => Math.min(prev, n - 1));
+  }, [currentQuestion, qs]);
 
   // Kết thúc game và cộng điểm một lần
   const finishGameWithScore = (totalCorrect) => {
@@ -95,7 +106,7 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
     setPlayerLane(1);
     setObstaclePosition(800);
     setGameState("running");
-    setSelected({});
+    mcq.resetAll();
     hasScoredRef.current = false;
     setCorrectCount(0);
     setUserScore(payload?.user?.score ?? 0);
@@ -115,7 +126,7 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
     setPlayerLane(1);
     setObstaclePosition(800);
     setGameState("running");
-    setSelected({});
+    mcq.resetAll();
     hasScoredRef.current = false;
     setCorrectCount(0);
     setUserScore(payload?.user?.score ?? 0);
@@ -143,9 +154,11 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
         
         if (newPos <= 120 && newPos >= 60) {
           const currentQ = qs[currentQuestion];
-          const correctLane = currentQ?.answers.findIndex(a => a.correct);
-          
-          if (playerLane === correctLane) {
+          if (getCorrectIndices(currentQ?.answers).length > 1) {
+            return newPos;
+          }
+
+          if (isAnswerSetFullyCorrect([playerLane], currentQ?.answers)) {
             if (!isJumping && !hasScoredRef.current) {
               hasScoredRef.current = true;
               setIsJumping(true);
@@ -153,8 +166,6 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
                 jumpSoundRef.current.currentTime = 0;
                 jumpSoundRef.current.play().catch(() => {});
               }
-
-              setSelected(prev => ({ ...prev, [currentQ.id]: playerLane }));
 
               const newCorrectCount = correctCount + 1;
               setCorrectCount(newCorrectCount);
@@ -173,7 +184,6 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
             return newPos;
           } else if (newPos <= 100 && !isJumping) {
             setGameState("crashed");
-            setSelected(prev => ({ ...prev, [currentQ.id]: playerLane }));
             return newPos;
           }
         }
@@ -197,11 +207,39 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   }, [gameState, gameScreen, playerLane, isJumping, currentQuestion, qs, payload, currentSpeed]);
 
   // Di chuyển nhân vật
+  function advanceQuestion(newCorrectCount) {
+    setIsJumping(false);
+    if (currentQuestion < qs.length - 1) {
+      setCurrentQuestion((prev) => prev + 1);
+      setObstaclePosition(800);
+      setGameState("running");
+    } else {
+      finishGameWithScore(newCorrectCount);
+    }
+  }
+
+  function confirmMultiLane() {
+    const q = qs[currentQuestion];
+    if (!q || gameState !== "selecting") return;
+    const ok = mcq.confirmPending(q.id, q.answers);
+    if (ok) {
+      const newCorrectCount = correctCount + 1;
+      setCorrectCount(newCorrectCount);
+      advanceQuestion(newCorrectCount);
+    } else {
+      setGameState("crashed");
+    }
+  }
+
   function moveLane(newLane) {
     if (gameState === "crashed" || gameState === "finished") return;
-    if (newLane >= 0 && newLane < qs[currentQuestion]?.answers.length) {
-      setPlayerLane(newLane);
+    const q = qs[currentQuestion];
+    if (newLane < 0 || !q || newLane >= q.answers.length) return;
+    if (gameState === "selecting") {
+      mcq.toggleIndex(q.id, q.answers, newLane);
+      return;
     }
+    setPlayerLane(newLane);
   }
 
   // Thay đổi tốc độ game
@@ -214,14 +252,16 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
   // Xử lý phím
   useEffect(() => {
     const handleKey = (e) => {
-      if (gameScreen === "playing" && gameState === "running") {
+      if (gameScreen === "playing" && (gameState === "running" || gameState === "selecting")) {
         if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") moveLane(playerLane - 1);
         if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") moveLane(playerLane + 1);
-        if (e.key === "a" || e.key === "A") moveLane(0);
-        if (e.key === "b" || e.key === "B") moveLane(1);
-        if (e.key === "c" || e.key === "C") moveLane(2);
-        if (e.key === "d" || e.key === "D") moveLane(3);
-        
+        const q = qs[currentQuestion];
+        const n = q?.answers?.length ?? 0;
+        for (let i = 0; i < Math.min(n, 6); i += 1) {
+          const key = String.fromCharCode(97 + i);
+          if (e.key === key || e.key === key.toUpperCase()) moveLane(i);
+        }
+        if (e.key === "Enter" && gameState === "selecting") confirmMultiLane();
         if (e.key === "1") changeSpeed(1);
         if (e.key === "2") changeSpeed(2);
         if (e.key === "3") changeSpeed(3);
@@ -262,7 +302,9 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
 
   const currentQ = qs[currentQuestion];
   const laneHeight = 90;
-  const laneLabels = ['A', 'B', 'C', 'D'];
+  const laneCount = currentQ.answers.length;
+  const roadHeight = laneHeight * laneCount;
+  const pendingLanes = mcq.getPendingIndices(currentQ.id);
 
   if (gameScreen === "finished") {
     return (
@@ -307,7 +349,7 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
       </div>
 
       {/* Question display */}
-      {gameState === "running" && (
+      {(gameState === "running" || gameState === "selecting") && (
         <div style={{ 
           position: "absolute", 
           top: 20, 
@@ -344,13 +386,13 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
       <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
         
         {/* Road background */}
-        <div style={{ position: "absolute", width: "100%", height: laneHeight * 4, background: "#2d3748", top: "50%", transform: "translateY(-50%)" }} />
+        <div style={{ position: "absolute", width: "100%", height: roadHeight, background: "#2d3748", top: "50%", transform: "translateY(-50%)" }} />
         
         {/* Road container */}
-        <div style={{ position: "relative", width: 800, height: laneHeight * 4, overflow: "visible" }}>
+        <div style={{ position: "relative", width: 800, height: roadHeight, overflow: "visible" }}>
           
           {/* Lane dividers */}
-          {[1, 2, 3].map(i => (
+          {Array.from({ length: Math.max(0, laneCount - 1) }, (_, i) => i + 1).map(i => (
             <div key={i} style={{ position: "absolute", top: i * laneHeight, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.6)", zIndex: 1 }} />
           ))}
 
@@ -369,14 +411,14 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
                 borderRadius: 8,
                 fontSize: 16,
                 fontWeight: "bold",
-                cursor: gameState === "running" ? "pointer" : "default",
+                cursor: gameState === "running" || gameState === "selecting" ? "pointer" : "default",
                 zIndex: 4,
-                border: "2px solid rgba(255,255,255,0.3)",
+                border: pendingLanes.includes(idx) ? "2px solid #fbbf24" : "2px solid rgba(255,255,255,0.3)",
                 transition: "all 0.3s ease",
                 minWidth: 120
               }}
             >
-              {laneLabels[idx]}. {ans.text || (ans.image ? <img src={questionImageUrl(ans.image) || undefined} alt="" style={{ maxHeight: 30, verticalAlign: "middle" }} /> : "—")}
+              {getAnswerLabel(idx)}. {ans.text || (ans.image ? <img src={questionImageUrl(ans.image) || undefined} alt="" style={{ maxHeight: 30, verticalAlign: "middle" }} /> : "—")}
             </div>
           ))}
 
@@ -456,6 +498,18 @@ export default function Game1({ payload, onBackToHome, onLessonComplete }) {
           )}
         </div>
       </div>
+
+      {gameState === "selecting" && (
+        <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 15, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 40 }}>
+          <div style={{ background: "rgba(255,255,255,0.96)", borderRadius: 16, padding: "16px 24px", maxWidth: 480, width: "90%" }}>
+            <GameMcqConfirmBar
+              answers={currentQ.answers}
+              pendingIndices={pendingLanes}
+              onConfirm={confirmMultiLane}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Crash screen */}
       {gameState === "crashed" && (

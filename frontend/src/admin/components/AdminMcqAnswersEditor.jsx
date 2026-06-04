@@ -1,12 +1,20 @@
 import React from "react";
 
-const MAX_ANSWERS = 4;
+/** Tối đa 3 ô đúng và 3 ô sai (không phải “6 đáp án tùy ý”). */
+export const MAX_CORRECT_SLOTS = 3;
+export const MAX_WRONG_SLOTS = 3;
 const LABELS = ["A", "B", "C", "D", "E", "F"];
 
-/** Form mặc định: 1 ô đúng (A) + 3 ô sai (B/C/D). */
+function padSlots(arr, minLen, maxLen) {
+  const next = arr.slice(0, maxLen).map((t) => String(t ?? ""));
+  while (next.length < minLen) next.push("");
+  return next;
+}
+
+/** Form mặc định: 3 ô đúng + 3 ô sai (có thể xóa bớt, tối thiểu 1+1 khi lưu). */
 export function createEmptyMcqForm() {
   return {
-    correctTexts: [""],
+    correctTexts: ["", "", ""],
     wrongTexts: ["", "", ""],
   };
 }
@@ -18,11 +26,17 @@ function normalizeForm(input) {
     : [""];
   const wrongTexts = Array.isArray(input.wrongTexts)
     ? input.wrongTexts.map((t) => String(t ?? ""))
-    : ["", "", ""];
+    : [""];
   return {
-    correctTexts: correctTexts.length > 0 ? correctTexts : [""],
-    wrongTexts: wrongTexts.length > 0 ? wrongTexts : [""],
+    correctTexts: padSlots(correctTexts, 1, MAX_CORRECT_SLOTS),
+    wrongTexts: padSlots(wrongTexts, 1, MAX_WRONG_SLOTS),
   };
+}
+
+function minSlotsAfterRemove(correctCount, wrongCount, removeFrom) {
+  const c = removeFrom === "correct" ? correctCount - 1 : correctCount;
+  const w = removeFrom === "wrong" ? wrongCount - 1 : wrongCount;
+  return c + w;
 }
 
 /**
@@ -48,7 +62,7 @@ export function answersToMcqForm(source, fallbackIndices) {
       }
       return normalizeForm({
         correctTexts: correctTexts.length > 0 ? correctTexts : [""],
-        wrongTexts: wrongTexts.length > 0 ? wrongTexts : ["", "", ""],
+        wrongTexts: wrongTexts.length > 0 ? wrongTexts : [""],
       });
     }
 
@@ -65,7 +79,7 @@ export function answersToMcqForm(source, fallbackIndices) {
       });
       return normalizeForm({
         correctTexts: correctTexts.length > 0 ? correctTexts : [""],
-        wrongTexts: wrongTexts.length > 0 ? wrongTexts : ["", "", ""],
+        wrongTexts: wrongTexts.length > 0 ? wrongTexts : [""],
       });
     }
   }
@@ -85,14 +99,32 @@ export function mcqFormToApiPayload(form) {
   if (correct.length === 0) {
     return { error: "Cần ít nhất một đáp án đúng (ô màu xanh)." };
   }
+  if (correct.length > MAX_CORRECT_SLOTS) {
+    return { error: `Tối đa ${MAX_CORRECT_SLOTS} đáp án đúng.` };
+  }
+  if (wrong.length > MAX_WRONG_SLOTS) {
+    return { error: `Tối đa ${MAX_WRONG_SLOTS} đáp án sai.` };
+  }
 
-  const answers = [...correct, ...wrong];
-  if (answers.length < 2) {
+  if (correct.length + wrong.length < 2) {
     return { error: "Cần tối thiểu 2 đáp án (đúng + sai)." };
   }
-  if (answers.length > MAX_ANSWERS) {
-    return { error: `Tối đa ${MAX_ANSWERS} đáp án.` };
-  }
+
+  /** Gửi kèm `correct` — multipart vẫn đúng khi `correct_indices` lỗi parse. */
+  const answers = [
+    ...correct.map((text, i) => ({
+      id: `a${i}`,
+      text,
+      image: null,
+      correct: true,
+    })),
+    ...wrong.map((text, i) => ({
+      id: `a${correct.length + i}`,
+      text,
+      image: null,
+      correct: false,
+    })),
+  ];
 
   const correct_indices = correct.map((_, i) => i);
   return {
@@ -100,11 +132,6 @@ export function mcqFormToApiPayload(form) {
     correct_indices,
     correct_index: correct_indices[0],
   };
-}
-
-function totalSlots(form) {
-  const f = normalizeForm(form);
-  return f.correctTexts.length + f.wrongTexts.length;
 }
 
 export default function AdminMcqAnswersEditor({ value, onChange }) {
@@ -123,36 +150,47 @@ export default function AdminMcqAnswersEditor({ value, onChange }) {
   };
 
   const addCorrect = () => {
-    if (totalSlots(form) >= MAX_ANSWERS) return;
+    if (form.correctTexts.length >= MAX_CORRECT_SLOTS) return;
     onChange({ ...form, correctTexts: [...form.correctTexts, ""] });
   };
 
   const addWrong = () => {
-    if (totalSlots(form) >= MAX_ANSWERS) return;
+    if (form.wrongTexts.length >= MAX_WRONG_SLOTS) return;
     onChange({ ...form, wrongTexts: [...form.wrongTexts, ""] });
   };
 
   const removeCorrect = (index) => {
     if (form.correctTexts.length <= 1) return;
+    if (
+      minSlotsAfterRemove(
+        form.correctTexts.length,
+        form.wrongTexts.length,
+        "correct"
+      ) < 2
+    ) {
+      return;
+    }
     const next = form.correctTexts.filter((_, i) => i !== index);
     onChange({ ...form, correctTexts: next });
   };
 
   const removeWrong = (index) => {
-    if (form.wrongTexts.length <= 1) return;
+    if (
+      minSlotsAfterRemove(form.correctTexts.length, form.wrongTexts.length, "wrong") <
+      2
+    ) {
+      return;
+    }
     const next = form.wrongTexts.filter((_, i) => i !== index);
     onChange({ ...form, wrongTexts: next });
   };
 
-  const canAdd = totalSlots(form) < MAX_ANSWERS;
+  const canAddCorrect = form.correctTexts.length < MAX_CORRECT_SLOTS;
+  const canAddWrong = form.wrongTexts.length < MAX_WRONG_SLOTS;
   let labelOffset = 0;
 
   return (
     <div style={styles.wrap}>
-      <p style={styles.hint}>
-        Đáp án đúng (có thể nhiều hơn một). Tối đa {MAX_ANSWERS} đáp án / câu.
-      </p>
-
       <div style={styles.group}>
         <h3 style={styles.groupTitle}>Đáp án đúng</h3>
         {form.correctTexts.map((text, i) => {
@@ -182,7 +220,7 @@ export default function AdminMcqAnswersEditor({ value, onChange }) {
             </div>
           );
         })}
-        {canAdd ? (
+        {canAddCorrect ? (
           <button type="button" style={styles.btnAdd} onClick={addCorrect}>
             + Thêm đáp án đúng
           </button>
@@ -221,7 +259,7 @@ export default function AdminMcqAnswersEditor({ value, onChange }) {
                 </div>
               );
             })}
-            {canAdd ? (
+            {canAddWrong ? (
               <button type="button" style={styles.btnAdd} onClick={addWrong}>
                 + Thêm đáp án sai
               </button>
@@ -235,12 +273,6 @@ export default function AdminMcqAnswersEditor({ value, onChange }) {
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 20 },
-  hint: {
-    margin: 0,
-    fontSize: "0.88rem",
-    color: "#57606a",
-    lineHeight: 1.45,
-  },
   group: { display: "flex", flexDirection: "column", gap: 10 },
   groupTitle: {
     margin: 0,

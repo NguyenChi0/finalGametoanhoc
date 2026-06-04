@@ -1,17 +1,53 @@
-/**
- * Chuẩn bị danh sách câu hỏi cho một phiên chơi: xáo trộn thứ tự câu/đáp án,
- * giới hạn số câu mỗi lượt (trừ chế độ ôn tập).
+﻿/**
+ * Chuẩn bị danh sách câu hỏi cho một phiên chơi.
  */
+import { questionImageUrl } from "../../api";
 
-/** Số câu tối đa mỗi lượt chơi bài học thường (không áp dụng ôn tập). */
 export const MAX_QUESTIONS_PER_SESSION = 15;
 
-/**
- * Xáo trộn mảng (Fisher–Yates), không mutate mảng gốc.
- *
- * @param {Array} arr - Mảng đầu vào.
- * @returns {Array} Bản sao đã shuffle.
- */
+const ANSWER_LABELS = ["A", "B", "C", "D", "E", "F"];
+
+export function getAnswerLabel(index) {
+  return ANSWER_LABELS[index] ?? String(index + 1);
+}
+
+export function normalizePlayQuestion(q) {
+  if (!q || typeof q !== "object") return q;
+  return {
+    ...q,
+    question_image: q.question_image
+      ? questionImageUrl(q.question_image) || q.question_image
+      : q.question_image,
+    answers: Array.isArray(q.answers)
+      ? q.answers.map((a) =>
+          !a || typeof a !== "object"
+            ? a
+            : {
+                ...a,
+                image: a.image ? questionImageUrl(a.image) || a.image : a.image,
+              }
+        )
+      : q.answers,
+  };
+}
+
+export const withResolvedQuestionMedia = normalizePlayQuestion;
+
+function answerHasContent(a) {
+  if (!a || typeof a !== "object") return false;
+  const text = a.text != null ? String(a.text).trim() : "";
+  const image = a.image != null ? String(a.image).trim() : "";
+  return text !== "" || image !== "";
+}
+
+export function isPlayableQuestion(q) {
+  if (!q || typeof q !== "object") return false;
+  const answers = Array.isArray(q.answers) ? q.answers : [];
+  if (answers.length < 2) return false;
+  if (!answers.every(answerHasContent)) return false;
+  return answers.some((a) => a && a.correct === true);
+}
+
 export function shuffleArray(arr) {
   const a = Array.isArray(arr) ? arr.slice() : [];
   for (let i = a.length - 1; i > 0; i -= 1) {
@@ -21,43 +57,21 @@ export function shuffleArray(arr) {
   return a;
 }
 
-/**
- * Chuẩn bị câu hỏi cho một lượt chơi game thường.
- *
- * Luồng:
- * - Shuffle toàn bộ `questions`.
- * - Lấy tối đa `max` câu (mặc định 15).
- * - Với mỗi câu: shuffle mảng `answers`.
- *
- * @param {Array} questions - Câu hỏi từ payload/API.
- * @param {number} [max=MAX_QUESTIONS_PER_SESSION] - Giới hạn số câu.
- * @returns {Array} Danh sách câu đã xáo, mỗi câu có `answers` đã xáo.
- */
-export function prepareSessionQuestions(
-  questions,
-  max = MAX_QUESTIONS_PER_SESSION
-) {
-  const shuffled = shuffleArray(Array.isArray(questions) ? questions : []);
-  return shuffled.slice(0, Math.min(max, shuffled.length)).map((q) => ({
-    ...q,
-    answers: shuffleArray(q.answers || []),
-  }));
+function prepareOneQuestion(q) {
+  const normalized = normalizePlayQuestion(q);
+  return {
+    ...normalized,
+    answers: shuffleArray(normalized.answers || []),
+  };
 }
 
-/**
- * Chuẩn bị câu hỏi cho phiên ôn tập (nhiều bài gộp).
- *
- * Luồng:
- * - Không giới hạn 15 câu.
- * - Shuffle câu + shuffle đáp án từng câu (giống `prepareSessionQuestions`).
- *
- * @param {Array} questions - Toàn bộ câu ôn tập.
- * @returns {Array} Câu hỏi đã xáo.
- */
+export function prepareSessionQuestions(questions, max = MAX_QUESTIONS_PER_SESSION) {
+  const playable = (Array.isArray(questions) ? questions : []).filter(isPlayableQuestion);
+  const shuffled = shuffleArray(playable);
+  return shuffled.slice(0, Math.min(max, shuffled.length)).map(prepareOneQuestion);
+}
+
 export function prepareReviewQuestions(questions) {
-  const list = Array.isArray(questions) ? questions : [];
-  return shuffleArray(list).map((q) => ({
-    ...q,
-    answers: shuffleArray(q.answers || []),
-  }));
+  const list = (Array.isArray(questions) ? questions : []).filter(isPlayableQuestion);
+  return shuffleArray(list).map(prepareOneQuestion);
 }

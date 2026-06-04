@@ -7,14 +7,19 @@ import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
-import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import { prepareSessionQuestions, getAnswerLabel } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import {
+  getMcqAnswerVisualState,
+  useGameMcqSelection,
+} from "../lib/useGameMcqSelection";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
   const user = payload?.user;
   const [current, setCurrent] = useState(0);
-  const [selected, setSelected] = useState(null);
   const [locked, setLocked] = useState(false);
+  const mcq = useGameMcqSelection();
   const [showResult, setShowResult] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
@@ -92,28 +97,34 @@ export default function Game1({ payload, onLessonComplete }) {
     }
   };
 
-  const handleAnswer = (answer, idx) => {
+  const proceedToNext = (finalCorrectCount) => {
+    const isLast = current + 1 >= gameQuestions.length;
+    if (!isLast) {
+      setCurrent((c) => c + 1);
+      setLocked(false);
+    } else {
+      setShowResult(true);
+      saveScore();
+      onLessonComplete?.(finalCorrectCount);
+    }
+  };
+
+  const finishAnswer = (isCorrect) => {
     if (locked || showResult || !isAlive) return;
     setLocked(true);
-    setSelected(idx);
-    const isCorrect = !!answer.correct;
     playSound(isCorrect);
+    const newCount = isCorrect ? correctCount + 1 : correctCount;
+    if (isCorrect) setCorrectCount(newCount);
 
-    const proceedToNext = () => {
-      const isLast = current + 1 >= gameQuestions.length;
-      if (!isLast) {
-        setCurrent(c => c + 1);
-        setSelected(null);
-        setLocked(false);
-      } else {
-        setShowResult(true);
-        saveScore();
-        onLessonComplete?.(correctCount);
-      }
+    const afterAnim = () => {
+      setExploding(true);
+      setTimeout(() => {
+        setIsAlive(false);
+        proceedToNext(newCount);
+      }, 200);
     };
 
     if (isCorrect) {
-      setCorrectCount(c => c + 1);
       setBulletProgress(0);
       let startTime = null;
       const duration = 300;
@@ -122,31 +133,36 @@ export default function Game1({ payload, onLessonComplete }) {
         const elapsed = timestamp - startTime;
         const progress = Math.min(1, elapsed / duration);
         setBulletProgress(progress);
-        if (progress < 1) {
-          requestAnimationFrame(animateBullet);
-        } else {
+        if (progress < 1) requestAnimationFrame(animateBullet);
+        else {
           setBulletProgress(null);
-          setExploding(true);
-          setTimeout(() => {
-            setIsAlive(false);
-            proceedToNext();
-          }, 200);
+          afterAnim();
         }
       };
       requestAnimationFrame(animateBullet);
     } else {
-      setExploding(true);
-      setTimeout(() => {
-        setIsAlive(false);
-        proceedToNext();
-      }, 200);
+      afterAnim();
     }
+  };
+
+  const handleAnswer = (answer, idx) => {
+    if (locked || showResult || !isAlive || !currentQuestion) return;
+    const qId = currentQuestion.id;
+    if (mcq.isLocked(qId)) return;
+    const ok = mcq.toggleIndex(qId, currentQuestion.answers, idx);
+    if (ok !== null) finishAnswer(ok);
+  };
+
+  const confirmMultiAnswer = () => {
+    if (locked || !currentQuestion) return;
+    const ok = mcq.confirmPending(currentQuestion.id, currentQuestion.answers);
+    finishAnswer(ok);
   };
 
   const resetGame = () => {
     setShuffleSeed((s) => s + 1);
     setCurrent(0);
-    setSelected(null);
+    mcq.resetAll();
     setLocked(false);
     setShowResult(false);
     setCorrectCount(0);
@@ -361,12 +377,17 @@ export default function Game1({ payload, onLessonComplete }) {
               if (getHiddenIndices(currentQuestion.id).has(i)) return null;
               let bg = "linear-gradient(135deg, #2c3e50, #1a2632)";
               let border = "#7f8c8d";
-              if (selected !== null) {
-                const isSelected = selected === i;
-                if (isSelected && ans.correct) {
+              const pending = mcq.getPendingIndices(currentQuestion.id);
+              const confirmed = mcq.getConfirmedIndices(currentQuestion.id);
+              const vis = getMcqAnswerVisualState(pending, confirmed, i, ans);
+              if (!vis.locked && vis.isSelected) {
+                bg = "linear-gradient(135deg, #1565c0, #0d47a1)";
+                border = "#ffd54f";
+              } else if (vis.locked) {
+                if (vis.tone === "correct" || vis.tone === "missed") {
                   bg = "linear-gradient(135deg, #2ecc71, #27ae60)";
                   border = "#f1c40f";
-                } else if (isSelected && !ans.correct) {
+                } else if (vis.tone === "wrong") {
                   bg = "linear-gradient(135deg, #e74c3c, #c0392b)";
                   border = "#e74c3c";
                 }
@@ -393,13 +414,22 @@ export default function Game1({ payload, onLessonComplete }) {
                   }}
                 >
                   <span style={{ fontWeight: "bold", minWidth: "32px", fontSize: "1.1em" }}>
-                    {String.fromCharCode(65 + i)}.
+                    {getAnswerLabel(i)}.
                   </span>
                   {ans.text}
                 </button>
               );
             })}
           </div>
+
+          {mcq.isMultiCorrectQuestion(currentQuestion.answers) && !locked && (
+            <GameMcqConfirmBar
+              answers={currentQuestion.answers}
+              pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
+              disabled={locked}
+              onConfirm={confirmMultiAnswer}
+            />
+          )}
         </div>
       </div>
 

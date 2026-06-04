@@ -1,0 +1,170 @@
+================================================================================
+  GAMETOANHOC — KIỂM THỬ THỦ CÔNG (phần KHÔNG tự động hóa được)
+  Cập nhật: 2026-06-01
+  Tham chiếu: autotest.txt (kịch bản đầy đủ), func.txt (chức năng)
+================================================================================
+
+MỤC ĐÍCH
+  File này liệt kê các kịch bản CẦN thao tác trình duyệt / chơi game / nhìn UI
+  mà bộ test tự động (autotest-runner*.js) KHÔNG kiểm được. Bạn tự kiểm sau,
+  tích [x] vào ô khi đạt.
+
+ĐÃ TỰ ĐỘNG (không cần làm lại tay): xem autotest.txt §15
+  → 74/74 PASS: toàn bộ API (auth, questions, exam, contest, shop, admin CRUD,
+    bảo mật 401/403, full_set logic). Đã sửa BUG-001 (Kilovia) và BUG-002 (items).
+
+CHUẨN BỊ
+  [ ] Backend chạy :5050 (đã chạy nền)
+  [ ] Chạy frontend: cd frontend && npm run dev  (hoặc mở bản build dist)
+  [ ] Tài khoản user (role=0) + admin (role=1, username: admin)
+  [ ] 1 bài học có câu hỏi 1 đúng (Q_1C), 2 đúng (Q_2C), 3 đúng (Q_3C)
+
+
+────────────────────────────────────────────────────────────────────────────────
+A. GAME (game1 – game11) — bắt buộc kiểm tay, không tự động được
+────────────────────────────────────────────────────────────────────────────────
+
+Với MỖI game, vào /lessons → chọn bài → chọn game, rồi kiểm:
+
+[ ] A-G1   game1  Quiz: chạm đáp đúng (single) → winner; chọn sai → loser
+[ ] A-G1m  game1  Câu 2 đúng: toggle 2 đáp + nút Confirm → chỉ tính khi Confirm
+[ ] A-G2   game2  Ruồi/nông dân: cơ chế động mượt, chọn trên overlay đúng
+[ ] A-G2m  game2  Câu 2 đúng: chọn nhiều + confirm → full_set đúng
+[ ] A-G3   game3  Bóng bay: bắn bóng đáp đúng → nổ; phản hồi đúng/sai
+[ ] A-G3m  game3  Câu 2 đúng: multi + confirm
+[ ] A-G4a  game4  2 đáp án → render 2 làn
+[ ] A-G4b  game4  Câu 6 đáp án (3+3) → render đủ 6 làn, không vỡ layout
+[ ] A-G4c  game4  1 đúng: nhân vật va làn đúng → tính đúng; va làn sai → sai
+[ ] A-G4d  game4  Nhiều đúng: overlay "selecting" + confirm → full_set
+[ ] A-G5   game5  Cá: chọn cá đáp đúng → hiệu ứng correct
+[ ] A-G5m  game5  Câu 2 đúng: multi + confirm
+[ ] A-G6   game6  Hoa quả rơi: bắt/chọn đáp đúng
+[ ] A-G6m  game6  Câu 2 đúng: multi + confirm
+[ ] A-G7   game7  Cửa/platform: chọn cửa đúng + confirm → mở cửa
+[ ] A-G7m  game7  Câu 2 đúng: multi + GameMcqConfirmBar
+[ ] A-G7e  game7  KNOWN GAP: nhấn Enter KHÔNG confirm (phải bấm nút) — xác nhận
+[ ] A-G8   game8  Worksheet: chọn đáp + submit → đúng/sai chính xác
+[ ] A-G8m  game8  Câu 2 đúng: chọn nhiều + confirm + submit
+[ ] A-G8x  game8  KNOWN GAP: submit khi multi CHƯA confirm có thể không tính câu
+[ ] A-G9   game9  Nhảy hàng rào: chọn đáp đúng khi nhảy
+[ ] A-G9m  game9  Câu 2 đúng: multi + confirm
+[ ] A-G10  game10 Bắn phi tiêu: bắn đáp đúng → hiệu ứng + tiếng động
+[ ] A-G10m game10 Câu 2 đúng: multi + confirm
+[ ] A-G11  game11 Quiz: single + multi-correct (giống game1)
+
+Sau mỗi game (kiểm 1 lần là đủ):
+[ ] A-END1 Kết thúc game → hiển thị số sao 1–3 đúng tỉ lệ đúng/tổng
+[ ] A-END2 Âm thanh game (game-noises) phát đúng lúc đúng/sai
+[ ] A-END3 Nhạc nền (music) bật/tắt theo cấu hình PreGameSetUp
+
+
+────────────────────────────────────────────────────────────────────────────────
+B. LUỒNG UI NGƯỜI DÙNG (cần nhìn màn hình)
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] B-01  Trang chủ /: chọn khối → điều hướng danh sách chủ đề
+[ ] B-02  /lessons: hiển thị ảnh khối/chủ đề/bài (grades/types/lessons-images)
+[ ] B-03  Bài học KHÔNG có câu hỏi → không crash, có thông báo phù hợp
+[ ] B-04  PreGameSetUp /play-setup: chọn số câu, game, nhạc → áp dụng vào game
+[ ] B-05  Đăng ký qua form /register (UI) → vào được hệ thống
+[ ] B-06  Đăng nhập qua form /login (UI)
+[ ] B-07  /forgot-password: KNOWN GAP — chỉ UI, không có API reset thực sự
+[ ] B-08  /profile: hiển thị điểm tổng, điểm tuần, rank, vật phẩm
+[ ] B-09  Xem /profile/:username người khác (chỉ admin xem được)
+[ ] B-10  Responsive: chơi 1 game trên màn hình mobile (không vỡ layout)
+
+
+────────────────────────────────────────────────────────────────────────────────
+C. ÔN TẬP (LessonReview) — kiểm hành vi UI
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] C-01  /lesson-review câu 1 đúng → chấm đúng/sai chính xác
+[ ] C-02  KNOWN GAP: câu nhiều đáp đúng — trang CÒN single-select, CHƯA full_set
+          (khác với game/đề thi). Xác nhận và quyết định có cần sửa.
+[ ] C-03  So sánh cùng 1 câu 2-đúng giữa game (full_set) và lesson-review
+
+
+────────────────────────────────────────────────────────────────────────────────
+D. ĐỀ THI & CUỘC THI — thao tác làm bài trên UI
+────────────────────────────────────────────────────────────────────────────────
+(API danh sách/chi tiết/nộp đã PASS tự động; phần dưới là trải nghiệm làm bài)
+
+[ ] D-01  /exam → mở đề: đồng hồ đếm theo duration_time
+[ ] D-02  Hết giờ → tự nộp / khóa làm bài
+[ ] D-03  Trong đề, câu nhiều đáp đúng: chọn full_set qua QuestionAnswerPicker
+[ ] D-04  Nộp đề → điểm = số câu full_set đúng (đối chiếu tay)
+[ ] D-05  Đề status≠1 không hiển thị trong danh sách user
+[~] D-06  Cuộc thi active: nộp → 201   (ĐÃ tự động PASS qua autotest-contest-submit.js;
+          kiểm lại trên UI nếu muốn)
+[~] D-07  Nộp lần 2 → 409              (ĐÃ tự động PASS)
+[ ] D-08  Cuộc thi CHƯA bắt đầu: chặn làm bài (403) — cần seed cuộc thi scheduled
+[~] D-09  Điểm vượt số câu → 400 / BXH thứ hạng (ĐÃ tự động PASS phần điểm+BXH)
+[ ] D-10  Sau khi cuộc thi kết thúc: top 3 được cộng prize vào điểm (cần chờ
+          job đồng bộ mỗi phút) — kiểm users.score top 3
+  GHI CHÚ: D-06/07/09 đã tự động hóa (tạo cuộc thi active tạm rồi dọn). Chạy:
+           node backend/scripts/autotest-contest-submit.js
+
+
+────────────────────────────────────────────────────────────────────────────────
+E. CỬA HÀNG — luồng mua thật
+────────────────────────────────────────────────────────────────────────────────
+(GET items, item-effects, my-items, "mua thiếu điểm → từ chối" đã PASS tự động)
+
+[ ] E-01  Mua ĐỦ điểm: tài khoản đủ điểm → mua thành công, trừ điểm, vào kho
+[ ] E-02  Mua trùng vật phẩm đã sở hữu → hành vi nhất quán (chặn/không trừ kép)
+[ ] E-03  Vật phẩm hiệu ứng bonus điểm (effect_type=1): làm bài → cộng đúng bonus
+[ ] E-04  Vật phẩm gợi ý (effect_type=2): trong game/bài học hiện gợi ý đúng số lượt
+  GHI CHÚ: cần tài khoản có điểm cao + vật phẩm hiệu ứng để test E-01..E-04.
+
+
+────────────────────────────────────────────────────────────────────────────────
+F. ADMIN — qua giao diện (UI), upload ảnh
+────────────────────────────────────────────────────────────────────────────────
+(CRUD qua API đã PASS; phần dưới là thao tác trên màn hình admin + upload file)
+
+[ ] F-01  /admin/questions/new: form AdminMcqAnswersEditor 3 đúng + 3 sai
+[ ] F-02  Thử nhập đáp đúng thứ 4 → UI chặn / báo lỗi (không cho lưu)
+[ ] F-03  Tạo câu kèm UPLOAD ảnh đề (chọn/kéo-thả/paste) → ảnh hiển thị
+[ ] F-04  Tạo đáp án bằng ẢNH thay vì text
+[ ] F-05  Sửa câu: đổi cờ đúng/sai, xóa bớt đáp án → lưu OK
+[ ] F-06  Xóa câu đang nằm trong mẫu đề → kiểm hành vi (chặn/force)
+[ ] F-07  Upload ảnh khối/chủ đề/bài (grades/types/lessons-images) qua UI
+[ ] F-08  Upload ảnh vật phẩm qua UI
+[ ] F-09  Quản lý mẫu đề: gán/gỡ câu hỏi, đổi thời lượng
+[ ] F-10  Tạo/sửa cuộc thi: chọn template, đặt start/end, prize
+[ ] F-11  Quản lý người dùng: khóa/mở khóa (is_locked), đổi role
+[ ] F-12  Dashboard hiển thị số liệu trực quan (biểu đồ/thẻ thống kê)
+
+
+────────────────────────────────────────────────────────────────────────────────
+G. BẢO MẬT / UPLOAD — cần file thật
+────────────────────────────────────────────────────────────────────────────────
+(401/403, SQL injection trong search, scope sai, grade_id sai → đã PASS tự động)
+
+[ ] G-01  Upload ảnh > 5MB (câu hỏi/vật phẩm/khối) → báo lỗi "Ảnh vượt quá 5MB"
+[ ] G-02  Upload file sai định dạng (vd .txt/.exe) → từ chối
+[ ] G-03  Truy cập file tĩnh hợp lệ /questions-images/<file> → xem được ảnh
+[ ] G-04  score/increment: user thường KHÔNG tăng điểm cho userId người khác
+          (đã verify gián tiếp: code chỉ cho admin chỉ định userId)
+
+
+────────────────────────────────────────────────────────────────────────────────
+H. GHI CHÚ TỒN ĐỌNG (KNOWN GAPS — không phải lỗi chặn, cần quyết định)
+────────────────────────────────────────────────────────────────────────────────
+
+  1. LessonReview còn single-select, chưa hỗ trợ multi full_set (mục C-02)
+  2. ForgotPassword chỉ có UI, chưa có API backend (mục B-07)
+  3. game7: phím Enter chưa gọi confirm (mục A-G7e)
+  4. game8: submit multi chưa confirm có thể không tính câu (mục A-G8x)
+  5. (ĐÃ XỬ LÝ) Luồng nộp cuộc thi active: đã viết test tự seed + dọn
+     (autotest-contest-submit.js) → D-06/07/09 PASS.
+
+  → Báo lại nếu muốn tôi xử lý mục 1–4 (sửa code).
+
+================================================================================
+  CÁCH CHẠY LẠI PHẦN TỰ ĐỘNG (để đối chiếu)
+================================================================================
+  cd backend
+  node scripts/autotest-runner.js     # API công khai + full_set
+  node scripts/autotest-runner2.js    # auth + CRUD (tự ký JWT admin/user)
+================================================================================

@@ -6,6 +6,8 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import { useGameMcqSelection } from "../lib/useGameMcqSelection";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
@@ -15,6 +17,7 @@ export default function Game1({ payload, onLessonComplete }) {
   const [gameEnded, setGameEnded] = useState(false);
   const [fruits, setFruits] = useState([]);
   const [correctCount, setCorrectCount] = useState(0);
+  const mcq = useGameMcqSelection();
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [isSlicing, setIsSlicing] = useState(false);
   const [slicePath, setSlicePath] = useState([]);
@@ -258,43 +261,52 @@ export default function Game1({ payload, onLessonComplete }) {
     setTimeout(() => setSlicePath([]), 300);
   }
 
-  function handleFruitHit(fruitId) {
-    const fruit = fruits.find((f) => f.id === fruitId);
-    if (!fruit || fruit.hit || questionAnsweredRef.current) return;
-
-    questionAnsweredRef.current = true;
-
-    setFruits((prev) =>
-      prev.map((f) => (f.id === fruitId ? { ...f, hit: true, sliced: true } : f))
-    );
-
-    const isCorrect = fruit.answer.correct;
-    const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
-    setCorrectCount(newCorrectCount);
-
-    if (isCorrect) {
-      const chopSound = new Audio(`${publicUrl}/game-noises/chem.mp3`);
-      chopSound.currentTime = 0;
-      chopSound.volume = 0.8;
-      chopSound.play().catch((err) => console.warn("Không phát được âm thanh:", err));
-    } else {
-      const wrongSound = new Audio(`${publicUrl}/game-noises/wrong.mp3`);
-      wrongSound.currentTime = 0;
-      wrongSound.volume = 0.8;
-      wrongSound.play().catch(() => {});
-    }
-
-    const delayMs = 1000;
+  function advanceFruitQuestion(newCorrectCount) {
     setTimeout(() => {
+      questionAnsweredRef.current = false;
       if (currentQuestionIndex < qs.length - 1) {
         setCurrentQuestionIndex((prev) => prev + 1);
       } else {
         finishLesson(newCorrectCount);
       }
-    }, delayMs);
+    }, 1000);
+  }
+
+  function confirmFruitAnswer() {
+    if (!currentQuestion || questionAnsweredRef.current) return;
+    const ok = mcq.confirmPending(currentQuestion.id, currentQuestion.answers);
+    questionAnsweredRef.current = true;
+    const newCorrectCount = ok ? correctCount + 1 : correctCount;
+    if (ok) setCorrectCount(newCorrectCount);
+    setFruits((prev) => prev.map((f) => ({ ...f, hit: true, sliced: true })));
+    advanceFruitQuestion(newCorrectCount);
+  }
+
+  function handleFruitHit(fruitId) {
+    const fruit = fruits.find((f) => f.id === fruitId);
+    if (!fruit || !currentQuestion) return;
+    const qId = currentQuestion.id;
+    if (mcq.isMultiCorrectQuestion(currentQuestion.answers)) {
+      if (mcq.isLocked(qId)) return;
+      mcq.toggleIndex(qId, currentQuestion.answers, fruit.answerIndex);
+      setFruits((prev) =>
+        prev.map((f) => (f.id === fruitId ? { ...f, selected: !f.selected } : f))
+      );
+      return;
+    }
+    if (fruit.hit || questionAnsweredRef.current) return;
+    questionAnsweredRef.current = true;
+    setFruits((prev) =>
+      prev.map((f) => (f.id === fruitId ? { ...f, hit: true, sliced: true } : f))
+    );
+    const ok = mcq.toggleIndex(qId, currentQuestion.answers, fruit.answerIndex);
+    const newCorrectCount = ok ? correctCount + 1 : correctCount;
+    if (ok) setCorrectCount(newCorrectCount);
+    advanceFruitQuestion(newCorrectCount);
   }
 
   function startGame() {
+    mcq.resetAll();
     setGameStarted(true);
     setGameEnded(false);
     setCurrentQuestionIndex(0);
@@ -357,8 +369,18 @@ export default function Game1({ payload, onLessonComplete }) {
         boxSizing: "border-box",
         color: "#1a1a1a",
         userSelect: "none",
+        position: "relative",
       }}
     >
+      {mcq.isMultiCorrectQuestion(currentQuestion.answers) && !questionAnsweredRef.current && (
+        <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", zIndex: 50, width: "min(92%, 420px)" }}>
+          <GameMcqConfirmBar
+            answers={currentQuestion.answers}
+            pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
+            onConfirm={confirmFruitAnswer}
+          />
+        </div>
+      )}
       <div
         style={{
           maxWidth: "1400px",

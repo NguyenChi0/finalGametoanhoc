@@ -7,13 +7,18 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import {
+  useGameMcqSelection,
+} from "../lib/useGameMcqSelection";
+import { isAnswerSetFullyCorrect } from "../lib/questionScoring";
 
 export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   const questions = payload?.questions || [];
   const questionsPerPage = 5;
 
   const [gameState, setGameState] = useState('playing'); // 'playing', 'finished'
-  const [answers, setAnswers] = useState({});
+  const mcq = useGameMcqSelection();
   const [currentPage, setCurrentPage] = useState(0);
   const [userScore, setUserScore] = useState(payload?.user?.score ?? 0);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
@@ -47,12 +52,10 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   async function handleSubmit() {
     // Tính số câu đúng
     let correctAnswers = 0;
-    Object.keys(answers).forEach(questionId => {
-      const question = qs.find(q => q.id === parseInt(questionId));
-      const answerIndex = answers[questionId];
-      if (question && question.answers[answerIndex]?.correct) {
-        correctAnswers++;
-      }
+    qs.forEach((question) => {
+      if (!mcq.isLocked(question.id)) return;
+      const sel = mcq.getConfirmedIndices(question.id);
+      if (isAnswerSetFullyCorrect(sel, question.answers)) correctAnswers++;
     });
 
     setFinalScore(correctAnswers);
@@ -77,8 +80,16 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   }
 
   function choose(qId, ansIdx) {
-    if (gameState !== 'playing') return;
-    setAnswers(prev => ({ ...prev, [qId]: ansIdx }));
+    if (gameState !== "playing") return;
+    const q = qs.find((x) => x.id === qId);
+    if (!q || mcq.isLocked(qId)) return;
+    mcq.toggleIndex(qId, q.answers, ansIdx);
+  }
+
+  function confirmQuestion(qId) {
+    const q = qs.find((x) => x.id === qId);
+    if (!q) return;
+    mcq.confirmPending(qId, q.answers);
   }
 
   function goToNextPage() {
@@ -100,7 +111,7 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   function restartGame() {
     setShuffleSeed((s) => s + 1);
     setGameState('playing');
-    setAnswers({});
+    mcq.resetAll();
     setCurrentPage(0);
     setFinalScore(0);
     resetHints();
@@ -315,7 +326,11 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
         <div>
           {currentQuestions.map((q, index) => {
             const globalIndex = startIndex + index;
-            const selectedAnswer = answers[q.id];
+            const qId = q.id;
+            const pending = mcq.getPendingIndices(qId);
+            const confirmed = mcq.getConfirmedIndices(qId);
+            const qLocked = mcq.isLocked(qId);
+            const isMulti = mcq.isMultiCorrectQuestion(q.answers);
             
             return (
               <div key={q.id} style={{ marginBottom: "30px" }}>
@@ -340,7 +355,9 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                 <div style={answersStyle}>
                   {q.answers.map((a, ai) => {
                     if (getHiddenIndices(q.id).has(ai)) return null;
-                    const isSelected = selectedAnswer === ai;
+                    const isSelected = qLocked
+                      ? (confirmed ?? []).includes(ai)
+                      : pending.includes(ai);
                     const answerStyleFinal = {
                       ...answerStyle,
                       ...(isSelected ? answerSelectedStyle : {})
@@ -350,7 +367,7 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                       <div
                         key={a.id || ai}
                         style={answerStyleFinal}
-                        onClick={() => choose(q.id, ai)}
+                        onClick={() => choose(qId, ai)}
                         onMouseEnter={(e) => {
                           if (!isSelected) {
                             Object.assign(e.target.style, answerHoverStyle);
@@ -377,6 +394,13 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
                     );
                   })}
                 </div>
+                {isMulti && !qLocked && (
+                  <GameMcqConfirmBar
+                    answers={q.answers}
+                    pendingIndices={pending}
+                    onConfirm={() => confirmQuestion(qId)}
+                  />
+                )}
               </div>
             );
           })}

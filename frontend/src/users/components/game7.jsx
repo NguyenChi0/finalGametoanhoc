@@ -8,12 +8,17 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import {
+  useGameMcqSelection,
+} from "../lib/useGameMcqSelection";
+import { isAnswerSetFullyCorrect } from "../lib/questionScoring";
 
 export default function Game7({ payload, onLessonComplete, onReturnHome }) {
   const questions = payload?.questions || [];
 
   const [gameState, setGameState] = useState('playing'); // 'playing', 'finished'
-  const [selected, setSelected] = useState({});
+  const mcq = useGameMcqSelection();
   const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [currentPosition, setCurrentPosition] = useState(0);
@@ -131,17 +136,27 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [gameState, showResult, currentPosition, currentQuestion, doorPositions]);
 
-  function choose(qId, ansIdx) {
-    if (selected[qId] !== undefined) return;
-    setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
-
-    const q = qs.find((x) => x.id === qId);
-    const a = q?.answers?.[ansIdx];
-    
-    if (a && a.correct) {
-      setCorrectCount((prev) => prev + 1);
-    }
+  function applyChoiceResult(ok) {
+    if (ok) setCorrectCount((prev) => prev + 1);
     setShowResult(true);
+  }
+
+  function choose(qId, ansIdx) {
+    if (showResult) return;
+    const q = qs.find((x) => x.id === qId);
+    if (!q || mcq.isLocked(qId)) return;
+    if (mcq.isMultiCorrectQuestion(q.answers)) {
+      mcq.toggleIndex(qId, q.answers, ansIdx);
+      return;
+    }
+    const ok = mcq.toggleIndex(qId, q.answers, ansIdx);
+    if (ok !== null) applyChoiceResult(ok);
+  }
+
+  function confirmDoorAnswer() {
+    if (showResult || !currentQuestion) return;
+    const ok = mcq.confirmPending(currentQuestion.id, currentQuestion.answers);
+    applyChoiceResult(ok);
   }
 
   function nextQuestion() {
@@ -178,7 +193,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
 
   function startGame() {
     setGameState('playing');
-    setSelected({});
+    mcq.resetAll();
     setCurrentQuestionIndex(0);
     setCorrectCount(0);
     setFinalScore(0);
@@ -232,10 +247,13 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
     );
   }
 
-  const selectedAnswerIndex = selected[currentQuestion.id];
-  const hiddenDoorIndices = getHiddenIndices(currentQuestion.id);
-  const isCorrect = selectedAnswerIndex !== undefined && 
-    currentQuestion.answers[selectedAnswerIndex]?.correct;
+  const qId = currentQuestion.id;
+  const pendingDoors = mcq.getPendingIndices(qId);
+  const confirmedDoors = mcq.getConfirmedIndices(qId) ?? [];
+  const activeDoors = mcq.isLocked(qId) ? confirmedDoors : pendingDoors;
+  const hiddenDoorIndices = getHiddenIndices(qId);
+  const isCorrect = mcq.getLastResult(qId) === "correct";
+  const doorMulti = mcq.isMultiCorrectQuestion(currentQuestion.answers);
 
   return (
     <div style={{ 
@@ -349,6 +367,14 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
             }}>
               {currentQuestion.question_text}
             </div>
+            {doorMulti && !showResult && (
+              <GameMcqConfirmBar
+                answers={currentQuestion.answers}
+                pendingIndices={pendingDoors}
+                onConfirm={confirmDoorAnswer}
+                style={{ marginTop: 8 }}
+              />
+            )}
           </div>
 
           {/* Màn che tối với hiệu ứng ánh sáng hình tròn */}
@@ -378,7 +404,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
             {currentQuestion.answers.map((answer, index) => {
               if (hiddenDoorIndices.has(index)) return null;
               const doorPosition = doorPositions[index];
-              const isSelectedDoor = selectedAnswerIndex === index;
+              const isSelectedDoor = activeDoors.includes(index);
               
               return (
                 <div
@@ -403,10 +429,10 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
                       width: "100%",
                       height: "100%",
                       objectFit: "cover",
-                      filter: showResult ? 
-                        (answer.correct ? "hue-rotate(120deg) saturate(1.5)" : 
-                         (isSelectedDoor && !answer.correct ? "hue-rotate(300deg) saturate(1.5)" : "none")) 
-                        : "none"
+                      filter: showResult ?
+                        (answer.correct ? "hue-rotate(120deg) saturate(1.5)" :
+                         (isSelectedDoor && !answer.correct ? "hue-rotate(300deg) saturate(1.5)" : "none"))
+                        : (isSelectedDoor ? "drop-shadow(0 0 6px rgba(255,215,0,0.9))" : "none")
                     }}
                   />
                   

@@ -6,11 +6,13 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import { useGameMcqSelection } from "../lib/useGameMcqSelection";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
 
-  const [selected, setSelected] = useState({});
+  const mcq = useGameMcqSelection();
   const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -36,33 +38,39 @@ export default function Game1({ payload, onLessonComplete }) {
 
   const currentQuestion = qs[currentQuestionIndex];
 
-  function handleAnswerSelected(qId, isCorrect) {
-    if (selected[qId] !== undefined) return;
-
-    // Phát âm thanh
-    if (isCorrect) {
-      correctSoundRef.current.play().catch(e => console.warn("Lỗi phát âm thanh:", e));
-      setCorrectAnswers(prev => prev + 1);
+  function proceedRabbit(ok) {
+    if (ok) {
+      correctSoundRef.current.play().catch(() => {});
+      setCorrectAnswers((prev) => prev + 1);
     } else {
-      wrongSoundRef.current.play().catch(e => console.warn("Lỗi phát âm thanh:", e));
+      wrongSoundRef.current.play().catch(() => {});
     }
-
-    setSelected((prev) => ({ ...prev, [qId]: isCorrect }));
-
-    // Chuyển câu hỏi sau 2 giây hoặc kết thúc game
     setTimeout(() => {
       if (currentQuestionIndex < qs.length - 1) {
-        setCurrentQuestionIndex(prev => prev + 1);
+        setCurrentQuestionIndex((prev) => prev + 1);
       } else {
-        setGameState('finished');
+        setGameState("finished");
       }
     }, 2000);
+  }
+
+  function handleHouseReached(qId, houseIndex) {
+    const q = qs.find((x) => x.id === qId);
+    if (!q || mcq.isLocked(qId)) return;
+    const ok = mcq.toggleIndex(qId, q.answers, houseIndex);
+    if (ok !== null) proceedRabbit(ok);
+  }
+
+  function confirmRabbitAnswer() {
+    if (!currentQuestion) return;
+    const ok = mcq.confirmPending(currentQuestion.id, currentQuestion.answers);
+    proceedRabbit(ok);
   }
 
   function startGame() {
     setGameState('playing');
     setCurrentQuestionIndex(0);
-    setSelected({});
+    mcq.resetAll();
     setCorrectAnswers(0);
   }
 
@@ -184,15 +192,25 @@ export default function Game1({ payload, onLessonComplete }) {
         }}
       >
         <RabbitGame
-          key={currentQuestion.id}
+          key={`${currentQuestion.id}-${mcq.getPendingIndices(currentQuestion.id).join("-")}`}
           question={currentQuestion}
-          onAnswerSelected={(isCorrect) =>
-            handleAnswerSelected(currentQuestion.id, isCorrect)
+          onHouseReached={(houseIndex) =>
+            handleHouseReached(currentQuestion.id, houseIndex)
           }
-          isAnswered={selected[currentQuestion.id] !== undefined}
-          isCorrect={selected[currentQuestion.id]}
+          pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
+          isAnswered={mcq.isLocked(currentQuestion.id)}
+          isCorrect={mcq.getLastResult(currentQuestion.id) === "correct"}
         />
       </div>
+      {mcq.isMultiCorrectQuestion(currentQuestion.answers) && !mcq.isLocked(currentQuestion.id) && (
+        <div style={{ flex: "0 0 100%", padding: "8px 0" }}>
+          <GameMcqConfirmBar
+            answers={currentQuestion.answers}
+            pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
+            onConfirm={confirmRabbitAnswer}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -211,7 +229,7 @@ function game9CanvasCoords(e, canvas) {
 }
 
 // Component game đưa thỏ về hang
-function RabbitGame({ question, onAnswerSelected, isAnswered, isCorrect }) {
+function RabbitGame({ question, onHouseReached, pendingIndices, isAnswered, isCorrect }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [path, setPath] = useState([]);
@@ -265,15 +283,15 @@ function RabbitGame({ question, onAnswerSelected, isAnswered, isCorrect }) {
 
   const houses = (question.answers || [])
     .filter((a) => a !== undefined && a !== null)
-    .slice(0, 4)
+    
     .map((answer, i) => {
-      const positions = [
-        { x: 100 * GAME9_SX, y: 100 * GAME9_SY },
-        { x: 300 * GAME9_SX, y: 100 * GAME9_SY },
-        { x: 100 * GAME9_SX, y: 300 * GAME9_SY },
-        { x: 300 * GAME9_SX, y: 300 * GAME9_SY },
-      ];
-      return { id: i, ...positions[i], answer };
+      const cols = answerCount <= 4 ? 2 : 3;
+      const rows = Math.ceil(answerCount / cols);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = ((col + 1) / (cols + 1)) * GAME9_CANVAS_W;
+      const y = ((row + 1) / (rows + 1)) * GAME9_CANVAS_H * 0.75;
+      return { id: i, x, y, answer };
     });
 
   const rabbitSize = Math.round(50 * ((GAME9_SX + GAME9_SY) / 2));
@@ -476,7 +494,7 @@ function RabbitGame({ question, onAnswerSelected, isAnswered, isCorrect }) {
             if (currentHouse) {
               // Thỏ về nhà
               setRabbitPosition({ x: currentHouse.x, y: currentHouse.y });
-              onAnswerSelected(currentHouse.answer.correct);
+              onHouseReached(currentHouse.id);
               cancelAnimationFrame(animationRef.current);
               setIsMoving(false);
               return;

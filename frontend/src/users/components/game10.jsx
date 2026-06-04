@@ -8,6 +8,8 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import { useGameMcqSelection } from "../lib/useGameMcqSelection";
 
 const BALLOON_SRC = [
   "game3-ballon1.png",
@@ -52,7 +54,7 @@ function findHitInfo(blockEls, centerScreenX) {
 export default function Game3({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
 
-  const [selected, setSelected] = useState({});
+  const mcq = useGameMcqSelection();
   const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
   const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -132,9 +134,53 @@ export default function Game3({ payload, onLessonComplete }) {
     return () => ro.disconnect();
   }, [answers, currentQuestionIndex]);
 
+  const finishDartQuestion = (nextScore, isLast) => {
+    const userId =
+      payload?.user?.id ||
+      (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
+    if (!isLast) {
+      setCurrentQuestionIndex((i) => i + 1);
+      return;
+    }
+    if (userId && nextScore > 0) {
+      incrementLessonScore(userId, nextScore, payload).then((data) => {
+        if (data?.success) {
+          setUserScore(data.score);
+          setWeekScore(data.week_score ?? 0);
+        }
+        setGameEnded(true);
+        setGameStarted(false);
+      });
+    } else {
+      setGameEnded(true);
+      setGameStarted(false);
+    }
+    onLessonComplete?.(nextScore);
+  };
+
+  const confirmDartAnswer = () => {
+    const cq = qs[currentQuestionIndex];
+    if (!cq) return;
+    const ok = mcq.confirmPending(cq.id, cq.answers);
+    let nextScore = 0;
+    setCorrectCount((prev) => {
+      nextScore = ok ? prev + 1 : prev;
+      return nextScore;
+    });
+    setDartPhase("idle");
+    setTrackPaused(false);
+    const isLast = currentQuestionIndex >= qs.length - 1;
+    setTimeout(() => finishDartQuestion(nextScore, isLast), 400);
+  };
+
   const handleFireClick = () => {
     const cq = qs[currentQuestionIndex];
-    if (!cq || selected[cq.id] !== undefined || dartPhase !== "idle") return;
+    if (!cq || mcq.isLocked(cq.id) || dartPhase !== "idle") return;
+    if (mcq.isMultiCorrectQuestion(cq.answers)) {
+      setTrackPaused(true);
+      setDartPhase("selecting");
+      return;
+    }
 
     const vp = viewportRef.current;
     if (!vp) return;
@@ -162,7 +208,7 @@ export default function Game3({ payload, onLessonComplete }) {
       const a = q?.answers?.[ansIdx];
       const isCorrect = !!(a && a.correct);
 
-      setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
+      mcq.toggleIndex(qId, q?.answers || [], ansIdx);
       setHitEffect({
         loopIndex: hitLoopIndex,
         kind: isCorrect ? "pop" : "explode",
@@ -178,36 +224,8 @@ export default function Game3({ payload, onLessonComplete }) {
       const t2 = setTimeout(() => {
         setHitEffect(null);
         setTrackPaused(false);
-
-        if (!isLast) {
-          setCurrentQuestionIndex((i) => i + 1);
-          setSelected({});
-        } else {
-          const userId =
-            payload?.user?.id ||
-            (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
-
-          if (!userId) {
-            console.warn("Người dùng chưa login — không thể cộng điểm trên server.");
-            setGameEnded(true);
-            setGameStarted(false);
-            onLessonComplete?.(nextScore);
-          } else if (nextScore > 0) {
-            incrementLessonScore(userId, nextScore, payload).then((data) => {
-              if (data?.success) {
-                setUserScore(data.score);
-                setWeekScore(data.week_score ?? 0);
-              }
-              setGameEnded(true);
-              setGameStarted(false);
-            });
-            onLessonComplete?.(nextScore);
-          } else {
-            setGameEnded(true);
-            setGameStarted(false);
-            onLessonComplete?.(nextScore);
-          }
-        }
+        setDartPhase("idle");
+        finishDartQuestion(nextScore, isLast);
       }, 1000);
       fireTimersRef.current.push(t2);
     }, 420);
@@ -218,7 +236,7 @@ export default function Game3({ payload, onLessonComplete }) {
     setGameStarted(true);
     setGameEnded(false);
     setCurrentQuestionIndex(0);
-    setSelected({});
+    mcq.resetAll();
     setCorrectCount(0);
     setHitEffect(null);
     setDartPhase("idle");
@@ -249,8 +267,7 @@ export default function Game3({ payload, onLessonComplete }) {
     );
   }
 
-  const selectedAnswerIndex = selected[currentQuestion.id];
-  const canFire = selectedAnswerIndex === undefined && dartPhase === "idle";
+  const canFire = currentQuestion && !mcq.isLocked(currentQuestion.id) && dartPhase === "idle";
 
   /** Vùng chơi rộng/cao hơn template game 2 (70vh) để component thoáng hơn */
   const gameShellStyle = {
@@ -265,6 +282,36 @@ export default function Game3({ payload, onLessonComplete }) {
   return (
     <div style={gameShellStyle}>
     <div style={styles.dartGame}>
+      {dartPhase === "selecting" && currentQuestion && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 40, background: "rgba(0,0,0,0.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: 520, marginBottom: 12 }}>
+            {currentQuestion.answers.map((a, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => mcq.toggleIndex(currentQuestion.id, currentQuestion.answers, idx)}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  border: mcq.getPendingIndices(currentQuestion.id).includes(idx) ? "2px solid #ffb300" : "1px solid #ccc",
+                  background: "#fff",
+                }}
+              >
+                {a.text || ("Đáp án " + (idx + 1))}
+              </button>
+            ))}
+          </div>
+          <GameMcqConfirmBar
+            answers={currentQuestion.answers}
+            pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
+            onConfirm={confirmDartAnswer}
+          />
+          <button type="button" onClick={() => { setDartPhase("idle"); setTrackPaused(false); }} style={{ marginTop: 8, background: "transparent", border: "none", color: "#fff" }}>
+            Hủy
+          </button>
+        </div>
+      )}
+
       <style>{`
         @keyframes game3scroll {
           from { transform: translate3d(0, 0, 0); }
@@ -464,7 +511,7 @@ export default function Game3({ payload, onLessonComplete }) {
           <GameHintButton
             hintsRemaining={hintsRemaining}
             disabled={
-              selected[currentQuestion.id] !== undefined ||
+              mcq.isLocked(currentQuestion.id) ||
               dartPhase !== "idle" ||
               !canUseHint(currentQuestion.id, currentQuestion.answers)
             }

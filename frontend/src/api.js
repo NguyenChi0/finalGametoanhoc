@@ -617,6 +617,9 @@ export const deleteAdminUser = async (id) => {
 // ==========================
 // Questions
 // ==========================
+/**
+ * Danh sách câu hỏi. `scope: 'play'` — payload gọn cho game/lesson (không hierarchy, không in_exam_template).
+ */
 export const getQuestions = async (opts = {}) => {
   const normalized = { ...opts };
   if (normalized.randomize === true && normalized.random == null) {
@@ -636,7 +639,7 @@ export const getQuestionById = async (id) => {
 };
 
 /**
- * Tạo câu hỏi trắc nghiệm 2..4 đáp án.
+ * Tạo câu hỏi trắc nghiệm (tối đa 3 đúng + 3 sai).
  * - Nếu có `imageFile` (File/Blob): gửi multipart, ảnh lưu ở backend/questions-images.
  * - Nếu có `question_image_path` (chuỗi path/URL, không file): gửi kèm trong form.
  * - Ngược lại: JSON như cũ (tương thích script / không ảnh).
@@ -698,7 +701,7 @@ export const createQuestion = async (payload) => {
 };
 
 /**
- * Cập nhật câu hỏi — cùng payload / multipart như createQuestion (2..4 đáp án).
+ * Cập nhật câu hỏi — cùng payload như createQuestion (tối đa 3 đúng + 3 sai).
  */
 export const updateQuestion = async (id, payload) => {
   const { imageFile, question_image_path, clear_question_image, ...rest } = payload;

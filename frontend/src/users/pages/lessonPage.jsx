@@ -35,6 +35,7 @@ import LessonStarRating from "../components/LessonStarRating";
 import TopicCompleteTick from "../components/TopicCompleteTick";
 import LessonReviewPanel from "../components/LessonReviewPanel";
 import LessonSidebarSlot from "../components/LessonSidebarSlot";
+import { withResolvedQuestionMedia } from "../lib/lessonQuestions";
 
 function mapLessonProgressItems(items) {
   const m = {};
@@ -491,27 +492,6 @@ function getSpineClusterLayout(lessons, m) {
     topicR,
     points,
     lessonSize,
-  };
-}
-
-/** DB: `/questions-images/...` — nối origin API để `<img src>` tải đúng. */
-function withResolvedQuestionMedia(q) {
-  if (!q || typeof q !== "object") return q;
-  return {
-    ...q,
-    question_image: q.question_image
-      ? questionImageUrl(q.question_image) || q.question_image
-      : q.question_image,
-    answers: Array.isArray(q.answers)
-      ? q.answers.map((a) =>
-          !a || typeof a !== "object"
-            ? a
-            : {
-                ...a,
-                image: a.image ? questionImageUrl(a.image) || a.image : a.image,
-              }
-        )
-      : q.answers,
   };
 }
 
@@ -1078,6 +1058,7 @@ export default function LessonPage() {
           type_id: typeId,
           lesson_id: lessonId,
           randomize: true,
+          scope: "play",
         });
         questions = res.data || res;
         setCache((prev) => ({
@@ -1167,6 +1148,7 @@ export default function LessonPage() {
             lesson_id: item.lessonId,
             randomize: true,
             limit: perLesson,
+            scope: "play",
           });
           const questions = res?.data ?? res;
           return {

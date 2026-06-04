@@ -6,16 +6,21 @@ import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import {
+  getMcqAnswerVisualState,
+  useGameMcqSelection,
+} from "../lib/useGameMcqSelection";
 
 const ADVANCE_DELAY_MS = 1000;
 
-function answerButtonStyle(sel, ai, answer) {
+function answerButtonStyle(pending, confirmed, ai, answer) {
   const base = {
     padding: "12px 16px",
     borderRadius: 40,
     fontSize: 18,
     fontWeight: 600,
-    cursor: sel === undefined ? "pointer" : "default",
+    cursor: confirmed === undefined ? "pointer" : "default",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -25,16 +30,17 @@ function answerButtonStyle(sel, ai, answer) {
     boxSizing: "border-box",
   };
 
-  if (sel === undefined) {
+  const vis = getMcqAnswerVisualState(pending, confirmed, ai, answer);
+  if (!vis.locked) {
     return {
       ...base,
-      backgroundColor: "#f0f6fa",
+      backgroundColor: vis.isSelected ? "#bbdefb" : "#f0f6fa",
       color: "#0f4c75",
-      border: "2px solid #d0dfe8",
+      border: vis.isSelected ? "2px solid #1976d2" : "2px solid #d0dfe8",
     };
   }
 
-  const chosen = sel === ai;
+  const chosen = vis.isSelected;
   if (chosen && answer.correct) {
     return {
       ...base,
@@ -71,8 +77,8 @@ export default function Game10({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selected, setSelected] = useState({});
   const [correctCount, setCorrectCount] = useState(0);
+  const mcq = useGameMcqSelection();
   const [scoreSent, setScoreSent] = useState(false);
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const advanceTimerRef = useRef(null);
@@ -92,7 +98,7 @@ export default function Game10({ payload, onLessonComplete }) {
 
   const currentQuestion = qs[currentIndex] ?? null;
   const allAnswered =
-    qs.length > 0 && Object.keys(selected).length === qs.length;
+    qs.length > 0 && qs.every((q) => mcq.isLocked(q.id));
 
   const goToNextQuestion = useCallback(() => {
     setCurrentIndex((prev) => Math.min(prev + 1, qs.length));
@@ -105,33 +111,39 @@ export default function Game10({ payload, onLessonComplete }) {
     }
     setShuffleSeed((s) => s + 1);
     setCurrentIndex(0);
-    setSelected({});
+    mcq.resetAll();
     setCorrectCount(0);
     setScoreSent(false);
     resetHints();
-  }, [resetHints]);
+  }, [resetHints, mcq]);
 
-  const choose = useCallback(
-    (qId, ansIdx) => {
-      if (selected[qId] !== undefined) return;
-
-      const q = qs.find((x) => x.id === qId);
-      const a = q?.answers?.[ansIdx];
-      setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
-      if (a?.correct) {
-        setCorrectCount((prev) => prev + 1);
-      }
-
-      if (advanceTimerRef.current) {
-        window.clearTimeout(advanceTimerRef.current);
-      }
+  const afterAnswer = useCallback(
+    (qId, answers, ok) => {
+      if (ok) setCorrectCount((prev) => prev + 1);
+      if (advanceTimerRef.current) window.clearTimeout(advanceTimerRef.current);
       advanceTimerRef.current = window.setTimeout(() => {
         advanceTimerRef.current = null;
         goToNextQuestion();
       }, ADVANCE_DELAY_MS);
     },
-    [selected, qs, goToNextQuestion]
+    [goToNextQuestion]
   );
+
+  const choose = useCallback(
+    (qId, answers, ansIdx) => {
+      if (mcq.isLocked(qId)) return;
+      const ok = mcq.toggleIndex(qId, answers, ansIdx);
+      if (ok !== null) afterAnswer(qId, answers, ok);
+    },
+    [mcq, afterAnswer]
+  );
+
+  const confirmCurrent = useCallback(() => {
+    const q = currentQuestion;
+    if (!q || mcq.isLocked(q.id)) return;
+    const ok = mcq.confirmPending(q.id, q.answers);
+    afterAnswer(q.id, q.answers, ok);
+  }, [currentQuestion, mcq, afterAnswer]);
 
   useEffect(() => {
     return () => {
@@ -184,9 +196,12 @@ export default function Game10({ payload, onLessonComplete }) {
     );
   }
 
-  const sel = selected[currentQuestion.id];
-  const hiddenIndices = getHiddenIndices(currentQuestion.id);
-  const qLocked = sel !== undefined;
+  const qId = currentQuestion.id;
+  const pending = mcq.getPendingIndices(qId);
+  const confirmed = mcq.getConfirmedIndices(qId);
+  const hiddenIndices = getHiddenIndices(qId);
+  const qLocked = mcq.isLocked(qId);
+  const isMulti = mcq.isMultiCorrectQuestion(currentQuestion.answers);
   const qImgSrc = currentQuestion.question_image
     ? questionImageUrl(currentQuestion.question_image) || currentQuestion.question_image
     : null;
@@ -273,8 +288,8 @@ export default function Game10({ payload, onLessonComplete }) {
               key={a.id ?? ai}
               type="button"
               disabled={qLocked}
-              onClick={() => choose(currentQuestion.id, ai)}
-              style={answerButtonStyle(sel, ai, a)}
+              onClick={() => choose(qId, currentQuestion.answers, ai)}
+              style={answerButtonStyle(pending, confirmed, ai, a)}
             >
               {a.text && <span>{a.text}</span>}
               {a.image && (
@@ -293,6 +308,15 @@ export default function Game10({ payload, onLessonComplete }) {
             );
           })}
         </div>
+
+        {isMulti && !qLocked && (
+          <GameMcqConfirmBar
+            answers={currentQuestion.answers}
+            pendingIndices={pending}
+            disabled={qLocked}
+            onConfirm={confirmCurrent}
+          />
+        )}
       </section>
     </div>
   );

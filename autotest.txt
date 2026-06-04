@@ -1,0 +1,1126 @@
+================================================================================
+  GAMETOANHOC — KỊCH BẢN KIỂM THỬ THỦ CÔNG (AUTOTEST / QA CHECKLIST)
+  Cập nhật: 2026-06-01
+  Tham chiếu chức năng: func.txt
+  Backend: backend/server.js + backend/server-admin.js (port 5050)
+  Frontend: frontend/src (Vite + React)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+0. QUY ƯỚC & MÔI TRƯỜNG
+────────────────────────────────────────────────────────────────────────────────
+
+ĐỊNH DẠNG MỖI KỊCH BẢN:
+
+  [ID] Tên kịch bản
+    Tiền điều kiện: ...
+    Bước: 1) ... 2) ... 3) ...
+    Kỳ vọng: ...
+    Pass / Fail: ___
+
+QUY ƯỚC ID:
+  TC-SMOKE-xxx   Smoke tổng (chạy trước)
+  TC-AUTH-xxx    Xác thực & tài khoản
+  TC-NAV-xxx     Phân cấp nội dung (grades/types/lessons)
+  TC-Q-xxx       Câu hỏi & answers_json
+  TC-GAMEn-xxx   Game thứ n (1..11)
+  TC-PROG-xxx    Bài học & tiến độ
+  TC-REVIEW-xxx  Ôn tập (LessonReview)
+  TC-EXAM-xxx    Đề thi
+  TC-CONTEST-xxx Cuộc thi
+  TC-SHOP-xxx    Cửa hàng & vật phẩm
+  TC-RANK-xxx    Bảng xếp hạng
+  TC-ADM-xxx     Admin CRUD
+  TC-SEC-xxx     Bảo mật & edge case
+
+MÔI TRƯỜNG:
+  • Backend chạy port 5050; frontend Vite (dev hoặc build trong frontend/dist)
+  • DB đã migrate sang answers_json (không còn cột legacy answer1..4)
+  • Cần 2 tài khoản:
+      - user  : role = 0 (người dùng thường)
+      - admin : role = 1
+  • Trình duyệt: 1 desktop + 1 mobile (kiểm tra responsive game)
+
+DỮ LIỆU MẪU CẦN CHUẨN BỊ TRƯỚC:
+  • Tối thiểu 1 khối (grade) → 1 chủ đề (type) → 1 bài học (lesson) có câu hỏi
+  • Các câu hỏi mẫu:
+      Q_1C : 1 đáp án đúng + 1..3 đáp án sai
+      Q_2C : 2 đáp án đúng + 2 đáp án sai   (multi-correct)
+      Q_3C : 3 đáp án đúng + 3 đáp án sai   (max 3+3)
+  • Tối thiểu 1 mẫu đề thi (exam_template) gắn các câu trên
+  • Tối thiểu 1 cuộc thi (contest): 1 đang active, 1 chưa bắt đầu, 1 đã kết thúc
+  • Tối thiểu 2 vật phẩm: 1 giá thấp (mua được), 1 giá cao (thiếu điểm)
+
+THAM CHIẾU LOGIC:
+  • Chấm full_set: frontend/src/users/lib/questionScoring.js
+      isAnswerSetFullyCorrect(selected, options)
+      → ĐÚNG khi chọn ĐỦ và CHỈ các đáp án correct=true
+  • Giới hạn đáp án: backend/lib/questionAnswers.js
+      MAX_CORRECT_ANSWERS = 3, MAX_WRONG_ANSWERS = 3
+
+GHI CHÚ:
+  • "Pass / Fail" để trống cho QA điền khi chạy.
+  • Smoke script tự động (tùy chọn, KHÔNG thuộc checklist thủ công này):
+      node backend/scripts/smoke-questions-api.js
+
+
+────────────────────────────────────────────────────────────────────────────────
+1. SMOKE TỔNG — chạy trước mỗi vòng kiểm thử
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-SMOKE-001] Backend khởi động đúng cấu hình
+  Tiền điều kiện: Đã chạy migration answers_json.
+  Bước: 1) Khởi động backend. 2) Đọc log console.
+  Kỳ vọng: Log hiện "Server đang chạy" và dòng
+           "Câu hỏi MCQ: tối đa 3 đáp án đúng + 3 đáp án sai".
+  Pass / Fail: ___
+
+[TC-SMOKE-002] API gốc phản hồi
+  Bước: 1) Gọi GET /api/grades.
+  Kỳ vọng: HTTP 200, trả mảng khối/lớp có id, name, image.
+  Pass / Fail: ___
+
+[TC-SMOKE-003] Câu hỏi play scope
+  Tiền điều kiện: Có lesson_id chứa câu hỏi.
+  Bước: 1) Gọi GET /api/questions?scope=play&lesson_id=X.
+  Kỳ vọng: HTTP 200, mỗi phần tử có answers[] dạng {id,text,image,correct}.
+  Pass / Fail: ___
+
+[TC-SMOKE-004] Luồng người dùng chơi game
+  Tiền điều kiện: Tài khoản user.
+  Bước: 1) Đăng nhập. 2) Vào /lessons. 3) Chọn 1 bài + 1 game. 4) Hoàn thành.
+  Kỳ vọng: Game chạy mượt, kết thúc lưu tiến độ (sao hiển thị).
+  Pass / Fail: ___
+
+[TC-SMOKE-005] Admin xem danh sách câu hỏi
+  Tiền điều kiện: Tài khoản admin.
+  Bước: 1) Đăng nhập admin. 2) Vào /admin/questions.
+  Kỳ vọng: Danh sách câu hỏi tải được, có hierarchy_path.
+  Pass / Fail: ___
+
+[TC-SMOKE-006] Admin tạo câu hỏi cơ bản
+  Bước: 1) /admin/questions/new. 2) Nhập đề + 2 đúng + 2 sai. 3) Lưu.
+  Kỳ vọng: Lưu thành công, câu hỏi xuất hiện trong danh sách.
+  Pass / Fail: ___
+
+[TC-SMOKE-007] Làm đề thi 1 câu multi-correct
+  Tiền điều kiện: Có đề thi chứa câu Q_2C.
+  Bước: 1) /exam → mở đề. 2) Chọn đủ 2 đáp án đúng. 3) Nộp.
+  Kỳ vọng: Câu được tính đúng (full_set), điểm cộng chính xác.
+  Pass / Fail: ___
+
+[TC-SMOKE-008] Bảng xếp hạng
+  Bước: 1) Gọi GET /api/leaderboard/all và /api/leaderboard/week.
+  Kỳ vọng: HTTP 200, danh sách sắp theo điểm giảm dần.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. XÁC THỰC & TÀI KHOẢN
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-AUTH-001] Đăng ký thành công
+  Bước: 1) /register. 2) Nhập username mới + password (+ email/phone tùy chọn). 3) Gửi.
+  Kỳ vọng: HTTP 200, thông báo "Đăng ký thành công", có userId.
+  Pass / Fail: ___
+
+[TC-AUTH-002] Đăng ký trùng username
+  Tiền điều kiện: Username đã tồn tại.
+  Bước: 1) Đăng ký lại với username đó.
+  Kỳ vọng: HTTP 409, thông báo "Username đã tồn tại".
+  Pass / Fail: ___
+
+[TC-AUTH-003] Đăng ký trùng email / phone
+  Bước: 1) Đăng ký với email (hoặc phone) đã dùng.
+  Kỳ vọng: HTTP 409, thông báo tương ứng "Email/Số điện thoại đã tồn tại".
+  Pass / Fail: ___
+
+[TC-AUTH-004] Đăng ký thiếu thông tin
+  Bước: 1) Gửi đăng ký thiếu username hoặc password.
+  Kỳ vọng: HTTP 400, "Thiếu username hoặc password".
+  Pass / Fail: ___
+
+[TC-AUTH-005] Đăng nhập đúng
+  Bước: 1) /login. 2) Nhập đúng username + password.
+  Kỳ vọng: HTTP 200, trả user + token; chuyển vào trang chủ.
+  Pass / Fail: ___
+
+[TC-AUTH-006] Đăng nhập sai mật khẩu
+  Bước: 1) /login. 2) Nhập sai password.
+  Kỳ vọng: HTTP 401, "Sai username hoặc password".
+  Pass / Fail: ___
+
+[TC-AUTH-007] Đăng nhập username không tồn tại
+  Bước: 1) Đăng nhập username không có.
+  Kỳ vọng: HTTP 401, "Sai username hoặc password".
+  Pass / Fail: ___
+
+[TC-AUTH-008] Phiên hợp lệ /auth/me
+  Tiền điều kiện: Đã đăng nhập, có token.
+  Bước: 1) Gọi GET /api/auth/me kèm Bearer token.
+  Kỳ vọng: HTTP 200, trả đúng user hiện tại (không có trường password).
+  Pass / Fail: ___
+
+[TC-AUTH-009] Token không hợp lệ / hết hạn
+  Bước: 1) Gọi GET /api/auth/me với token sai.
+  Kỳ vọng: HTTP 401.
+  Pass / Fail: ___
+
+[TC-AUTH-010] Kilovia SSO — lần đầu
+  Bước: 1) POST /api/external-login-child với maTreEm mới (+ fullname/school).
+  Kỳ vọng: HTTP 200, created: true, tạo user kid_<maTreEm>, trả token.
+  Pass / Fail: ___
+
+[TC-AUTH-011] Kilovia SSO — lần sau
+  Tiền điều kiện: maTreEm đã tồn tại.
+  Bước: 1) POST /api/external-login-child với maTreEm đó.
+  Kỳ vọng: HTTP 200, created: false, trả user cũ + token.
+  Pass / Fail: ___
+
+[TC-AUTH-012] Kilovia thiếu maTreEm
+  Bước: 1) POST /api/external-login-child không có maTreEm.
+  Kỳ vọng: HTTP 400, "maTreEm is required".
+  Pass / Fail: ___
+
+[TC-AUTH-013] Xem hồ sơ bản thân
+  Bước: 1) Đăng nhập. 2) Vào /profile.
+  Kỳ vọng: Hiển thị điểm tổng, điểm tuần, rank, vật phẩm.
+  Pass / Fail: ___
+
+[TC-AUTH-014] Xem hồ sơ người khác bị chặn
+  Bước: 1) User thường gọi GET /api/user/<username_khác>.
+  Kỳ vọng: HTTP 403 "không có quyền"; admin thì xem được.
+  Pass / Fail: ___
+
+[TC-AUTH-015] Quên mật khẩu (KNOWN GAP)
+  Bước: 1) Vào /forgot-password. 2) Thử gửi yêu cầu.
+  Kỳ vọng: Chỉ là UI — backend CHƯA có API reset. Ghi nhận là known gap,
+           không có luồng đặt lại mật khẩu thực sự.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. PHÂN CẤP NỘI DUNG (grades → types → lessons)
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-NAV-001] Trang chủ chọn khối
+  Bước: 1) Vào /. 2) Chọn 1 khối/lớp.
+  Kỳ vọng: Điều hướng vào danh sách chủ đề tương ứng.
+  Pass / Fail: ___
+
+[TC-NAV-002] Lấy chủ đề theo khối
+  Bước: 1) GET /api/types/:grade_id.
+  Kỳ vọng: HTTP 200, danh sách chủ đề đúng khối.
+  Pass / Fail: ___
+
+[TC-NAV-003] Lấy bài học theo chủ đề
+  Bước: 1) GET /api/lessons/:type_id.
+  Kỳ vọng: HTTP 200, danh sách bài học.
+  Pass / Fail: ___
+
+[TC-NAV-004] Alias operations
+  Bước: 1) GET /api/operations/:type_id.
+  Kỳ vọng: Kết quả giống /api/lessons/:type_id (cùng handler).
+  Pass / Fail: ___
+
+[TC-NAV-005] Nhãn phân cấp
+  Bước: 1) GET /api/hierarchy-labels.
+  Kỳ vọng: HTTP 200, nhãn UI cho grade/type/lesson.
+  Pass / Fail: ___
+
+[TC-NAV-006] Hiển thị ảnh khối/chủ đề/bài
+  Bước: 1) Mở /lessons. 2) Quan sát ảnh grades/types/lessons.
+  Kỳ vọng: Ảnh tải từ /grades-images, /types-images, /lessons-images.
+  Pass / Fail: ___
+
+[TC-NAV-007] Bài học không có câu hỏi
+  Tiền điều kiện: 1 bài học rỗng câu hỏi.
+  Bước: 1) Chọn bài đó để chơi.
+  Kỳ vọng: Không crash; có thông báo/hành vi phù hợp (không vào game lỗi).
+  Pass / Fail: ___
+
+[TC-NAV-008] grade_id không tồn tại
+  Bước: 1) GET /api/types/<id_không_có>.
+  Kỳ vọng: HTTP 200 mảng rỗng (hoặc 404 theo thiết kế) — không lỗi 500.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. CÂU HỎI & answers_json (TRỌNG TÂM)
+────────────────────────────────────────────────────────────────────────────────
+
+─── 4A. Admin UI tạo/sửa câu hỏi (AdminMcqAnswersEditor) ───
+
+[TC-Q-001] Tạo câu tối thiểu (1 đúng + 1 sai)
+  Bước: 1) /admin/questions/new. 2) Nhập đề + 1 đáp đúng + 1 đáp sai. 3) Lưu.
+  Kỳ vọng: Lưu OK; answers_json có 2 phần tử, 1 correct=true.
+  Pass / Fail: ___
+
+[TC-Q-002] Tạo câu max (3 đúng + 3 sai)
+  Bước: 1) Nhập 3 đáp đúng + 3 đáp sai. 2) Lưu.
+  Kỳ vọng: Lưu OK; 6 phần tử, 3 correct=true.
+  Pass / Fail: ___
+
+[TC-Q-003] Vượt giới hạn đúng (4 đúng)
+  Bước: 1) Cố nhập 4 đáp án đúng.
+  Kỳ vọng: UI chặn slot thứ 4 hoặc backend trả 400; không lưu được.
+  Pass / Fail: ___
+
+[TC-Q-004] Vượt giới hạn sai (4 sai)
+  Bước: 1) Cố nhập 4 đáp án sai.
+  Kỳ vọng: UI chặn hoặc backend 400.
+  Pass / Fail: ___
+
+[TC-Q-005] Câu không có đáp án đúng
+  Bước: 1) Nhập toàn đáp án sai. 2) Lưu.
+  Kỳ vọng: Bị từ chối — phải có ≥1 đáp án đúng.
+  Pass / Fail: ___
+
+[TC-Q-006] Upload ảnh câu hỏi
+  Bước: 1) Tạo câu kèm ảnh đề (multipart question_image). 2) Lưu.
+  Kỳ vọng: Ảnh lưu, trả đường dẫn /questions-images/..., hiển thị được.
+  Pass / Fail: ___
+
+[TC-Q-007] Đáp án bằng ảnh
+  Bước: 1) Tạo đáp án có image thay vì text. 2) Lưu.
+  Kỳ vọng: answers[].image lưu đúng, hiển thị trong game/đề.
+  Pass / Fail: ___
+
+[TC-Q-008] Sửa câu — đổi đáp án đúng
+  Bước: 1) Mở câu cũ /admin/questions/edit. 2) Đổi cờ correct. 3) Lưu.
+  Kỳ vọng: answers_json cập nhật đúng cờ correct mới.
+  Pass / Fail: ___
+
+[TC-Q-009] Sửa câu — xóa bớt đáp án
+  Bước: 1) Sửa, xóa 1 đáp án. 2) Lưu.
+  Kỳ vọng: Số phần tử giảm, vẫn còn ≥1 đúng và ≥2 đáp án.
+  Pass / Fail: ___
+
+[TC-Q-010] Xem câu dùng trong mẫu đề
+  Tiền điều kiện: Câu đã gán vào exam_template.
+  Bước: 1) Admin gọi GET /api/questions/:id/usage.
+  Kỳ vọng: HTTP 200, liệt kê mẫu đề đang dùng câu.
+  Pass / Fail: ___
+
+[TC-Q-011] Xóa câu không thuộc mẫu đề
+  Bước: 1) DELETE câu chưa gán đề.
+  Kỳ vọng: Xóa thành công.
+  Pass / Fail: ___
+
+[TC-Q-012] Xóa câu đang trong mẫu đề
+  Bước: 1) DELETE câu đã gán đề.
+  Kỳ vọng: Hành vi nhất quán thiết kế (chặn / hoặc gỡ kèm) — không để dữ liệu mồ côi.
+  Pass / Fail: ___
+
+─── 4B. API danh sách / play scope ───
+
+[TC-Q-013] scope=play payload nhẹ
+  Bước: 1) GET /api/questions?scope=play&lesson_id=X.
+  Kỳ vọng: Chỉ id, question_text, question_image, answers[]; KHÔNG hierarchy_path.
+  Pass / Fail: ___
+
+[TC-Q-014] List admin-style (không scope)
+  Bước: 1) GET /api/questions?lesson_id=X.
+  Kỳ vọng: Có hierarchy_path "Khối > Chủ đề > Bài" và in_exam_template.
+  Pass / Fail: ___
+
+[TC-Q-015] scope không hợp lệ
+  Bước: 1) GET /api/questions?scope=evil.
+  Kỳ vọng: HTTP 400, "scope không hợp lệ".
+  Pass / Fail: ___
+
+[TC-Q-016] random=1
+  Bước: 1) Gọi /api/questions?scope=play&lesson_id=X&random=1 nhiều lần.
+  Kỳ vọng: Thứ tự câu hỏi thay đổi.
+  Pass / Fail: ___
+
+[TC-Q-017] Tìm kiếm search
+  Bước: 1) GET /api/questions?search=<từ khóa>.
+  Kỳ vọng: Lọc theo question_text hoặc id.
+  Pass / Fail: ___
+
+[TC-Q-018] limit clamp
+  Bước: 1) GET /api/questions?limit=99999.
+  Kỳ vọng: Trả tối đa giới hạn (≤500), không quá tải.
+  Pass / Fail: ___
+
+[TC-Q-019] Lọc grade_id không hợp lệ
+  Bước: 1) GET /api/questions?grade_id=abc.
+  Kỳ vọng: HTTP 400.
+  Pass / Fail: ___
+
+─── 4C. Chấm điểm full_set (isAnswerSetFullyCorrect) ───
+
+[TC-Q-020] 1 đúng — chọn đúng
+  Bước: 1) Q_1C, chọn đáp đúng.
+  Kỳ vọng: Tính ĐÚNG.
+  Pass / Fail: ___
+
+[TC-Q-021] 1 đúng — chọn sai
+  Bước: 1) Q_1C, chọn đáp sai.
+  Kỳ vọng: Tính SAI.
+  Pass / Fail: ___
+
+[TC-Q-022] 2 đúng — chọn đủ 2
+  Bước: 1) Q_2C, chọn cả 2 đáp đúng.
+  Kỳ vọng: Tính ĐÚNG.
+  Pass / Fail: ___
+
+[TC-Q-023] 2 đúng — chỉ chọn 1
+  Bước: 1) Q_2C, chọn 1 đáp đúng.
+  Kỳ vọng: Tính SAI (thiếu).
+  Pass / Fail: ___
+
+[TC-Q-024] 2 đúng — chọn 2 đúng + 1 sai
+  Bước: 1) Q_2C, chọn cả 2 đúng và thêm 1 sai.
+  Kỳ vọng: Tính SAI (dư).
+  Pass / Fail: ___
+
+[TC-Q-025] 3 đúng — chọn đủ 3
+  Bước: 1) Q_3C, chọn cả 3 đáp đúng.
+  Kỳ vọng: Tính ĐÚNG.
+  Pass / Fail: ___
+
+[TC-Q-026] 3 đúng — chọn 2/3
+  Bước: 1) Q_3C, chọn 2 trong 3 đúng.
+  Kỳ vọng: Tính SAI.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. GAME (game1 – game11)
+────────────────────────────────────────────────────────────────────────────────
+
+Chung mọi game:
+  • Tải câu hỏi qua GET /api/questions?scope=play&lesson_id=…&random=1&limit=…
+  • Chọn đáp: useGameMcqSelection (single tap HOẶC multi toggle + confirm)
+  • Multi-select có thanh xác nhận GameMcqConfirmBar
+  • Kết thúc session: POST /api/lesson-progress + POST /api/score/increment
+  • Mỗi game test: 1 happy path + 1 multi-correct (nếu hỗ trợ)
+
+─── game1 / game11 — Quiz đối đáp ───
+
+[TC-GAME1-001] Chơi quiz cơ bản (single)
+  Bước: 1) Vào game1 với câu Q_1C. 2) Chạm đáp đúng.
+  Kỳ vọng: Phản hồi đúng (winner), sang câu kế.
+  Pass / Fail: ___
+
+[TC-GAME1-002] Quiz multi-correct + confirm
+  Bước: 1) game1 câu Q_2C. 2) Toggle 2 đáp đúng. 3) Nhấn Confirm.
+  Kỳ vọng: Chỉ tính khi nhấn Confirm; full_set đúng → ghi đúng.
+  Pass / Fail: ___
+
+[TC-GAME1-003] Quiz chọn sai
+  Bước: 1) game1, chọn sai (single) hoặc confirm thiếu/dư (multi).
+  Kỳ vọng: Phản hồi sai (loser), không tính điểm câu đó.
+  Pass / Fail: ___
+
+[TC-GAME11-001] game11 quiz cơ bản
+  Bước: 1) Vào game11. 2) Chơi 1 lượt single + 1 lượt multi-correct.
+  Kỳ vọng: Hành vi giống game1; full_set đúng.
+  Pass / Fail: ___
+
+─── game2 / game6 / game9 / game10 — Kinetic + overlay ───
+
+[TC-GAME2-001] Ruồi + nông dân happy path
+  Bước: 1) Vào game2. 2) Chọn đáp đúng trên overlay.
+  Kỳ vọng: Cơ chế động chạy mượt, đáp đúng được ghi nhận.
+  Pass / Fail: ___
+
+[TC-GAME2-002] game2 multi-correct confirm
+  Bước: 1) Câu Q_2C. 2) Chọn nhiều đáp + confirm.
+  Kỳ vọng: full_set đúng mới tính đúng.
+  Pass / Fail: ___
+
+[TC-GAME6-001] Hoa quả rơi happy path
+  Bước: 1) Vào game6. 2) Bắt/chọn đáp đúng.
+  Kỳ vọng: Hiệu ứng + ghi nhận đúng.
+  Pass / Fail: ___
+
+[TC-GAME6-002] game6 multi-correct
+  Bước: 1) Q_2C, chọn nhiều + confirm.
+  Kỳ vọng: full_set đúng.
+  Pass / Fail: ___
+
+[TC-GAME9-001] Nhảy qua hàng rào happy path
+  Bước: 1) Vào game9. 2) Chọn đáp đúng khi nhảy.
+  Kỳ vọng: Nhân vật phản hồi đúng, ghi nhận đáp.
+  Pass / Fail: ___
+
+[TC-GAME9-002] game9 multi-correct
+  Bước: 1) Q_2C, chọn nhiều + confirm.
+  Kỳ vọng: full_set đúng.
+  Pass / Fail: ___
+
+[TC-GAME10-001] Bắn phi tiêu happy path
+  Bước: 1) Vào game10. 2) Bắn vào đáp đúng.
+  Kỳ vọng: Hiệu ứng bắn + tiếng động, ghi nhận đúng.
+  Pass / Fail: ___
+
+[TC-GAME10-002] game10 multi-correct
+  Bước: 1) Q_2C, chọn nhiều + confirm.
+  Kỳ vọng: full_set đúng.
+  Pass / Fail: ___
+
+─── game3 — Bóng bay + phi tiêu ───
+
+[TC-GAME3-001] Bắn bóng đáp đúng
+  Bước: 1) Vào game3. 2) Bắn quả bóng mang đáp đúng.
+  Kỳ vọng: Bóng nổ (explode/pop), ghi nhận đúng.
+  Pass / Fail: ___
+
+[TC-GAME3-002] game3 multi-correct + confirm
+  Bước: 1) Q_2C, chọn nhiều + confirm.
+  Kỳ vọng: full_set đúng.
+  Pass / Fail: ___
+
+─── game4 — Runner nhiều làn (2–6 đáp án động) ───
+
+[TC-GAME4-001] 2 làn (2 đáp án)
+  Tiền điều kiện: Câu có đúng 2 đáp án.
+  Bước: 1) Vào game4. 2) Quan sát số làn.
+  Kỳ vọng: Render 2 làn tương ứng 2 đáp án.
+  Pass / Fail: ___
+
+[TC-GAME4-002] 6 làn (6 đáp án)
+  Tiền điều kiện: Câu Q_3C (3+3 = 6 đáp án).
+  Bước: 1) Vào game4 câu đó.
+  Kỳ vọng: Render đủ 6 làn, không vỡ layout.
+  Pass / Fail: ___
+
+[TC-GAME4-003] Single collision (1 đáp đúng)
+  Bước: 1) Câu Q_1C. 2) Cho nhân vật va vào làn đáp đúng.
+  Kỳ vọng: Va chạm = chọn; đáp đúng → tính đúng (full_set [lane]).
+  Pass / Fail: ___
+
+[TC-GAME4-004] Multi overlay selecting
+  Bước: 1) Câu Q_2C. 2) Mở overlay chọn nhiều + confirm.
+  Kỳ vọng: Chế độ multi dùng overlay selecting; full_set đúng.
+  Pass / Fail: ___
+
+[TC-GAME4-005] Va vào làn sai
+  Bước: 1) Q_1C, va vào làn đáp sai.
+  Kỳ vọng: Tính sai, phản hồi phù hợp.
+  Pass / Fail: ___
+
+─── game5 / game7 — Fish / doors + confirm bar ───
+
+[TC-GAME5-001] Cá dưới nước happy path
+  Bước: 1) Vào game5. 2) Chọn cá mang đáp đúng.
+  Kỳ vọng: Hiệu ứng correct, ghi nhận đúng.
+  Pass / Fail: ___
+
+[TC-GAME5-002] game5 multi-correct
+  Bước: 1) Q_2C, chọn nhiều + confirm.
+  Kỳ vọng: full_set đúng.
+  Pass / Fail: ___
+
+[TC-GAME7-001] Cửa / platform happy path
+  Bước: 1) Vào game7. 2) Chọn cửa đáp đúng + confirm.
+  Kỳ vọng: Mở cửa đúng, ghi nhận.
+  Pass / Fail: ___
+
+[TC-GAME7-002] game7 multi-correct
+  Bước: 1) Q_2C, chọn nhiều + GameMcqConfirmBar.
+  Kỳ vọng: full_set đúng.
+  Pass / Fail: ___
+
+[TC-GAME7-003] Phím Enter để confirm (KNOWN GAP)
+  Bước: 1) game7 multi, chọn xong nhấn Enter.
+  Kỳ vọng: Ghi nhận known gap — Enter HIỆN CHƯA gọi confirm; phải bấm nút.
+  Pass / Fail: ___
+
+─── game8 — Worksheet (phiếu bài tập) ───
+
+[TC-GAME8-001] Worksheet single submit
+  Bước: 1) Vào game8 câu Q_1C. 2) Chọn đáp + submit.
+  Kỳ vọng: Tính đúng/sai chính xác.
+  Pass / Fail: ___
+
+[TC-GAME8-002] Worksheet multi-correct
+  Bước: 1) Q_2C, chọn nhiều + confirm + submit.
+  Kỳ vọng: full_set đúng.
+  Pass / Fail: ___
+
+[TC-GAME8-003] Submit khi multi chưa confirm (KNOWN GAP)
+  Bước: 1) Q_2C multi, KHÔNG confirm, bấm submit.
+  Kỳ vọng: Ghi nhận known gap — có thể không tính câu; cần confirm trước.
+  Pass / Fail: ___
+
+─── Sau game (mọi game) ───
+
+[TC-GAME-END-001] Lưu tiến độ sau game
+  Bước: 1) Hoàn thành 1 session game bất kỳ.
+  Kỳ vọng: POST /api/lesson-progress lưu correct/total; sao 1–3 hiển thị.
+  Pass / Fail: ___
+
+[TC-GAME-END-002] Cộng điểm sau câu đúng
+  Bước: 1) Trả lời đúng trong game.
+  Kỳ vọng: POST /api/score/increment cộng score + week_score.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+6. BÀI HỌC & TIẾN ĐỘ
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-PROG-001] PreGameSetUp cấu hình
+  Bước: 1) Vào /play-setup. 2) Chọn số câu, game, nhạc nền.
+  Kỳ vọng: Lựa chọn áp dụng khi vào game.
+  Pass / Fail: ___
+
+[TC-PROG-002] Tính sao theo tỷ lệ đúng
+  Bước: 1) Hoàn thành bài với các mức đúng khác nhau.
+  Kỳ vọng: Số sao 1–3 phản ánh correctCount/totalCount (computeStars).
+  Pass / Fail: ___
+
+[TC-PROG-003] Danh sách bài đã hoàn thành
+  Bước: 1) GET /api/lesson-progress/completed.
+  Kỳ vọng: Liệt kê bài đã làm.
+  Pass / Fail: ___
+
+[TC-PROG-004] Bài làm gần nhất
+  Bước: 1) GET /api/lesson-progress/last.
+  Kỳ vọng: Trả bài học gần nhất.
+  Pass / Fail: ___
+
+[TC-PROG-005] Tiến độ theo lessonId
+  Bước: 1) GET /api/lesson-progress?lessonId=X.
+  Kỳ vọng: Trả tiến độ đúng bài.
+  Pass / Fail: ___
+
+[TC-PROG-006] Làm lại tăng attempt_count
+  Bước: 1) Làm lại bài đã hoàn thành. 2) Kiểm tra tiến độ.
+  Kỳ vọng: attempt_count tăng; sao/điểm cập nhật.
+  Pass / Fail: ___
+
+[TC-PROG-007] Validate dữ liệu lesson-progress
+  Bước: 1) POST /api/lesson-progress thiếu lessonId / correctCount > totalCount.
+  Kỳ vọng: HTTP 400 với thông báo phù hợp.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+7. ÔN TẬP (LessonReview)
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-REVIEW-001] Ôn tập câu 1 đáp án đúng
+  Bước: 1) Vào /lesson-review với câu Q_1C. 2) Chọn đáp.
+  Kỳ vọng: Chấm đúng/sai chính xác.
+  Pass / Fail: ___
+
+[TC-REVIEW-002] Ôn tập câu multi-correct (KNOWN GAP)
+  Bước: 1) /lesson-review câu Q_2C.
+  Kỳ vọng: Ghi nhận known gap — trang HIỆN CÒN single-select (answers[idx].correct),
+           CHƯA hỗ trợ multi full_set như game/đề thi.
+  Pass / Fail: ___
+
+[TC-REVIEW-003] So sánh với game cùng câu
+  Bước: 1) Cùng câu Q_2C: chơi trong game (full_set) và mở trong lesson-review.
+  Kỳ vọng: Phát hiện khác biệt cách chấm (đối chiếu known gap REVIEW-002).
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+8. ĐỀ THI (exam_templates — phía user)
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-EXAM-001] Danh sách đề (auth)
+  Tiền điều kiện: Đăng nhập user.
+  Bước: 1) Vào /exam (GET /api/exams).
+  Kỳ vọng: Liệt kê đề status=1, có phân trang.
+  Pass / Fail: ___
+
+[TC-EXAM-002] Lọc theo grade_id + phân trang
+  Bước: 1) GET /api/exams?grade_id=X&page=1&page_size=10.
+  Kỳ vọng: Trả đúng khối, đúng số trang, có pagination.total.
+  Pass / Fail: ___
+
+[TC-EXAM-003] Yêu cầu đăng nhập
+  Bước: 1) Gọi /api/exams không token.
+  Kỳ vọng: HTTP 401.
+  Pass / Fail: ___
+
+[TC-EXAM-004] Chi tiết đề
+  Bước: 1) GET /api/exams/:id.
+  Kỳ vọng: Trả questions[] kèm answers[]; question_count đúng.
+  Pass / Fail: ___
+
+[TC-EXAM-005] Đếm giờ làm bài
+  Bước: 1) Mở /exam/:examId. 2) Quan sát timer.
+  Kỳ vọng: Đồng hồ đếm theo duration_time; hết giờ tự nộp/khóa.
+  Pass / Fail: ___
+
+[TC-EXAM-006] Multi-select full_set từng câu
+  Bước: 1) Trong đề, câu Q_2C chọn đủ 2 đúng (QuestionAnswerPicker).
+  Kỳ vọng: Câu tính đúng theo full_set.
+  Pass / Fail: ___
+
+[TC-EXAM-007] Nộp đề tính điểm
+  Bước: 1) Trả lời hỗn hợp đúng/sai. 2) Nộp.
+  Kỳ vọng: Điểm = số câu full_set đúng.
+  Pass / Fail: ___
+
+[TC-EXAM-008] Đề không active không hiển thị
+  Tiền điều kiện: 1 đề status≠1.
+  Bước: 1) Xem /exam.
+  Kỳ vọng: Đề đó không xuất hiện; GET /api/exams/:id của nó → 404.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+9. CUỘC THI
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-CONTEST-001] Danh sách cuộc thi
+  Bước: 1) Vào /contest (GET /api/contests).
+  Kỳ vọng: Liệt kê cuộc thi kèm trạng thái theo thời gian.
+  Pass / Fail: ___
+
+[TC-CONTEST-002] Trạng thái scheduled
+  Tiền điều kiện: Cuộc thi chưa tới start_time.
+  Bước: 1) Xem cuộc thi đó.
+  Kỳ vọng: Trạng thái "chưa bắt đầu" (scheduled).
+  Pass / Fail: ___
+
+[TC-CONTEST-003] Trạng thái active
+  Tiền điều kiện: now trong [start, end].
+  Bước: 1) Xem cuộc thi.
+  Kỳ vọng: Trạng thái active, cho phép làm bài.
+  Pass / Fail: ___
+
+[TC-CONTEST-004] Trạng thái ended
+  Tiền điều kiện: now > end_time.
+  Bước: 1) Xem cuộc thi.
+  Kỳ vọng: Trạng thái "đã kết thúc".
+  Pass / Fail: ___
+
+[TC-CONTEST-005] Chi tiết + câu hỏi
+  Bước: 1) GET /api/contests/:id.
+  Kỳ vọng: Trả câu hỏi từ template gắn cuộc thi.
+  Pass / Fail: ___
+
+[TC-CONTEST-006] Nộp khi active
+  Bước: 1) POST /api/contests/:id/submit {score, times}.
+  Kỳ vọng: HTTP 201, "Đã lưu kết quả".
+  Pass / Fail: ___
+
+[TC-CONTEST-007] Nộp lần 2
+  Bước: 1) Submit lại cùng cuộc thi.
+  Kỳ vọng: HTTP 409, "Bạn đã hoàn thành cuộc thi này rồi".
+  Pass / Fail: ___
+
+[TC-CONTEST-008] Nộp khi chưa bắt đầu / đã kết thúc
+  Bước: 1) Submit cuộc thi scheduled hoặc ended.
+  Kỳ vọng: HTTP 403 với thông báo phù hợp.
+  Pass / Fail: ___
+
+[TC-CONTEST-009] Điểm vượt số câu
+  Bước: 1) Submit score > số câu trong template.
+  Kỳ vọng: HTTP 400, "Điểm vượt quá số câu của đề".
+  Pass / Fail: ___
+
+[TC-CONTEST-010] BXH cuộc thi
+  Bước: 1) GET /api/contests/:id/leaderboard.
+  Kỳ vọng: Sắp theo score giảm, times tăng.
+  Pass / Fail: ___
+
+[TC-CONTEST-011] Phát thưởng top 3 sau khi kết thúc
+  Tiền điều kiện: Cuộc thi có prize, vừa qua end_time, prize_distributed=0.
+  Bước: 1) Đợi job đồng bộ (mỗi phút) hoặc trigger. 2) Kiểm tra users.score top 3.
+  Kỳ vọng: Mỗi người top 3 được cộng prize; prize_distributed=1; chỉ cộng 1 lần.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+10. CỬA HÀNG & VẬT PHẨM
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-SHOP-001] Danh sách vật phẩm (public)
+  Bước: 1) Vào /shop (GET /api/items).
+  Kỳ vọng: HTTP 200, liệt kê vật phẩm.
+  Pass / Fail: ___
+
+[TC-SHOP-002] Mua đủ điểm
+  Tiền điều kiện: User đủ điểm mua vật phẩm rẻ.
+  Bước: 1) POST /api/buy {itemId}.
+  Kỳ vọng: Mua thành công; trừ điểm; vật phẩm vào kho.
+  Pass / Fail: ___
+
+[TC-SHOP-003] Mua thiếu điểm
+  Bước: 1) Mua vật phẩm giá cao khi không đủ điểm.
+  Kỳ vọng: Bị từ chối với thông báo thiếu điểm.
+  Pass / Fail: ___
+
+[TC-SHOP-004] Mua trùng vật phẩm
+  Bước: 1) Mua lại vật phẩm đã sở hữu.
+  Kỳ vọng: Hành vi nhất quán (chặn hoặc xử lý theo thiết kế).
+  Pass / Fail: ___
+
+[TC-SHOP-005] Hiệu ứng vật phẩm
+  Bước: 1) GET /api/item-effects (đã đăng nhập).
+  Kỳ vọng: Trả hiệu ứng đang có (bonus điểm bài học / gợi ý câu hỏi).
+  Pass / Fail: ___
+
+[TC-SHOP-006] Kho vật phẩm của user
+  Bước: 1) GET /api/my-items/:userId.
+  Kỳ vọng: Trả vật phẩm user sở hữu.
+  Pass / Fail: ___
+
+[TC-SHOP-007] Áp dụng hint trong game/bài học
+  Tiền điều kiện: Có vật phẩm gợi ý.
+  Bước: 1) Vào bài học/game, dùng gợi ý.
+  Kỳ vọng: Hiển thị gợi ý theo số lượt cho phép (hint_questions).
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+11. BẢNG XẾP HẠNG
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-RANK-001] Top điểm tổng
+  Bước: 1) GET /api/leaderboard/all.
+  Kỳ vọng: Danh sách sắp theo score giảm dần.
+  Pass / Fail: ___
+
+[TC-RANK-002] Top điểm tuần
+  Bước: 1) GET /api/leaderboard/week.
+  Kỳ vọng: Sắp theo week_score; reset khi sang tuần mới.
+  Pass / Fail: ___
+
+[TC-RANK-003] Hiển thị rank trên hồ sơ/trang chủ
+  Bước: 1) Đăng nhập, xem profile/home.
+  Kỳ vọng: Rank tuần của user khớp dữ liệu leaderboard.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+12. ADMIN CRUD (/api/admin/* — yêu cầu JWT + role admin)
+────────────────────────────────────────────────────────────────────────────────
+
+─── 12A. Dashboard ───
+
+[TC-ADM-001] Dashboard tổng quan
+  Bước: 1) GET /api/admin/dashboard.
+  Kỳ vọng: Trả thống kê users, questions, lessons thiếu câu, exams, contests.
+  Pass / Fail: ___
+
+[TC-ADM-002] Dashboard performance
+  Bước: 1) GET /api/admin/dashboard/performance.
+  Kỳ vọng: HTTP 200, số liệu hiệu suất tải được.
+  Pass / Fail: ___
+
+─── 12B. Users ───
+
+[TC-ADM-003] List users (không lộ password)
+  Bước: 1) GET /api/admin/users.
+  Kỳ vọng: Danh sách không chứa trường password; có phân trang/clamp.
+  Pass / Fail: ___
+
+[TC-ADM-004] Chi tiết / tạo / sửa / xóa user
+  Bước: 1) GET :id → POST tạo → PUT sửa → DELETE xóa.
+  Kỳ vọng: Mỗi thao tác phản hồi đúng; dữ liệu nhất quán.
+  Pass / Fail: ___
+
+─── 12C. Grades / Types / Lessons (kèm upload ảnh) ───
+
+[TC-ADM-005] CRUD grades
+  Bước: 1) List → Create → Update → Delete khối.
+  Kỳ vọng: Thành công từng bước.
+  Pass / Fail: ___
+
+[TC-ADM-006] Upload ảnh grade
+  Bước: 1) POST /api/admin/grades-images (multipart image).
+  Kỳ vọng: Trả đường dẫn /grades-images/...; ảnh hiển thị.
+  Pass / Fail: ___
+
+[TC-ADM-007] CRUD types + ảnh
+  Bước: 1) CRUD chủ đề. 2) POST /api/admin/types-images.
+  Kỳ vọng: Thành công; ảnh /types-images/...
+  Pass / Fail: ___
+
+[TC-ADM-008] CRUD lessons + ảnh
+  Bước: 1) CRUD bài học. 2) POST /api/admin/lessons-images.
+  Kỳ vọng: Thành công; ảnh /lessons-images/...
+  Pass / Fail: ___
+
+─── 12D. Mẫu đề thi (exam-templates) ───
+
+[TC-ADM-009] CRUD mẫu đề + gán câu
+  Bước: 1) POST tạo đề với question_ids[]. 2) PUT sửa. 3) GET :id.
+  Kỳ vọng: Câu gán đúng; question_count khớp.
+  Pass / Fail: ___
+
+[TC-ADM-010] Gỡ 1 câu khỏi mẫu đề
+  Bước: 1) DELETE /api/admin/exam-templates/:id/questions/:questionId.
+  Kỳ vọng: Câu bị gỡ; các câu khác giữ nguyên.
+  Pass / Fail: ___
+
+[TC-ADM-011] Xóa mẫu đề
+  Bước: 1) DELETE /api/admin/exam-templates/:id.
+  Kỳ vọng: Xóa thành công; ràng buộc liên quan xử lý đúng.
+  Pass / Fail: ___
+
+─── 12E. Cuộc thi ───
+
+[TC-ADM-012] Tạo cuộc thi
+  Bước: 1) POST /api/admin/contests (gắn template, start/end, prize).
+  Kỳ vọng: Tạo thành công; trạng thái tính theo thời gian.
+  Pass / Fail: ___
+
+[TC-ADM-013] Sửa / xóa cuộc thi
+  Bước: 1) PATCH /api/admin/contests/:id. 2) DELETE.
+  Kỳ vọng: Cập nhật / xóa thành công.
+  Pass / Fail: ___
+
+[TC-ADM-014] BXH cuộc thi (admin)
+  Bước: 1) GET /api/admin/contests/:id/leaderboard.
+  Kỳ vọng: Danh sách thí sinh + điểm.
+  Pass / Fail: ___
+
+─── 12F. Vật phẩm ───
+
+[TC-ADM-015] CRUD item + upload ảnh
+  Bước: 1) POST /api/admin/items (JSON hoặc multipart item_image). 2) PUT. 3) DELETE.
+  Kỳ vọng: Thành công; ảnh /items-images/...
+  Pass / Fail: ___
+
+[TC-ADM-016] Tạo item thiếu name
+  Bước: 1) POST item không có name.
+  Kỳ vọng: HTTP 400, "name là bắt buộc".
+  Pass / Fail: ___
+
+─── 12G. Phân quyền admin ───
+
+[TC-ADM-017] User token gọi admin API
+  Bước: 1) Dùng token role=0 gọi bất kỳ /api/admin/*.
+  Kỳ vọng: HTTP 403.
+  Pass / Fail: ___
+
+[TC-ADM-018] Không token gọi admin API
+  Bước: 1) Gọi /api/admin/* không Authorization.
+  Kỳ vọng: HTTP 401.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+13. BẢO MẬT & EDGE CASE
+────────────────────────────────────────────────────────────────────────────────
+
+[TC-SEC-001] POST /api/questions không token
+  Bước: 1) POST /api/questions không Authorization.
+  Kỳ vọng: HTTP 401.
+  Pass / Fail: ___
+
+[TC-SEC-002] POST /api/questions token user
+  Bước: 1) POST /api/questions với token role=0.
+  Kỳ vọng: HTTP 403.
+  Pass / Fail: ___
+
+[TC-SEC-003] SQL injection trong search
+  Bước: 1) GET /api/questions?search=' OR '1'='1.
+  Kỳ vọng: Không crash, không lộ dữ liệu (prepared statement); trả an toàn.
+  Pass / Fail: ___
+
+[TC-SEC-004] Upload ảnh quá 5MB
+  Bước: 1) Upload ảnh > 5MB cho câu hỏi/vật phẩm/grade.
+  Kỳ vọng: HTTP 400, "Ảnh vượt quá 5MB".
+  Pass / Fail: ___
+
+[TC-SEC-005] Upload sai định dạng
+  Bước: 1) Upload file không phải JPG/PNG/GIF/WebP.
+  Kỳ vọng: Bị từ chối với thông báo định dạng.
+  Pass / Fail: ___
+
+[TC-SEC-006] Lọc grade_id không hợp lệ
+  Bước: 1) GET /api/questions?grade_id=abc.
+  Kỳ vọng: HTTP 400.
+  Pass / Fail: ___
+
+[TC-SEC-007] score/increment cho user khác
+  Bước: 1) User thường POST /api/score/increment với userId người khác.
+  Kỳ vọng: Chỉ admin được chỉ định userId; user thường chỉ tăng cho chính mình.
+  Pass / Fail: ___
+
+[TC-SEC-008] Truy cập tài nguyên tĩnh
+  Bước: 1) Mở trực tiếp /questions-images/<file>, /items-images/<file>.
+  Kỳ vọng: Ảnh hợp lệ trả 200; đường dẫn lạ không truy cập ngoài thư mục.
+  Pass / Fail: ___
+
+
+────────────────────────────────────────────────────────────────────────────────
+14. PHỤ LỤC
+────────────────────────────────────────────────────────────────────────────────
+
+MA TRẬN ƯU TIÊN (thứ tự chạy):
+  1) SMOKE (§1)                  — chặn phát hành nếu fail
+  2) Câu hỏi 3+3 & full_set (§4) — cốt lõi nghiệp vụ
+  3) Game game1–11 (§5)          — trải nghiệm chính
+  4) Đề thi & Cuộc thi (§8, §9)  — tính điểm/thưởng
+  5) Admin CRUD (§12)            — quản trị nội dung
+  6) Auth/Nav/Shop/Rank (§2,3,10,11)
+  7) Bảo mật & edge case (§13)
+
+KNOWN GAPS (từ func.txt §11 — kỳ vọng = ghi nhận, KHÔNG coi là pass/fail nghiệp vụ):
+  • TC-REVIEW-002 : LessonReview còn single-select, chưa full_set multi
+  • TC-AUTH-015   : ForgotPassword chỉ có UI, chưa có API backend
+  • TC-GAME7-003  : game7 phím Enter chưa gọi confirm
+  • TC-GAME8-003  : game8 submit multi chưa confirm có thể không tính câu
+
+CHECKLIST TRƯỚC KHI CHẠY:
+  [ ] Đã chạy migration answers_json + drop legacy columns
+  [ ] Backend log "tối đa 3 đáp án đúng + 3 đáp án sai"
+  [ ] Có tài khoản user (role=0) và admin (role=1)
+  [ ] Đã seed dữ liệu mẫu Q_1C, Q_2C, Q_3C, đề thi, cuộc thi, vật phẩm
+
+CÔNG CỤ HỖ TRỢ (tùy chọn, ngoài checklist thủ công):
+  • Smoke API tự động: node backend/scripts/smoke-questions-api.js
+    Env: API_BASE, USER_TOKEN, ADMIN_TOKEN
+
+TỔNG QUAN SỐ LƯỢNG KỊCH BẢN:
+  Smoke 8 · Auth 15 · Nav 8 · Questions 26 · Game ~36 · Progress 7 ·
+  Review 3 · Exam 8 · Contest 11 · Shop 7 · Rank 3 · Admin 18 · Security 8
+  → Khoảng 160 kịch bản có ID.
+
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+15. KẾT QUẢ THỰC THI (tự động) — 2026-06-01
+────────────────────────────────────────────────────────────────────────────────
+
+Công cụ:
+  • node backend/scripts/autotest-runner.js   (API công khai + logic full_set)
+  • node backend/scripts/autotest-runner2.js  (endpoint cần auth user/admin + CRUD)
+Server :5050, DB gametoanhoc.
+Dữ liệu mẫu phát hiện: lesson_id=117/61, grade_id=1, tổng 2794 câu hỏi, answers_json NULL = 0.
+
+TỔNG HỢP (sau khi sửa BUG-001 & BUG-002):
+  Runner #1: 39 PASS / 0 FAIL
+  Runner #2: 35 PASS / 0 FAIL
+  Contest submit (seed cuộc thi active tạm): 5 PASS / 0 FAIL
+  → 79 PASS / 0 FAIL trên các kịch bản tự động hóa được.
+
+[PASS] TC-SMOKE-002  GET /api/grades (200, 5 khối)
+[PASS] TC-SMOKE-003  questions scope=play trả answers[] (200, 5 câu)
+[PASS] TC-SMOKE-008  leaderboard all/week (200/200)
+[PASS] TC-AUTH-001   Đăng ký thành công
+[PASS] TC-AUTH-002   Đăng ký trùng username → 409
+[PASS] TC-AUTH-004   Đăng ký thiếu password → 400
+[PASS] TC-AUTH-005   Đăng nhập đúng (có token)
+[PASS] TC-AUTH-006   Đăng nhập sai mật khẩu → 401
+[PASS] TC-AUTH-007   Username không tồn tại → 401
+[PASS] TC-AUTH-008   /auth/me phiên hợp lệ
+[PASS] TC-AUTH-009   /auth/me token sai → 401
+[PASS] TC-AUTH-010   Kilovia lần đầu → created:true (đã sửa BUG-001)
+[PASS] TC-AUTH-011   Kilovia lần sau  → created:false (đã sửa BUG-001)
+[PASS] TC-AUTH-012   Kilovia thiếu maTreEm → 400
+[PASS] TC-NAV-002    types theo grade_id (200)
+[PASS] TC-NAV-005    hierarchy-labels (200)
+[PASS] TC-Q-013      scope=play payload nhẹ (không hierarchy_path)
+[PASS] TC-Q-014      list admin-style có hierarchy_path + in_exam_template
+[PASS] TC-Q-015      scope không hợp lệ → 400
+[PASS] TC-Q-018      limit clamp ≤500 (trả 500)
+[PASS] TC-Q-019      grade_id không hợp lệ → 400
+[PASS] TC-Q-020      full_set: 1 đúng — chọn đúng → ĐÚNG
+[PASS] TC-Q-021      full_set: 1 đúng — chọn sai → SAI
+[PASS] TC-Q-022      full_set: 2 đúng — chọn đủ 2 → ĐÚNG
+[PASS] TC-Q-023      full_set: 2 đúng — chỉ 1 → SAI
+[PASS] TC-Q-024      full_set: 2 đúng — 2 đúng + 1 sai → SAI
+[PASS] TC-Q-025      full_set: 3 đúng — chọn đủ 3 → ĐÚNG
+[PASS] TC-Q-026      full_set: 3 đúng — chọn 2/3 → SAI
+[PASS] TC-EXAM-001   Danh sách đề (auth, total=1)
+[PASS] TC-EXAM-003   exams không token → 401
+[PASS] TC-EXAM-004   Chi tiết đề có questions[].answers[] (94 câu)
+[PASS] TC-CONTEST-001 Danh sách cuộc thi (200)
+[PASS] TC-SEC-001    POST /questions không token → 401
+[PASS] TC-SEC-002    POST /questions token user → 403
+[PASS] TC-SEC-003    SQL injection trong search không crash (200)
+[PASS] TC-ADM-017    User token gọi /api/admin/* → 403
+[PASS] TC-ADM-018    Không token gọi /api/admin/* → 401
+[PASS] TC-Q-DB       answers_json NULL = 0 / tổng 2794 câu
+
+KẾT QUẢ RUNNER #2 (endpoint cần auth + CRUD):
+[PASS] TC-PROG-POST    POST lesson-progress lưu sao (stars=2)
+[PASS] TC-PROG-007     lesson-progress correctCount>total → 400
+[PASS] TC-PROG-003     GET lesson-progress/completed
+[PASS] TC-PROG-004     GET lesson-progress/last
+[PASS] TC-PROG-005     GET lesson-progress?grade_id
+[PASS] TC-PROG-INC     POST score/increment (self)
+[PASS] TC-SHOP-001     GET /items (public, 9 item)
+[PASS] TC-SHOP-005     GET /item-effects
+[PASS] TC-SHOP-006     GET /my-items/:userId (self)
+[PASS] TC-SEC-MYITEMS  GET /my-items người khác → 403
+[PASS] TC-SHOP-003     Mua thiếu điểm bị từ chối (400)
+[PASS] TC-CONTEST-005  GET /contests/:id
+[PASS] TC-CONTEST-010  GET /contests/:id/leaderboard
+[PASS] TC-CONTEST-008  Submit cuộc thi đã kết thúc → 403
+[PASS] TC-ADM-001      GET /admin/dashboard
+[PASS] TC-ADM-002      GET /admin/dashboard/performance
+[PASS] TC-ADM-003      GET /admin/users (không lộ password)
+[PASS] TC-ADM-*-LIST   GET admin grades/types/lessons/items/exam-templates/contests
+[PASS] TC-ADM-005a/b/c CRUD /admin/grades (tạo→sửa→xóa)
+[PASS] TC-ADM-015a/c   CRUD /admin/items (tạo→xóa, sau khi sửa BUG-002)
+[PASS] TC-ADM-016      POST /admin/items thiếu name → 400
+[PASS] TC-Q-002        POST /questions 3 đúng + 3 sai (max) → 201
+[PASS] TC-Q-003        POST /questions 4 đúng → 400 ("Tối đa 3 đáp án đúng")
+[PASS] TC-Q-005        POST /questions không có đáp đúng → 400
+[PASS] TC-Q-010        GET /questions/:id/usage (admin)
+[PASS] TC-Q-008        PUT /questions/:id sửa câu
+[PASS] TC-Q-011        DELETE /questions/:id
+
+KẾT QUẢ LUỒNG NỘP CUỘC THI (autotest-contest-submit.js — seed cuộc thi active tạm,
+dọn sạch sau khi chạy):
+[PASS] TC-CONTEST-003  Cuộc thi active — xem chi tiết
+[PASS] TC-CONTEST-006  Submit khi active → 201
+[PASS] TC-CONTEST-007  Submit lần 2 → 409
+[PASS] TC-CONTEST-009  Điểm vượt số câu → 400
+[PASS] TC-CONTEST-010b Leaderboard chứa user vừa nộp
+
+──────────────────────────────────────────────────────────────────────────────
+LỖI PHÁT HIỆN
+──────────────────────────────────────────────────────────────────────────────
+
+[BUG-001] (nghiêm trọng) Kilovia external-login-child trả 500 — ĐÃ SỬA (2026-06-01)
+  Endpoint: POST /api/external-login-child  (backend/server.js)
+  Nguyên nhân: câu INSERT tham chiếu cột không tồn tại trong bảng users:
+      INSERT INTO users (username, password, fullname, school, ma_tre_em) ...
+  Cột thực tế của users: id, username, ma_tre_em, password, created_at, score,
+      items, week_score, role, email, phone, is_locked, lock_reason
+      → KHÔNG có 'fullname' và 'school'.
+  Lỗi MySQL: ER_BAD_FIELD_ERROR - Unknown column 'fullname' in 'field list'.
+  Ảnh hưởng: mọi tài khoản trẻ em Kilovia MỚI không tạo được (chỉ login lại
+      được nếu user đã tồn tại sẵn).
+  Cách sửa đã áp dụng: bỏ fullname/school khỏi INSERT:
+      INSERT INTO users (username, password, ma_tre_em) VALUES (?, ?, ?)
+  Xác minh: chạy lại runner → TC-AUTH-010/011 PASS (created:true / false).
+
+[BUG-002] (nghiêm trọng) Tạo/sửa vật phẩm admin trả 500 — ĐÃ SỬA (2026-06-01)
+  Endpoint: POST/PUT /api/admin/items  (backend/server-admin.js)
+  Nguyên nhân: INSERT/UPDATE tham chiếu cột không tồn tại trong bảng items:
+      effect_type, lesson_bonus_points, hint_questions
+  Cột items trước khi sửa: id, name, description, link, require_score, level
+  Lỗi MySQL: ER_BAD_FIELD_ERROR - Unknown column 'effect_type' in 'field list'.
+  Ảnh hưởng: admin KHÔNG tạo/sửa được vật phẩm; GET /item-effects cũng sẽ lỗi
+      khi user thực sự sở hữu vật phẩm (truy vấn 3 cột này).
+  Cách sửa đã áp dụng: thêm 3 cột (migration dự kiến chưa chạy):
+      ALTER TABLE items
+        ADD COLUMN effect_type TINYINT NOT NULL DEFAULT 0,
+        ADD COLUMN lesson_bonus_points INT NOT NULL DEFAULT 0,
+        ADD COLUMN hint_questions INT NOT NULL DEFAULT 0;
+  Xác minh: chạy lại runner#2 → TC-ADM-015a/c PASS (tạo/xóa item OK), 35/35 PASS.
+
+──────────────────────────────────────────────────────────────────────────────
+CHƯA TỰ ĐỘNG HÓA (cần kiểm thử tay trên UI/game)
+──────────────────────────────────────────────────────────────────────────────
+
+  • Toàn bộ game1–11 (§5): cơ chế chơi, overlay, confirm bar, collision
+  • Luồng UI: Smoke 004/005/006/007, Nav 001/006/007, Progress, Review
+  • Đề thi/cuộc thi thao tác làm bài + nộp (EXAM-005..007, CONTEST-006..011)
+  • Cửa hàng mua/áp dụng hiệu ứng (SHOP-002..007)
+  • Admin CRUD qua giao diện (ADM-001..016)
+  • Upload ảnh / giới hạn 5MB (Q-006/007, SEC-004/005)
+  → Cần đăng nhập admin + thao tác trình duyệt; chưa chạy trong vòng tự động này.
+
+================================================================================
+

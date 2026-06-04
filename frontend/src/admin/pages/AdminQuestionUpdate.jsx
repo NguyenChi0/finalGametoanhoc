@@ -364,8 +364,7 @@ export default function AdminQuestionUpdate() {
         <div>
           <h1 style={styles.title}>Cập nhật câu hỏi #{questionId}</h1>
           <p style={styles.lead}>
-            Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và đáp án; có thể đánh dấu
-            nhiều đáp án đúng (tối đa 4 đáp án / câu).
+            Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và đáp án.
           </p>
         </div>
       </header>

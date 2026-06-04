@@ -6,6 +6,11 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import {
+  getMcqAnswerVisualState,
+  useGameMcqSelection,
+} from "../lib/useGameMcqSelection";
 
 const gameShellStyle = {
   width: "100%",
@@ -39,7 +44,7 @@ export default function Game5({ payload, onLessonComplete }) {
   const [questions, setQuestions] = useState(() =>
     prepareSessionQuestions(payload?.questions)
   );
-  const [selected, setSelected] = useState({});
+  const mcq = useGameMcqSelection();
   /** Phản hồi toàn màn: ảnh đúng/sai — không dùng lớp phủ xám trên thẻ cá */
   const [feedbackFlash, setFeedbackFlash] = useState(null);
   const [correctCount, setCorrectCount] = useState(0);
@@ -60,14 +65,8 @@ export default function Game5({ payload, onLessonComplete }) {
     incrementLessonScore(userId, totalCorrect, payload);
   }
 
-  function choose(qId, ansIdx) {
-    if (selected[qId] !== undefined) return;
-
-    setSelected((prev) => ({ ...prev, [qId]: ansIdx }));
-
-    const a = currentQuestion?.answers?.[ansIdx];
-
-    if (a && a.correct) {
+  function afterFishAnswer(ok) {
+    if (ok) {
       correctSound.play().catch((e) => console.warn("Âm thanh:", e));
       setCorrectCount((prev) => prev + 1);
       setFeedbackFlash("correct");
@@ -85,11 +84,23 @@ export default function Game5({ payload, onLessonComplete }) {
     }
   }
 
+  function choose(qId, ansIdx) {
+    if (!currentQuestion || mcq.isLocked(qId) || feedbackFlash) return;
+    const ok = mcq.toggleIndex(qId, currentQuestion.answers, ansIdx);
+    if (ok !== null) afterFishAnswer(ok);
+  }
+
+  function confirmFishAnswer() {
+    if (!currentQuestion || feedbackFlash) return;
+    const ok = mcq.confirmPending(currentQuestion.id, currentQuestion.answers);
+    afterFishAnswer(ok);
+  }
+
   function resetGame() {
     setGameStarted(true);
     setCurrentQuestionIndex(0);
     setQuestions(prepareSessionQuestions(payload?.questions));
-    setSelected({});
+    mcq.resetAll();
     setFeedbackFlash(null);
     setCorrectCount(0);
     finishSentRef.current = false;
@@ -120,7 +131,11 @@ export default function Game5({ payload, onLessonComplete }) {
     );
   }
 
-  const sel = selected[currentQuestion.id];
+  const qId = currentQuestion.id;
+  const qLocked = mcq.isLocked(qId);
+  const pending = mcq.getPendingIndices(qId);
+  const confirmed = mcq.getConfirmedIndices(qId);
+  const isMulti = mcq.isMultiCorrectQuestion(currentQuestion.answers);
   const qImg = currentQuestion?.question_image
     ? questionImageUrl(currentQuestion.question_image) || null
     : null;
@@ -340,12 +355,12 @@ export default function Game5({ payload, onLessonComplete }) {
                     type="button"
                     className="game5-sbtn"
                     onClick={() => choose(currentQuestion.id, ai)}
-                    disabled={sel !== undefined || !!feedbackFlash}
+                    disabled={qLocked || !!feedbackFlash}
                     style={{
                       backgroundImage: fishCard,
                     }}
                     onMouseEnter={(e) => {
-                      if (sel === undefined && !feedbackFlash) {
+                      if (!qLocked && !feedbackFlash) {
                         e.currentTarget.style.transform = "scale(1.04)";
                       }
                     }}
@@ -369,6 +384,13 @@ export default function Game5({ payload, onLessonComplete }) {
                 );
               })}
             </div>
+            {isMulti && !qLocked && !feedbackFlash && (
+              <GameMcqConfirmBar
+                answers={currentQuestion.answers}
+                pendingIndices={pending}
+                onConfirm={confirmFishAnswer}
+              />
+            )}
           </div>
         </div>
         </div>

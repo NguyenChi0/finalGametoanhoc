@@ -9,6 +9,11 @@ const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
+const { parsePositiveInt, clampLimitOffset } = require('./lib/queryParams');
+
+/** Cột users cho list — không SELECT password. */
+const USER_LIST_COLUMNS =
+  'id, username, ma_tre_em, email, phone, role, score, week_score, items, created_at';
 
 const ITEMS_IMAGES_DIR = path.join(__dirname, 'items-images');
 fs.mkdirSync(ITEMS_IMAGES_DIR, { recursive: true });
@@ -22,6 +27,11 @@ fs.mkdirSync(LESSONS_IMAGES_DIR, { recursive: true });
 const GRADES_IMAGES_DIR = path.join(__dirname, 'grades-images');
 fs.mkdirSync(GRADES_IMAGES_DIR, { recursive: true });
 
+/**
+ * Tạo tên file ảnh ngẫu nhiên (UUID) với đuôi hợp lệ từ tên gốc hoặc MIME.
+ * @param {{ originalname?: string, mimetype?: string }} file
+ * @returns {string}
+ */
 function makeImageFilename(file) {
   const extRaw = path.extname(file.originalname || '').toLowerCase();
   let suffix = '.png';
@@ -49,6 +59,7 @@ const gradeImageStorage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, makeImageFilename(file)),
 });
 
+/** Multer fileFilter: chỉ chấp nhận JPEG, PNG, GIF, WebP. */
 const imageUploadFilter = (req, file, cb) => {
   if (/^image\/(jpeg|png|gif|webp)$/i.test(file.mimetype)) {
     cb(null, true);
@@ -57,24 +68,32 @@ const imageUploadFilter = (req, file, cb) => {
   }
 };
 
+/** Upload ảnh chủ đề — tối đa 5MB, JPG/PNG/GIF/WebP. */
 const uploadTypeImage = multer({
   storage: typeImageStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: imageUploadFilter,
 });
 
+/** Upload ảnh bài học — tối đa 5MB. */
 const uploadLessonImage = multer({
   storage: lessonImageStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: imageUploadFilter,
 });
 
+/** Upload ảnh khối/lớp — tối đa 5MB. */
 const uploadGradeImage = multer({
   storage: gradeImageStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: imageUploadFilter,
 });
 
+/**
+ * Chuẩn hóa đường dẫn ảnh chủ đề (types) — URL, /types-images/, legacy /curriculum-images/.
+ * @param {string|null|undefined} raw
+ * @returns {string|null}
+ */
 function normalizeTypeImagePath(raw) {
   if (raw == null || String(raw).trim() === '') return null;
   const s = String(raw).trim();
@@ -88,6 +107,11 @@ function normalizeTypeImagePath(raw) {
   return `/types-images/${s.replace(/^\/+/, '')}`;
 }
 
+/**
+ * Chuẩn hóa đường dẫn ảnh bài học (lessons).
+ * @param {string|null|undefined} raw
+ * @returns {string|null}
+ */
 function normalizeLessonImagePath(raw) {
   if (raw == null || String(raw).trim() === '') return null;
   const s = String(raw).trim();
@@ -101,6 +125,10 @@ function normalizeLessonImagePath(raw) {
   return `/lessons-images/${s.replace(/^\/+/, '')}`;
 }
 
+/**
+ * Xóa file ảnh chủ đề trên đĩa (chỉ path local /types-images/, bỏ qua URL).
+ * @param {string|null|undefined} link
+ */
 function unlinkTypeImageFile(link) {
   if (link == null || String(link).trim() === '') return;
   const s = String(link).trim();
@@ -116,6 +144,10 @@ function unlinkTypeImageFile(link) {
   fs.unlink(path.join(TYPES_IMAGES_DIR, safe), () => {});
 }
 
+/**
+ * Xóa file ảnh bài học trên đĩa (chỉ path local /lessons-images/).
+ * @param {string|null|undefined} link
+ */
 function unlinkLessonImageFile(link) {
   if (link == null || String(link).trim() === '') return;
   const s = String(link).trim();
@@ -131,6 +163,11 @@ function unlinkLessonImageFile(link) {
   fs.unlink(path.join(LESSONS_IMAGES_DIR, safe), () => {});
 }
 
+/**
+ * Chuẩn hóa đường dẫn ảnh khối/lớp (grades).
+ * @param {string|null|undefined} raw
+ * @returns {string|null}
+ */
 function normalizeGradeImagePath(raw) {
   if (raw == null || String(raw).trim() === '') return null;
   const s = String(raw).trim();
@@ -140,6 +177,10 @@ function normalizeGradeImagePath(raw) {
   return `/grades-images/${s.replace(/^\/+/, '')}`;
 }
 
+/**
+ * Xóa file ảnh khối/lớp trên đĩa (chỉ path local /grades-images/).
+ * @param {string|null|undefined} link
+ */
 function unlinkGradeImageFile(link) {
   if (link == null || String(link).trim() === '') return;
   const s = String(link).trim();
@@ -168,6 +209,7 @@ const itemImageStorage = multer.diskStorage({
   },
 });
 
+/** Upload ảnh vật phẩm — tối đa 5MB. */
 const uploadItemImage = multer({
   storage: itemImageStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -180,6 +222,11 @@ const uploadItemImage = multer({
   },
 });
 
+/**
+ * Lấy đường dẫn ảnh vật phẩm từ multipart (req.file) hoặc body item_image_path / item_image.
+ * @param {import('express').Request} req
+ * @returns {string|null}
+ */
 function resolveItemImagePath(req) {
   if (req.file && req.file.filename) {
     return `/items-images/${req.file.filename}`;
@@ -199,6 +246,10 @@ function resolveItemImagePath(req) {
   return null;
 }
 
+/**
+ * Xóa file ảnh vật phẩm trên đĩa (chỉ path local /items-images/).
+ * @param {string|null|undefined} link
+ */
 function unlinkItemImageFile(link) {
   if (link == null || String(link).trim() === '') return;
   let base = String(link).trim();
@@ -210,6 +261,12 @@ function unlinkItemImageFile(link) {
   fs.unlink(path.join(ITEMS_IMAGES_DIR, safe), () => {});
 }
 
+/**
+ * Gửi lỗi JSON cho route admin; log console với prefix [admin].
+ * @param {import('express').Response} res
+ * @param {Error & { statusCode?: number }} err
+ * @param {string} [fallback]
+ */
 function sendErr(res, err, fallback) {
   console.error('[admin]', err);
   const status = err.statusCode || 500;
@@ -217,6 +274,11 @@ function sendErr(res, err, fallback) {
   res.status(status).json({ message: msg, error: err.message });
 }
 
+/**
+ * Chuyển lỗi FK MySQL thành Error có statusCode 409/400; không phải FK thì trả null.
+ * @param {Error & { code?: string, errno?: number }} err
+ * @returns {(Error & { statusCode: number })|null}
+ */
 function fkError(err) {
   if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451) {
     const e = new Error('Không xóa/sửa được: dữ liệu đang được tham chiếu');
@@ -231,6 +293,11 @@ function fkError(err) {
   return null;
 }
 
+/**
+ * Bỏ trường password khỏi object user trước khi trả API.
+ * @param {Record<string, unknown>|null|undefined} row
+ * @returns {Record<string, unknown>|null|undefined}
+ */
 function stripPassword(row) {
   if (!row || typeof row !== 'object') return row;
   const { password, ...rest } = row;
@@ -265,6 +332,11 @@ function normalizeExamTemplateDurationMinutes(raw, { required = false } = {}) {
   return n;
 }
 
+/**
+ * Parse trạng thái bài học: 0=ẩn, 1=hiển thị (mặc định 1).
+ * @param {*} raw
+ * @returns {0|1}
+ */
 function parseLessonStatus(raw) {
   if (raw === undefined || raw === null || raw === '') return 1;
   const n = Number(raw);
@@ -276,6 +348,12 @@ function parseLessonStatus(raw) {
   return n;
 }
 
+/**
+ * Parse cấp độ vật phẩm (level) từ 1 đến 6.
+ * @param {*} raw
+ * @param {{ defaultVal?: number }} [opts]
+ * @returns {number}
+ */
 function parseItemLevel(raw, { defaultVal = 1 } = {}) {
   if (raw === undefined || raw === null || raw === '') return defaultVal;
   const n = Number(raw);
@@ -287,7 +365,11 @@ function parseItemLevel(raw, { defaultVal = 1 } = {}) {
   return n;
 }
 
-/** effect_type: 0=trang trí, 1=lesson bonus, 2=hint */
+/**
+ * Parse hiệu ứng vật phẩm: effect_type 0=trang trí, 1=bonus điểm bài, 2=gợi ý câu.
+ * @param {Record<string, unknown>} body
+ * @returns {{ effectType: number, lessonBonus: number, hintQuestions: number }}
+ */
 function parseItemEffects(body) {
   const b = body || {};
   const hasType = b.effect_type !== undefined && b.effect_type !== '';
@@ -343,6 +425,12 @@ function parseItemEffects(body) {
   return { effectType, lessonBonus, hintQuestions };
 }
 
+/**
+ * Thêm cột effect_type, lesson_bonus_points, hint_questions vào mảng UPDATE động.
+ * @param {string[]} updates
+ * @param {unknown[]} params
+ * @param {Record<string, unknown>} body
+ */
 function appendItemEffectUpdates(updates, params, body) {
   const b = body || {};
   const hasAny =
@@ -355,6 +443,12 @@ function appendItemEffectUpdates(updates, params, body) {
   params.push(effectType, lessonBonus, hintQuestions);
 }
 
+/**
+ * Parse thứ tự sắp xếp (sort_order) — số nguyên >= 0.
+ * @param {*} raw
+ * @param {{ required?: boolean }} [opts]
+ * @returns {number|null}
+ */
 function parseSortOrder(raw, { required = false } = {}) {
   if (raw === undefined || raw === null || raw === '') {
     if (required) {
@@ -373,11 +467,17 @@ function parseSortOrder(raw, { required = false } = {}) {
   return n;
 }
 
+/**
+ * Gắn toàn bộ route CRUD admin vào Express app (middleware auth + role admin ở server.js).
+ * @param {import('express').Application} app
+ * @param {import('mysql2/promise').Pool} pool
+ */
 module.exports = function mountAdminCrud(app, pool) {
   const CONTEST_STATUS_ENDED = 0;
   const CONTEST_STATUS_SCHEDULED = 1;
   const CONTEST_STATUS_ACTIVE = 2;
 
+  /** Lấy sort_order tiếp theo cho chủ đề trong một khối (MAX+1). */
   async function nextTypeSortOrder(gradeId) {
     const [[row]] = await pool.query(
       'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM types WHERE grade_id = ?',
@@ -386,6 +486,7 @@ module.exports = function mountAdminCrud(app, pool) {
     return Number(row?.next_order) || 1;
   }
 
+  /** Lấy sort_order tiếp theo cho bài học trong một chủ đề (MAX+1). */
   async function nextLessonSortOrder(typeId) {
     const [[row]] = await pool.query(
       'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM lessons WHERE type_id = ?',
@@ -394,6 +495,7 @@ module.exports = function mountAdminCrud(app, pool) {
     return Number(row?.next_order) || 1;
   }
 
+  /** Đồng bộ contests.status theo start_time/end_time so với NOW(). */
   async function syncContestStatuses() {
     await pool.query(
       `UPDATE contests
@@ -406,6 +508,7 @@ module.exports = function mountAdminCrud(app, pool) {
     );
   }
 
+  /** Chuyển datetime contest sang timestamp ms; không hợp lệ → null. */
   function parseContestTimeMs(v) {
     if (v == null || v === '') return null;
     const d = v instanceof Date ? v : new Date(v);
@@ -413,6 +516,7 @@ module.exports = function mountAdminCrud(app, pool) {
     return Number.isNaN(t) ? null : t;
   }
 
+  /** Tính trạng thái cuộc thi: 0=kết thúc, 1=sắp diễn ra, 2=đang diễn ra. */
   function computeContestStatusByTime(startTime, endTime, nowMs = Date.now()) {
     const startMs = parseContestTimeMs(startTime);
     const endMs = parseContestTimeMs(endTime);
@@ -424,6 +528,7 @@ module.exports = function mountAdminCrud(app, pool) {
 
   const ALERT_SAMPLE_LIMIT = 5;
 
+  /** Parse query date=YYYY-MM-DD; không hợp lệ → null; không gửi → hôm nay. */
   function parseDateParam(raw) {
     if (!raw || typeof raw !== 'string') {
       const now = new Date();
@@ -439,6 +544,7 @@ module.exports = function mountAdminCrud(app, pool) {
     return dt;
   }
 
+  /** Định dạng Date → chuỗi YYYY-MM-DD. */
   function formatDateISO(d) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -446,38 +552,45 @@ module.exports = function mountAdminCrud(app, pool) {
     return `${y}-${m}-${day}`;
   }
 
+  /** Cộng n ngày vào Date (giữ local midnight). */
   function addDays(d, n) {
     const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     r.setDate(r.getDate() + n);
     return r;
   }
 
+  /** Thứ Hai đầu tuần (ISO) chứa ngày d. */
   function startOfWeekMonday(d) {
     const day = d.getDay();
     const diff = day === 0 ? -6 : 1 - day;
     return addDays(d, diff);
   }
 
+  /** Chủ Nhật cuối tuần chứa ngày d. */
   function endOfWeekSunday(d) {
     return addDays(startOfWeekMonday(d), 6);
   }
 
+  /** Định dạng ngày kiểu Việt Nam D/M/YYYY. */
   function formatDateVi(d) {
     return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
   }
 
+  /** Nhãn khoảng thời gian cho biểu đồ dashboard. */
   function formatRangeLabel(start, end) {
     return `${formatDateVi(start)} - ${formatDateVi(end)}`;
   }
 
   const VI_DAY_NAMES = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
+  /** Khóa ngày YYYY-MM-DD từ cột day của query SQL. */
   function rowDayKey(row) {
     const v = row.day;
     if (v instanceof Date) return formatDateISO(v);
     return String(v).slice(0, 10);
   }
 
+  /** Chia tháng thành 4 bucket tuần (ngày 1–7, 8–14, …) cho biểu đồ tháng. */
   function monthWeekBuckets(year, monthIndex) {
     const lastDay = new Date(year, monthIndex + 1, 0).getDate();
     return [
@@ -488,6 +601,7 @@ module.exports = function mountAdminCrud(app, pool) {
     ];
   }
 
+  /** Đếm số lần hoàn thành bài theo ngày trong khoảng [start, end). */
   async function fetchCompletionCountsByDay(rangeStart, rangeEndExclusive) {
     const [rows] = await pool.query(
       `SELECT DATE(completed_at) AS day, COUNT(*) AS count
@@ -512,6 +626,7 @@ module.exports = function mountAdminCrud(app, pool) {
     '#0891b2',
   ];
 
+  /** Đếm hoàn thành bài theo grade_id + ngày; trả map và tên khối. */
   async function fetchCompletionCountsByGradeAndDay(rangeStart, rangeEndExclusive) {
     const [rows] = await pool.query(
       `SELECT ulp.grade_id, g.name AS grade_name,
@@ -534,6 +649,7 @@ module.exports = function mountAdminCrud(app, pool) {
     return { map, gradeNames };
   }
 
+  /** Lấy nhãn tên khối lớp 1–5 cho biểu đồ performance. */
   async function fetchPerformanceGradeLabels() {
     const [rows] = await pool.query(
       'SELECT id, name FROM grades WHERE id IN (1, 2, 3, 4, 5) ORDER BY id ASC'
@@ -548,6 +664,7 @@ module.exports = function mountAdminCrud(app, pool) {
     return labels;
   }
 
+  /** Dựng mảng series (key, màu, label) cho từng khối lớp 1–5. */
   function buildGradeSeries(gradeLabels, gradeNames) {
     return PERFORMANCE_GRADE_IDS.map((gradeId, i) => ({
       key: String(gradeId),
@@ -557,6 +674,7 @@ module.exports = function mountAdminCrud(app, pool) {
     }));
   }
 
+  /** Dựng 7 cột (T2–CN) cho biểu đồ tuần — mỗi cột có segments theo khối. */
   function buildWeekTimeColumns(weekStart, dayCountMap, gradeSeries) {
     const columns = [];
     for (let i = 0; i < 7; i += 1) {
@@ -577,6 +695,7 @@ module.exports = function mountAdminCrud(app, pool) {
     return columns;
   }
 
+  /** Dựng cột theo tuần trong tháng cho biểu đồ performance tháng. */
   function buildMonthTimeColumns(buckets, year, monthIndex, dayCountMap, gradeSeries) {
     return buckets.map(({ weekNum, startDay, endDay }) => {
       const segments = gradeSeries.map((s) => {
@@ -601,6 +720,9 @@ module.exports = function mountAdminCrud(app, pool) {
   }
 
   // ---------- DASHBOARD ----------
+  /**
+   * GET /api/admin/dashboard — thống kê tổng quan: users, questions, cảnh báo nội dung, contest, hoạt động.
+   */
   app.get('/api/admin/dashboard', async (req, res) => {
     try {
       await syncContestStatuses();
@@ -840,6 +962,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * GET /api/admin/dashboard/performance — biểu đồ hoàn thành bài theo ngày/tuần/tháng (query: date, view).
+   */
   app.get('/api/admin/dashboard/performance', async (req, res) => {
     try {
       const mode = String(req.query.mode || 'week').toLowerCase();
@@ -913,10 +1038,15 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   // ---------- USERS ----------
+  /**
+   * GET /api/admin/users — danh sách user (phân trang, search); không trả password.
+   */
   app.get('/api/admin/users', async (req, res) => {
     try {
-      const limit = Math.min(Number(req.query.limit) || 200, 500);
-      const offset = Number(req.query.offset) || 0;
+      const { limit, offset } = clampLimitOffset(req.query.limit, req.query.offset, {
+        maxLimit: 500,
+        defaultLimit: 200,
+      });
       const rawSearch =
         req.query.search != null && String(req.query.search).trim() !== ''
           ? String(req.query.search).trim()
@@ -943,19 +1073,22 @@ module.exports = function mountAdminCrud(app, pool) {
       );
 
       const [rows] = await pool.query(
-        `SELECT * FROM users ${whereSql} ORDER BY id ASC LIMIT ? OFFSET ?`,
+        `SELECT ${USER_LIST_COLUMNS} FROM users ${whereSql} ORDER BY id ASC LIMIT ? OFFSET ?`,
         [...params, limit, offset]
       );
 
       res.json({
         count: Number(cnt),
-        data: rows.map(stripPassword),
+        data: rows,
       });
     } catch (err) {
       sendErr(res, err, 'Lỗi khi lấy danh sách user');
     }
   });
 
+  /**
+   * GET /api/admin/users/:id — chi tiết một user (không password).
+   */
   app.get('/api/admin/users/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -968,6 +1101,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/users — tạo user (username, password bắt buộc); 409 nếu trùng.
+   */
   app.post('/api/admin/users', async (req, res) => {
     try {
       const {
@@ -1009,6 +1145,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * PUT /api/admin/users/:id — cập nhật user (role, email, phone, khóa tài khoản, …).
+   */
   app.put('/api/admin/users/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1085,6 +1224,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * DELETE /api/admin/users/:id — xóa user; 409 nếu còn tham chiếu FK.
+   */
   app.delete('/api/admin/users/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1100,6 +1242,9 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   // ---------- GRADES ----------
+  /**
+   * GET /api/admin/grades — danh sách khối/lớp.
+   */
   app.get('/api/admin/grades', async (req, res) => {
     try {
       const [rows] = await pool.query('SELECT * FROM grades ORDER BY id');
@@ -1109,6 +1254,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * GET /api/admin/grades/:id — chi tiết một khối/lớp.
+   */
   app.get('/api/admin/grades/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1121,6 +1269,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/grades — tạo khối (id và name bắt buộc; id không AUTO_INCREMENT).
+   */
   app.post('/api/admin/grades', async (req, res) => {
     try {
       const { id, name, description, image } = req.body || {};
@@ -1142,6 +1293,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * PUT /api/admin/grades/:id — cập nhật name, description, image.
+   */
   app.put('/api/admin/grades/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1182,6 +1336,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * DELETE /api/admin/grades/:id — xóa khối; 409 nếu còn types/lessons tham chiếu.
+   */
   app.delete('/api/admin/grades/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1202,6 +1359,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/grades-images — upload ảnh khối (multipart field `image`); trả path /grades-images/….
+   */
   app.post('/api/admin/grades-images', uploadGradeImage.single('image'), (req, res) => {
     try {
       if (!req.file || !req.file.filename) {
@@ -1213,6 +1373,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/types-images — upload ảnh chủ đề; trả path /types-images/….
+   */
   app.post('/api/admin/types-images', uploadTypeImage.single('image'), (req, res) => {
     try {
       if (!req.file || !req.file.filename) {
@@ -1224,6 +1387,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/lessons-images — upload ảnh bài học; trả path /lessons-images/….
+   */
   app.post('/api/admin/lessons-images', uploadLessonImage.single('image'), (req, res) => {
     try {
       if (!req.file || !req.file.filename) {
@@ -1236,6 +1402,9 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   // ---------- TYPES (chủ đề / dạng toán) ----------
+  /**
+   * GET /api/admin/types — danh sách chủ đề (lọc grade_id tùy chọn).
+   */
   app.get('/api/admin/types', async (req, res) => {
     try {
       const gradeId = req.query.grade_id != null ? Number(req.query.grade_id) : null;
@@ -1253,6 +1422,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * GET /api/admin/types/:id — chi tiết một chủ đề.
+   */
   app.get('/api/admin/types/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1265,6 +1437,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/types — tạo chủ đề (grade_id, name); sort_order tự MAX+1 nếu không gửi.
+   */
   app.post('/api/admin/types', async (req, res) => {
     try {
       const { grade_id, name, description, image, sort_order: sortOrderRaw } = req.body || {};
@@ -1292,6 +1467,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * PUT /api/admin/types/:id — cập nhật chủ đề (name, image, sort_order, grade_id).
+   */
   app.put('/api/admin/types/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1339,6 +1517,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * DELETE /api/admin/types/:id — xóa chủ đề; 409 nếu còn lessons.
+   */
   app.delete('/api/admin/types/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1360,6 +1541,9 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   // ---------- LESSONS ----------
+  /**
+   * GET /api/admin/lessons — danh sách bài học (lọc type_id tùy chọn).
+   */
   app.get('/api/admin/lessons', async (req, res) => {
     try {
       const typeId = req.query.type_id != null ? Number(req.query.type_id) : null;
@@ -1377,6 +1561,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * GET /api/admin/lessons/:id — chi tiết một bài học.
+   */
   app.get('/api/admin/lessons/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1389,6 +1576,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/lessons — tạo bài học (type_id, name); status 0/1; sort_order tự MAX+1.
+   */
   app.post('/api/admin/lessons', async (req, res) => {
     try {
       const { type_id, name, description, status, image, sort_order: sortOrderRaw } =
@@ -1422,6 +1612,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * PUT /api/admin/lessons/:id — cập nhật bài học (name, image, status, sort_order).
+   */
   app.put('/api/admin/lessons/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1476,6 +1669,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * DELETE /api/admin/lessons/:id — xóa bài học; 409 nếu còn questions.
+   */
   app.delete('/api/admin/lessons/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1497,6 +1693,9 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   // ---------- EXAM TEMPLATES (exam_templates + exam_template_questions) ----------
+  /**
+   * GET /api/admin/exam-templates — danh sách mẫu đề thi (kèm question_count).
+   */
   app.get('/api/admin/exam-templates', async (req, res) => {
     try {
       const rawG = req.query.grade_id;
@@ -1534,6 +1733,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * GET /api/admin/exam-templates/:id — chi tiết mẫu đề + danh sách questions[].
+   */
   app.get('/api/admin/exam-templates/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1566,6 +1768,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/exam-templates — tạo mẫu đề (name, grade_id, duration_time, question_ids[]).
+   */
   app.post('/api/admin/exam-templates', async (req, res) => {
     const { name, grade_id, description, question_ids, status, duration_time } = req.body || {};
     const gid = Number(grade_id);
@@ -1643,6 +1848,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * PUT /api/admin/exam-templates/:id — cập nhật mẫu đề và thay toàn bộ danh sách câu hỏi.
+   */
   app.put('/api/admin/exam-templates/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1770,6 +1978,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * DELETE /api/admin/exam-templates/:id/questions/:questionId — gỡ một câu khỏi mẫu đề.
+   */
   app.delete('/api/admin/exam-templates/:id/questions/:questionId', async (req, res) => {
     const id = Number(req.params.id);
     const qid = Number(req.params.questionId);
@@ -1790,6 +2001,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * DELETE /api/admin/exam-templates/:id — xóa mẫu đề và liên kết exam_template_questions.
+   */
   app.delete('/api/admin/exam-templates/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1809,15 +2023,23 @@ module.exports = function mountAdminCrud(app, pool) {
   // ---------- CONTESTS (contests.grade_id + fallback exam_templates.grade_id)
   // status: 0 đã kết thúc, 1 đã lên lịch, 2 đang kích hoạt ----------
   const DEFAULT_CONTEST_DURATION_MINUTES = 30;
+  /**
+   * GET /api/admin/contests — danh sách cuộc thi (lọc grade_id; đồng bộ status theo thời gian).
+   */
   app.get('/api/admin/contests', async (req, res) => {
     try {
       await syncContestStatuses();
-      const rawG = req.query.grade_id;
-      const filterGradeId =
-        rawG != null && String(rawG).trim() !== '' ? Number(rawG) : null;
+      const filterGradeId = parsePositiveInt(req.query.grade_id);
+      if (
+        req.query.grade_id != null &&
+        String(req.query.grade_id).trim() !== '' &&
+        filterGradeId == null
+      ) {
+        return res.status(400).json({ message: 'grade_id không hợp lệ' });
+      }
       const where = [];
       const qParams = [];
-      if (filterGradeId != null && !Number.isNaN(filterGradeId) && filterGradeId > 0) {
+      if (filterGradeId != null) {
         where.push('COALESCE(c.grade_id, t.grade_id) = ?');
         qParams.push(filterGradeId);
       }
@@ -1839,6 +2061,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * GET /api/admin/contests/:id — chi tiết cuộc thi (template, thời gian, prize, …).
+   */
   app.get('/api/admin/contests/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1862,6 +2087,9 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   /** Top 3 điểm cao nhất trong một cuộc thi (user_contests). */
+  /**
+   * GET /api/admin/contests/:id/leaderboard — bảng xếp hạng cuộc thi (admin).
+   */
   app.get('/api/admin/contests/:id/leaderboard', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -1906,6 +2134,7 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /** Parse start_time/end_time từ body contest (Date hoặc chuỗi ISO). */
   function parseContestDateTime(v) {
     if (v == null || v === '') return null;
     const d = v instanceof Date ? v : new Date(v);
@@ -1913,6 +2142,9 @@ module.exports = function mountAdminCrud(app, pool) {
     return d;
   }
 
+  /**
+   * POST /api/admin/contests — tạo cuộc thi (template_id, start_time, end_time, prize, grade_id).
+   */
   app.post('/api/admin/contests', async (req, res) => {
     const body = req.body || {};
     const gradeId = Number(body.grade_id);
@@ -1991,6 +2223,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * PATCH /api/admin/contests/:id — cập nhật một phần cuộc thi (thời gian, prize, template, …).
+   */
   app.patch('/api/admin/contests/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -2142,6 +2377,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * DELETE /api/admin/contests/:id — xóa cuộc thi; 409 nếu còn user_contests.
+   */
   app.delete('/api/admin/contests/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -2157,6 +2395,9 @@ module.exports = function mountAdminCrud(app, pool) {
   });
 
   // ---------- ITEMS (cửa hàng / vật phẩm; ảnh: backend/items-images; DB link = /items-images/...) ----------
+  /**
+   * GET /api/admin/items — danh sách vật phẩm cửa hàng.
+   */
   app.get('/api/admin/items', async (req, res) => {
     try {
       const [rows] = await pool.query('SELECT * FROM items ORDER BY id ASC');
@@ -2166,6 +2407,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * GET /api/admin/items/:id — chi tiết một vật phẩm.
+   */
   app.get('/api/admin/items/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });
@@ -2178,6 +2422,10 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   });
 
+  /**
+   * POST /api/admin/items — tạo vật phẩm (name, require_score, ảnh bắt buộc; id = MAX(id)+1).
+   * Hỗ trợ multipart item_image hoặc item_image_path; effect_type 0/1/2.
+   */
   app.post(
     '/api/admin/items',
     (req, res, next) => {
@@ -2263,6 +2511,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   );
 
+  /**
+   * PUT /api/admin/items/:id — cập nhật vật phẩm (multipart hoặc JSON); xóa ảnh cũ khi đổi link.
+   */
   app.put(
     '/api/admin/items/:id',
     (req, res, next) => {
@@ -2418,6 +2669,9 @@ module.exports = function mountAdminCrud(app, pool) {
     }
   );
 
+  /**
+   * DELETE /api/admin/items/:id — xóa vật phẩm; 409 nếu user đã sở hữu (user_items).
+   */
   app.delete('/api/admin/items/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: 'id không hợp lệ' });

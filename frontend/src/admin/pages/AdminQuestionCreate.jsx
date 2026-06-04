@@ -261,8 +261,7 @@ export default function AdminQuestionCreate() {
         <div>
           <h1 style={styles.title}>Tạo câu hỏi</h1>
           <p style={styles.lead}>
-            Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và đáp án: A luôn
-            đúng, B/C/D mặc định sai; có thể thêm ô đúng hoặc hàng sai.
+            Chọn phân cấp (khối → chủ đề → bài học), nhập nội dung và đáp án.
           </p>
         </div>
       </header>

@@ -7,17 +7,22 @@ import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
-import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import { prepareSessionQuestions, getAnswerLabel } from "../lib/lessonQuestions";
+import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import {
+  getMcqAnswerVisualState,
+  useGameMcqSelection,
+} from "../lib/useGameMcqSelection";
 
 export default function Game1({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
   const user = payload?.user;
   const [current, setCurrent] = useState(0);
-  const [selected, setSelected] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [userScore, setUserScore] = useState(user?.score ?? 0);
   const [weekScore, setWeekScore] = useState(user?.week_score ?? 0);
   const [locked, setLocked] = useState(false);
+  const mcq = useGameMcqSelection();
   const [background, setBackground] = useState("game1-asker.png");
   const [correctCount, setCorrectCount] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
@@ -55,37 +60,21 @@ export default function Game1({ payload, onLessonComplete }) {
     }
   };
 
-  // xử lý trả lời: giờ nhận (answer, index)
-  function handleAnswer(answer, idx) {
+  function finishAnswer(isCorrect) {
     if (locked) return;
     setLocked(true);
-    setSelected(idx);
-
-    const isCorrect = !!answer.correct;
     const isLast = current + 1 >= gameQuestions.length;
     const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
-
-    // Phát âm thanh
     playSound(isCorrect);
-
-    if (isCorrect) {
-      setBackground("game1-winner.png");
-    } else {
-      setBackground("game1-loser.png");
-    }
-
+    setBackground(isCorrect ? "game1-winner.png" : "game1-loser.png");
     setCorrectCount(newCorrectCount);
-
     setTimeout(() => {
       if (!isLast) {
         setCurrent((c) => c + 1);
-        setSelected(null);
         setLocked(false);
         setBackground("game1-asker.png");
       } else {
         setShowResult(true);
-        setBackground(isCorrect ? "game1-winner.png" : "game1-loser.png");
-
         if (user?.id && newCorrectCount > 0) {
           incrementLessonScore(user.id, newCorrectCount, payload).then((data) => {
             if (data?.success) {
@@ -99,14 +88,28 @@ export default function Game1({ payload, onLessonComplete }) {
     }, 2000);
   }
 
+  function handleAnswer(answer, idx) {
+    if (locked || !currentQuestion) return;
+    const qId = currentQuestion.id;
+    if (mcq.isLocked(qId)) return;
+    const ok = mcq.toggleIndex(qId, currentQuestion.answers, idx);
+    if (ok !== null) finishAnswer(ok);
+  }
+
+  function confirmMultiAnswer() {
+    if (locked || !currentQuestion) return;
+    const ok = mcq.confirmPending(currentQuestion.id, currentQuestion.answers);
+    finishAnswer(ok);
+  }
+
   function resetGame() {
     setShuffleSeed((s) => s + 1);
     setCurrent(0);
-    setSelected(null);
     setShowResult(false);
     setLocked(false);
     setBackground("game1-asker.png");
     setCorrectCount(0);
+    mcq.resetAll();
     resetHints();
   }
 
@@ -379,20 +382,21 @@ export default function Game1({ payload, onLessonComplete }) {
           <div className="game1-answers-grid">
             {currentQuestion.answers.map((ans, i) => {
               if (getHiddenIndices(currentQuestion.id).has(i)) return null;
-              const chosen = selected === i;
+              const pending = mcq.getPendingIndices(currentQuestion.id);
+              const confirmed = mcq.getConfirmedIndices(currentQuestion.id);
+              const vis = getMcqAnswerVisualState(pending, confirmed, i, ans);
               let bg = "linear-gradient(135deg, rgba(54, 150, 230, 0.8), rgba(24, 122, 221, 0.8))";
               let borderColor = "#1e88e5";
-              if (selected !== null) {
-                if (chosen && ans.correct) {
+              if (!vis.locked && vis.isSelected) {
+                bg = "linear-gradient(135deg, #1565c0, #0d47a1)";
+                borderColor = "#ffd54f";
+              } else if (vis.locked) {
+                if (vis.tone === "correct" || vis.tone === "missed") {
                   bg = "linear-gradient(135deg, #4CAF50, #45a049)";
                   borderColor = "#4CAF50";
-                } else if (chosen && !ans.correct) {
+                } else if (vis.tone === "wrong") {
                   bg = "linear-gradient(135deg, #dc3545, #c82333)";
                   borderColor = "#dc3545";
-                } else if (ans.correct) {
-                  // hiển thị đáp án đúng cho người chơi biết
-                  bg = "linear-gradient(135deg, #4CAF50, #45a049)";
-                  borderColor = "#4CAF50";
                 } else {
                   bg = "linear-gradient(135deg, rgba(44, 62, 80, 0.8), rgba(52, 73, 94, 0.8))";
                   borderColor = "#7aacdfff";
@@ -426,13 +430,22 @@ export default function Game1({ payload, onLessonComplete }) {
                     minWidth: "25px",
                     textAlign: "center"
                   }}>
-                    {String.fromCharCode(65 + i)}.
+                    {getAnswerLabel(i)}.
                   </span>
                   {ans.text}
                 </button>
               );
             })}
           </div>
+
+          {mcq.isMultiCorrectQuestion(currentQuestion.answers) && !locked && (
+            <GameMcqConfirmBar
+              answers={currentQuestion.answers}
+              pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
+              disabled={locked}
+              onConfirm={confirmMultiAnswer}
+            />
+          )}
         </div>
     </div>
   );

@@ -116,6 +116,7 @@ export async function buildNextLessonPregamePayload(currentPayload) {
     type_id: typeId,
     lesson_id: nextLesson.id,
     randomize: true,
+    scope: "play",
   });
   const questions = res?.data ?? res;
   if (!Array.isArray(questions) || questions.length === 0) {

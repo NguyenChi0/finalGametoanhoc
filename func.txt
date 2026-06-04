@@ -1,0 +1,422 @@
+================================================================================
+  GAMETOANHOC — TỔNG HỢP CHỨC NĂNG & API
+  Cập nhật: 2026-06-01
+  Backend: backend/server.js + backend/server-admin.js (port mặc định 5050)
+  Frontend: frontend/src (Vite + React)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+1. TỔNG QUAN HỆ THỐNG
+────────────────────────────────────────────────────────────────────────────────
+
+Nền tảng học toán qua game cho học sinh (lớp/khối → chủ đề → bài học → câu hỏi).
+Người dùng chơi game, làm đề thi, thi đấu cuộc thi, tích điểm, mua vật phẩm.
+Admin quản lý nội dung, người dùng, đề thi, cuộc thi, cửa hàng.
+
+Kiến trúc:
+  • User API     → /api/*           (server.js)
+  • Admin API    → /api/admin/*     (server-admin.js, yêu cầu JWT + role admin)
+  • Ảnh tĩnh     → /questions-images, /items-images, /types-images,
+                   /lessons-images, /grades-images, /music
+
+Xác thực:
+  • Header: Authorization: Bearer <JWT>
+  • role = 1 → admin
+  • POST /api/login, POST /api/register, GET /api/auth/me
+  • Tích hợp Kilovia: POST /api/external-login-child (maTreEm)
+
+────────────────────────────────────────────────────────────────────────────────
+2. CẤU TRÚC CÂU HỎI (answers_json — hệ thống mới)
+────────────────────────────────────────────────────────────────────────────────
+
+Lưu trữ: một cột DB `answers_json` (không còn cột legacy answer1..4).
+
+API trả về mảng answers[]:
+  { id, text, image, correct }
+
+Giới hạn (backend/lib/questionAnswers.js):
+  • Tối đa 3 đáp án ĐÚNG  (MAX_CORRECT_ANSWERS = 3)
+  • Tối đa 3 đáp án SAI   (MAX_WRONG_ANSWERS = 3)
+  • Tổng tối đa 6 đáp án
+
+Chấm điểm (full_set — frontend/src/users/lib/questionScoring.js):
+  • isAnswerSetFullyCorrect(question, selectedIds)
+  • Đúng khi chọn ĐỦ và CHỈ các đáp án có correct=true
+  • Áp dụng: game1–11, đề thi, cuộc thi (QuestionAnswerPicker)
+
+Scope play (GET /api/questions?scope=play):
+  • Payload nhẹ: id, question_text, question_image, answers[] (không lộ correct cho client? — 
+    thực tế answers vẫn có trường correct; game dùng phía client để chấm)
+  • Dùng khi load câu hỏi cho game/bài học
+
+────────────────────────────────────────────────────────────────────────────────
+3. TRANG NGƯỜI DÙNG — ROUTES (frontend/src/App.jsx)
+────────────────────────────────────────────────────────────────────────────────
+
+/                     Home — trang chủ, chọn khối/lớp
+/lessons              LessonPage — danh sách bài học theo chủ đề, chọn game
+/lesson-review        LessonReviewSessionPage — ôn tập câu hỏi (⚠ còn single-select cũ)
+/play-setup           PreGameSetUp — cấu hình trước khi chơi (số câu, game, nhạc…)
+/game/:gameId         GamePage — wrapper game1..game11
+/login                Login
+/register             Register
+/forgot-password      ForgotPassword (UI; chưa có API reset mật khẩu backend)
+/profile              Profile — hồ sơ người dùng hiện tại
+/profile/:username    Profile — xem hồ sơ (chỉ bản thân hoặc admin)
+/shop                 Shop — cửa hàng vật phẩm
+/exam                 Exam — danh sách đề thi
+/exam/:examId         ExamDetailPage — làm đề (multi-select full_set)
+/contest              Contest — danh sách cuộc thi
+/contest/:contestId   ContestDetailPage — làm bài & nộp điểm cuộc thi
+/admin/*              AdminShell — khu vực quản trị
+
+────────────────────────────────────────────────────────────────────────────────
+4. TRANG ADMIN — ROUTES (frontend/src/admin/AdminShell.jsx)
+────────────────────────────────────────────────────────────────────────────────
+
+/admin                        Dashboard — thống kê tổng quan
+/admin/questions              Danh sách câu hỏi
+/admin/questions/new          Tạo câu hỏi (AdminMcqAnswersEditor: 3 đúng + 3 sai)
+/admin/questions/edit         Sửa câu hỏi
+/admin/grades                 Quản lý khối/lớp
+/admin/math-types             Quản lý chủ đề (types) + bài học (lessons)
+/admin/exams                  Danh sách mẫu đề thi
+/admin/exams/new              Tạo mẫu đề
+/admin/exams/edit             Sửa mẫu đề + gán câu hỏi
+/admin/contest                Quản lý cuộc thi
+/admin/users                  Quản lý người dùng
+/admin/items                  Quản lý vật phẩm cửa hàng
+
+────────────────────────────────────────────────────────────────────────────────
+5. GAME (game1 – game11)
+────────────────────────────────────────────────────────────────────────────────
+
+Chung:
+  • useGameMcqSelection — chọn đáp án (single tap hoặc multi toggle + confirm)
+  • GameMcqConfirmBar — nút xác nhận khi multi-select
+  • normalizePlayQuestion / prepareSessionQuestions (lessonQuestions.js)
+  • GET /api/questions?scope=play&lesson_id=…&random=1&limit=…
+
+game1   Quiz đối đáp (winner/loser)
+game2   Ruồi + nông dân (kinetic, overlay chọn đáp án)
+game3   Bóng bay + phi tiêu
+game4   Runner nhiều làn (2–6 đáp án động; single=collision, multi=overlay)
+game5   Cá + đáp án dưới nước
+game6   Hoa quả rơi
+game7   Cửa / platform (multi + confirm)
+game8   Phiếu bài tập (worksheet)
+game9   Nhảy qua hàng rào
+game10  Bắn phi tiêu
+game11  Quiz (tương tự game1)
+
+Sau game: POST /api/lesson-progress, POST /api/score/increment
+
+────────────────────────────────────────────────────────────────────────────────
+6. CHỨC NĂNG THEO MODULE
+────────────────────────────────────────────────────────────────────────────────
+
+[Xác thực & tài khoản]
+  • Đăng ký / đăng nhập / phiên JWT
+  • Kilovia external-login-child (tự tạo user kid_<maTreEm>)
+  • Hồ sơ: điểm tổng, điểm tuần, rank, vật phẩm sở hữu
+
+[Nội dung học]
+  • Phân cấp: grades → types → lessons
+  • Câu hỏi MCQ có ảnh, tối đa 3+3 đáp án
+  • Tiến độ bài học: sao, số lần làm, game đã chơi
+
+[Đề thi & cuộc thi]
+  • Mẫu đề (exam_templates) + gán câu hỏi
+  • User làm đề có giới hạn thời gian (duration_time)
+  • Cuộc thi gắn template, có lịch start/end, bảng xếp hạng, nộp điểm 1 lần
+  • Tự phát thưởng top 3 khi cuộc thi kết thúc (prize → users.score)
+
+[Cửa hàng & vật phẩm]
+  • Mua bằng điểm (require_score)
+  • Hiệu ứng: bonus điểm bài học, gợi ý câu hỏi (item-effects)
+
+[Bảng xếp hạng]
+  • /api/leaderboard/all — tổng điểm
+  • /api/leaderboard/week — điểm tuần (tự reset sang tuần mới)
+
+[Admin]
+  • Dashboard + performance
+  • CRUD users, grades, types, lessons, questions, exam-templates, contests, items
+  • Upload ảnh khối/chủ đề/bài/câu hỏi/vật phẩm
+
+────────────────────────────────────────────────────────────────────────────────
+7. API NGƯỜI DÙNG — server.js
+────────────────────────────────────────────────────────────────────────────────
+
+Auth không cần token trừ khi ghi (auth):
+  (none)  = công khai
+  (auth)  = Bearer JWT
+  (admin) = Bearer JWT + role admin
+
+─── XÁC THỰC ───────────────────────────────────────────────────────────────
+
+POST   /api/register                    (none)
+       Body: { username, password, email?, phone? }
+       → Tạo tài khoản mới
+
+POST   /api/login                       (none)
+       Body: { username, password }
+       → { user, token }
+
+GET    /api/auth/me                     (auth)
+       → User hiện tại từ DB
+
+POST   /api/external-login-child        (none)
+       Body: { maTreEm, fullname?, school? }
+       → Kilovia SSO: tìm/tạo user, trả token
+
+─── PHÂN CẤP NỘI DUNG ───────────────────────────────────────────────────────
+
+GET    /api/grades                      (none)
+       → Danh sách khối/lớp { id, name, image }
+
+GET    /api/hierarchy-labels            (none)
+       → Nhãn UI phân cấp (grade/type/lesson labels)
+
+GET    /api/types/:grade_id             (none)
+       → Chủ đề theo khối
+
+GET    /api/lessons/:type_id            (none)
+GET    /api/operations/:type_id         (none)  — alias cùng handler
+       → Bài học theo chủ đề
+
+─── CÂU HỎI ────────────────────────────────────────────────────────────────
+
+GET    /api/questions                   (none)
+       Query: grade_id, type_id, lesson_id | operation_id,
+              limit, offset, random=0|1, search, scope=play
+       • scope=play → payload game (nhẹ)
+       • không scope → list admin-style (hierarchy_path, in_exam_template)
+       → { count, total, data[] }
+
+GET    /api/questions/:id/usage         (admin)
+       → Câu hỏi đang dùng trong mẫu đề nào
+
+GET    /api/questions/:id               (none)
+       → Chi tiết 1 câu (answers[])
+
+POST   /api/questions                   (admin)
+       Body: JSON hoặc multipart (question_image)
+       • grade_id, type_id, lesson_id, question_text
+       • answers[] hoặc answers_json — tối đa 3 đúng + 3 sai
+       → Tạo câu hỏi
+
+PUT    /api/questions/:id               (admin)
+       Body: tương tự POST
+       → Cập nhật câu hỏi
+
+DELETE /api/questions/:id               (admin)
+       → Xóa câu hỏi
+
+─── TIẾN ĐỘ BÀI HỌC ──────────────────────────────────────────────────────
+
+GET    /api/lesson-progress/completed   (auth)
+       → Danh sách bài đã hoàn thành
+
+GET    /api/lesson-progress/last        (auth)
+       → Bài học làm gần nhất
+
+GET    /api/lesson-progress             (auth)
+       Query: lessonId?
+       → Tiến độ theo bài hoặc tất cả
+
+POST   /api/lesson-progress             (auth)
+       Body: { lessonId, gradeId, typeId, correctCount, totalCount, gameId? }
+       → Lưu sao / số câu đúng sau session game
+
+─── ĐIỂM & HỒ SƠ ───────────────────────────────────────────────────────────
+
+POST   /api/score/increment             (auth)
+       Body: { userId?, delta=1 }
+       → Cộng score + week_score (admin có thể chỉ userId khác)
+
+GET    /api/user/:username              (auth — self hoặc admin)
+       → Hồ sơ đầy đủ + rank tuần
+
+─── BẢNG XẾP HẠNG ──────────────────────────────────────────────────────────
+
+GET    /api/leaderboard/all             (none)
+       → Top điểm tổng
+
+GET    /api/leaderboard/week            (none)
+       → Top điểm tuần
+
+─── ĐỀ THI (exam_templates — phía user) ────────────────────────────────────
+
+GET    /api/exams                       (auth)
+       Query: grade_id?, page, page_size
+       → Danh sách đề đang active (status=1), phân trang
+
+GET    /api/exams/:id                   (auth)
+       → Chi tiết đề + questions[] (answers[])
+
+─── CUỘC THI ────────────────────────────────────────────────────────────────
+
+GET    /api/contests                    (auth)
+       → Danh sách cuộc thi (trạng thái theo thời gian)
+
+GET    /api/contests/:id                (auth)
+       → Chi tiết + câu hỏi từ template
+
+GET    /api/contests/:id/leaderboard    (auth)
+       → BXH cuộc thi
+
+POST   /api/contests/:id/submit         (auth)
+       Body: { score, times }  — times = giây làm bài
+       → Nộp kết quả (1 lần/user/contest)
+
+─── CỬA HÀNG ────────────────────────────────────────────────────────────────
+
+GET    /api/items                       (none)
+       → Danh sách vật phẩm
+
+GET    /api/item-effects                (auth)
+       → Hiệu ứng vật phẩm user đang có
+
+POST   /api/buy                         (auth)
+       Body: { itemId }
+       → Mua vật phẩm bằng điểm
+
+GET    /api/my-items/:userId            (auth)
+       → Vật phẩm của user
+
+────────────────────────────────────────────────────────────────────────────────
+8. API ADMIN — server-admin.js
+────────────────────────────────────────────────────────────────────────────────
+
+Tất cả route dưới /api/admin/* yêu cầu:
+  • Authorization: Bearer <JWT>
+  • users.role = 1 (admin)
+
+─── DASHBOARD ──────────────────────────────────────────────────────────────
+
+GET    /api/admin/dashboard
+       → Thống kê: users, questions, lessons thiếu câu, exams, contests…
+
+GET    /api/admin/dashboard/performance
+       → Số liệu hiệu suất / tải hệ thống
+
+─── USERS ───────────────────────────────────────────────────────────────────
+
+GET    /api/admin/users
+GET    /api/admin/users/:id
+POST   /api/admin/users
+PUT    /api/admin/users/:id
+DELETE /api/admin/users/:id
+
+─── GRADES (khối/lớp) ──────────────────────────────────────────────────────
+
+GET    /api/admin/grades
+GET    /api/admin/grades/:id
+POST   /api/admin/grades
+PUT    /api/admin/grades/:id
+DELETE /api/admin/grades/:id
+POST   /api/admin/grades-images         multipart: image → /grades-images/…
+
+─── TYPES (chủ đề) ─────────────────────────────────────────────────────────
+
+GET    /api/admin/types
+GET    /api/admin/types/:id
+POST   /api/admin/types
+PUT    /api/admin/types/:id
+DELETE /api/admin/types/:id
+POST   /api/admin/types-images          multipart: image → /types-images/…
+
+─── LESSONS (bài học) ───────────────────────────────────────────────────────
+
+GET    /api/admin/lessons
+GET    /api/admin/lessons/:id
+POST   /api/admin/lessons
+PUT    /api/admin/lessons/:id
+DELETE /api/admin/lessons/:id
+POST   /api/admin/lessons-images        multipart: image → /lessons-images/…
+
+─── MẪU ĐỀ THI (exam_templates) ────────────────────────────────────────────
+
+GET    /api/admin/exam-templates
+GET    /api/admin/exam-templates/:id
+POST   /api/admin/exam-templates
+       Body: name, grade_id, description, duration_time, question_ids[], …
+PUT    /api/admin/exam-templates/:id
+DELETE /api/admin/exam-templates/:id
+DELETE /api/admin/exam-templates/:id/questions/:questionId
+       → Gỡ 1 câu khỏi mẫu đề
+
+─── CUỘC THI ────────────────────────────────────────────────────────────────
+
+GET    /api/admin/contests
+GET    /api/admin/contests/:id
+GET    /api/admin/contests/:id/leaderboard
+POST   /api/admin/contests
+PATCH  /api/admin/contests/:id
+DELETE /api/admin/contests/:id
+
+─── VẬT PHẨM (items) ───────────────────────────────────────────────────────
+
+GET    /api/admin/items
+GET    /api/admin/items/:id
+POST   /api/admin/items                 JSON hoặc multipart (item_image)
+PUT    /api/admin/items/:id             JSON hoặc multipart
+DELETE /api/admin/items/:id
+
+────────────────────────────────────────────────────────────────────────────────
+9. STATIC & TÀI NGUYÊN
+────────────────────────────────────────────────────────────────────────────────
+
+GET /music/*              Nhạc nền game
+GET /questions-images/*   Ảnh câu hỏi / đáp án
+GET /items-images/*       Ảnh vật phẩm
+GET /types-images/*       Ảnh chủ đề
+GET /lessons-images/*     Ảnh bài học
+GET /grades-images/*      Ảnh khối/lớp
+
+Frontend build: frontend/dist (Vite)
+  • game-images/, game-noises/, component-images/, fonts/, …
+
+────────────────────────────────────────────────────────────────────────────────
+10. THƯ VIỆN FRONTEND CHÍNH
+────────────────────────────────────────────────────────────────────────────────
+
+frontend/src/users/lib/questionScoring.js     isAnswerSetFullyCorrect (full_set)
+frontend/src/users/lib/useGameMcqSelection.js Hook chọn đáp án game
+frontend/src/users/lib/lessonQuestions.js     Chuẩn hóa câu hỏi play/review
+frontend/src/users/components/GameMcqConfirmBar.jsx
+frontend/src/users/components/QuestionAnswerPicker.jsx  Exam/contest
+frontend/src/admin/components/AdminMcqAnswersEditor.jsx   Form 3+3 admin
+
+backend/lib/questionAnswers.js                buildAnswers, validate, migrate
+backend/lib/queryParams.js                    parseScope, clampLimitOffset
+
+────────────────────────────────────────────────────────────────────────────────
+11. GHI CHÚ TƯƠNG THÍCH & VIỆC CẦN LÀM
+────────────────────────────────────────────────────────────────────────────────
+
+✓ Đã cập nhật: backend answers_json, admin 3+3, game1–11, exam, contest
+⚠ LessonReviewSessionPage — vẫn single-select cũ, chưa full_set multi
+⚠ ForgotPassword — chỉ UI, không có API backend
+⚠ game8 — submit multi chưa confirm có thể không tính câu
+⚠ game7 — phím Enter chưa gọi confirm
+
+Migration DB (nếu chưa chạy):
+  backend/migrations/20260601_questions_answers_json.sql
+  backend/migrations/20260602_questions_drop_legacy_answer_columns.sql
+  backend/scripts/migrate-questions-answers-json.js
+
+Khởi động backend sau migrate — log phải hiện:
+  "Câu hỏi MCQ: tối đa 3 đáp án đúng + 3 đáp án sai"
+
+================================================================================
+  TỔNG SỐ API
+================================================================================
+
+User API (server.js):     33 endpoint
+Admin API (server-admin):  42 endpoint
+Static mounts:              6 path
+Tổng REST:                 75 route
+
+================================================================================

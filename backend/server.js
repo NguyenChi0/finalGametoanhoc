@@ -11,7 +11,21 @@ const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
 const mountAdminCrud = require('./server-admin');
-const { buildAnswers, answersTextsToJson } = require('./lib/questionAnswers');
+const {
+  buildAnswers,
+  answersTextsToJson,
+  MAX_CORRECT_ANSWERS,
+  MAX_WRONG_ANSWERS,
+} = require('./lib/questionAnswers');
+const {
+  parsePositiveInt,
+  clampLimitOffset,
+  parseScope,
+} = require('./lib/queryParams');
+
+/** Cột SELECT cho API — tránh SELECT *. */
+const QUESTION_PLAY_SELECT = `q.id, q.question_text, q.question_image, q.answers_json`;
+const QUESTION_DETAIL_SELECT = `q.id, q.grade_id, q.type_id, q.lesson_id, q.question_text, q.question_image, q.answers_json`;
 
 const QUESTIONS_IMAGES_DIR = path.join(__dirname, 'questions-images');
 fs.mkdirSync(QUESTIONS_IMAGES_DIR, { recursive: true });
@@ -293,6 +307,56 @@ app.get('/api/operations/:type_id', lessonsByTypeHandler);
 
 // 4) Lấy câu hỏi theo bộ lọc: grade_id, type_id, lesson_id
 //    (lesson_id thay operation_id; vẫn chấp nhận operation_id trong query để tương thích)
+function trimName(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
+
+function mapQuestionPlayRow(r) {
+  return {
+    id: r.id,
+    question_text: r.question_text,
+    question_image: r.question_image,
+    answers: buildAnswers(r),
+  };
+}
+
+function mapQuestionAdminListRow(r) {
+  const grade_name = trimName(r.grade_name);
+  const type_name = trimName(r.type_name);
+  const lesson_name = trimName(r.lesson_name);
+  const hierarchy_path =
+    trimName(r.hierarchy_path) ||
+    [grade_name, type_name, lesson_name].filter(Boolean).join(' > ') ||
+    null;
+  return {
+    id: r.id,
+    grade_id: r.grade_id,
+    type_id: r.type_id,
+    lesson_id: r.lesson_id,
+    grade_name,
+    type_name,
+    lesson_name,
+    hierarchy_path,
+    question_text: r.question_text,
+    question_image: r.question_image,
+    answers: buildAnswers(r),
+    in_exam_template: !!r.in_exam_template,
+  };
+}
+
+function addQuestionFilter(where, params, column, raw, label) {
+  if (raw == null || raw === '') return null;
+  const id = parsePositiveInt(raw);
+  if (id == null) {
+    return `${label} không hợp lệ`;
+  }
+  where.push(`${column} = ?`);
+  params.push(id);
+  return null;
+}
+
 app.get('/api/questions', async (req, res) => {
   try {
     const {
@@ -300,44 +364,55 @@ app.get('/api/questions', async (req, res) => {
       type_id,
       lesson_id,
       operation_id,
-      limit = 200,
-      offset = 0,
+      limit: limitRaw,
+      offset: offsetRaw,
       random = '0',
       search: searchRaw,
+      scope: scopeRaw,
     } = req.query;
-    const lessonFilter = lesson_id ?? operation_id;
+
+    if (scopeRaw != null && String(scopeRaw).trim() !== '' && parseScope(scopeRaw) === null) {
+      return res.status(400).json({ message: 'scope không hợp lệ (chỉ chấp nhận play)' });
+    }
+    const isPlayScope = parseScope(scopeRaw) === 'play';
+    const lessonFilterRaw = lesson_id ?? operation_id;
     const search =
       searchRaw != null && String(searchRaw).trim() !== ''
         ? String(searchRaw).trim()
         : '';
 
     const where = [];
-    const params = [];
+    const filterParams = [];
 
     if (search) {
       where.push('(q.question_text LIKE ? OR CAST(q.id AS CHAR) LIKE ?)');
       const like = `%${search}%`;
-      params.push(like, like);
+      filterParams.push(like, like);
     }
 
-    if (grade_id) {
-      where.push('q.grade_id = ?');
-      params.push(Number(grade_id));
-    }
-    if (type_id) {
-      where.push('q.type_id = ?');
-      params.push(Number(type_id));
-    }
-    if (lessonFilter) {
-      where.push('q.lesson_id = ?');
-      params.push(Number(lessonFilter));
+    const filterErr =
+      addQuestionFilter(where, filterParams, 'q.grade_id', grade_id, 'grade_id') ||
+      addQuestionFilter(where, filterParams, 'q.type_id', type_id, 'type_id') ||
+      addQuestionFilter(where, filterParams, 'q.lesson_id', lessonFilterRaw, 'lesson_id');
+    if (filterErr) {
+      return res.status(400).json({ message: filterErr });
     }
 
-    const countSql = `SELECT COUNT(*) AS total FROM questions q${where.length ? ' WHERE ' + where.join(' AND ') : ''}`;
-    const [[countRow]] = await pool.query(countSql, [...params]);
-    const totalMatching = Number(countRow?.total ?? 0);
+    const { limit, offset } = clampLimitOffset(limitRaw, offsetRaw, {
+      maxLimit: isPlayScope ? 200 : 500,
+      defaultLimit: 200,
+    });
 
-    let sql = `
+    const whereClause = where.length ? ' WHERE ' + where.join(' AND ') : '';
+    const countSql = `SELECT COUNT(*) AS total FROM questions q${whereClause}`;
+
+    let sql;
+    if (isPlayScope) {
+      sql = `
+  SELECT ${QUESTION_PLAY_SELECT}
+  FROM questions q`;
+    } else {
+      sql = `
   SELECT q.id, q.grade_id, q.type_id, q.lesson_id,
          q.question_text, q.question_image,
          q.answers_json,
@@ -347,15 +422,17 @@ app.get('/api/questions', async (req, res) => {
            NULLIF(TRIM(t.name), ''),
            NULLIF(TRIM(l.name), '')
          )) AS hierarchy_path,
-         (SELECT COUNT(*) FROM exam_template_questions etq WHERE etq.question_id = q.id) AS exam_template_ref_count
+         EXISTS (
+           SELECT 1 FROM exam_template_questions etq
+           WHERE etq.question_id = q.id
+         ) AS in_exam_template
   FROM questions q
   LEFT JOIN grades g ON g.id = q.grade_id
   LEFT JOIN types t ON t.id = q.type_id
-  LEFT JOIN lessons l ON l.id = q.lesson_id
-`;
-    if (where.length) sql += ' WHERE ' + where.join(' AND ');
+  LEFT JOIN lessons l ON l.id = q.lesson_id`;
+    }
+    sql += whereClause;
 
-    // random option
     if (random === '1') {
       sql += ' ORDER BY RAND()';
     } else {
@@ -363,61 +440,18 @@ app.get('/api/questions', async (req, res) => {
     }
 
     sql += ' LIMIT ? OFFSET ?';
-    params.push(Number(limit));
-    params.push(Number(offset));
+    const selectParams = [...filterParams, limit, offset];
 
-    const [rows] = await pool.query(sql, params);
-
-    const asStr = (v) => {
-      if (v == null) return null;
-      const s = String(v).trim();
-      return s === '' ? null : s;
-    };
-
-    /** Tra cứu tên theo id — phòng JOIN không ra tên (MySQL/collation/phiên bản) nhưng FK vẫn đúng. */
-    const [[allGrades], [allTypes], [allLessons]] = await Promise.all([
-      pool.query('SELECT id, name FROM grades'),
-      pool.query('SELECT id, name FROM types'),
-      pool.query('SELECT id, name FROM lessons'),
+    const [countRes, selectRes] = await Promise.all([
+      pool.query(countSql, filterParams),
+      pool.query(sql, selectParams),
     ]);
-    const gradeNameById = new Map(
-      allGrades.map((g) => [Number(g.id), asStr(g.name)])
-    );
-    const typeNameById = new Map(
-      allTypes.map((t) => [Number(t.id), asStr(t.name)])
-    );
-    const lessonNameById = new Map(
-      allLessons.map((l) => [Number(l.id), asStr(l.name)])
-    );
+    const rows = selectRes[0];
+    const totalMatching = Number(countRes[0]?.[0]?.total ?? 0);
 
-    // map answers to array for easier frontend use
-    const mapped = rows.map((r) => {
-      const grade_name =
-        asStr(r.grade_name) || gradeNameById.get(Number(r.grade_id)) || null;
-      const type_name =
-        asStr(r.type_name) || typeNameById.get(Number(r.type_id)) || null;
-      const lesson_name =
-        asStr(r.lesson_name) || lessonNameById.get(Number(r.lesson_id)) || null;
-      const hierarchyParts = [grade_name, type_name, lesson_name].filter(Boolean);
-      const hierarchy_path =
-        hierarchyParts.length > 0
-          ? hierarchyParts.join(' > ')
-          : asStr(r.hierarchy_path);
-      return {
-        id: r.id,
-        grade_id: r.grade_id,
-        type_id: r.type_id,
-        lesson_id: r.lesson_id,
-        grade_name,
-        type_name,
-        lesson_name,
-        hierarchy_path,
-        question_text: r.question_text,
-        question_image: r.question_image,
-        answers: buildAnswers(r),
-        in_exam_template: Number(r.exam_template_ref_count) > 0,
-      };
-    });
+    const mapped = isPlayScope
+      ? rows.map(mapQuestionPlayRow)
+      : rows.map(mapQuestionAdminListRow);
 
     res.json({
       count: mapped.length,
@@ -492,7 +526,7 @@ app.get('/api/questions/:id', async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM questions WHERE id = ? LIMIT 1`,
+      `SELECT ${QUESTION_DETAIL_SELECT} FROM questions q WHERE q.id = ? LIMIT 1`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Không tìm thấy question' });
@@ -514,7 +548,7 @@ app.get('/api/questions/:id', async (req, res) => {
 });
 
 /**
- * POST /api/questions — tạo câu hỏi trắc nghiệm 2..4 đáp án
+ * POST /api/questions — trắc nghiệm: tối đa 3 đúng + 3 sai (tối thiểu 2 đáp án)
  * multipart/form-data: grade_id, type_id, lesson_id, question_text, answers (JSON string),
  *   correct_indices (JSON mảng) hoặc correct_index (một số — tương thích cũ),
  *   optional file field question_image, optional text question_image_path (khi không gửi file)
@@ -741,6 +775,7 @@ async function updateQuestionRow(req, res) {
 app.post(
   '/api/questions',
   authenticateToken,
+  requireAdminRole,
   (req, res, next) => {
     const ct = (req.headers['content-type'] || '').toLowerCase();
     if (ct.includes('multipart/form-data')) {
@@ -775,6 +810,7 @@ app.post(
 app.put(
   '/api/questions/:id',
   authenticateToken,
+  requireAdminRole,
   (req, res, next) => {
     const ct = (req.headers['content-type'] || '').toLowerCase();
     if (ct.includes('multipart/form-data')) {
@@ -1332,7 +1368,7 @@ app.get('/api/exams/:id', authenticateToken, async (req, res) => {
     }
 
     const [qrows] = await pool.query(
-      `SELECT q.*
+      `SELECT ${QUESTION_DETAIL_SELECT}
        FROM exam_template_questions etq
        JOIN questions q ON q.id = etq.question_id
        WHERE etq.template_id = ?
@@ -1580,7 +1616,7 @@ app.get('/api/contests/:id', authenticateToken, async (req, res) => {
     const row = rows[0];
     const templateId = row.template_id;
     const [qrows] = await pool.query(
-      `SELECT q.*
+      `SELECT ${QUESTION_DETAIL_SELECT}
        FROM exam_template_questions etq
        JOIN questions q ON q.id = etq.question_id
        WHERE etq.template_id = ?
@@ -1861,7 +1897,7 @@ app.get('/api/my-items/:userId', authenticateToken, async (req, res) => {
 // API: EXTERNAL LOGIN CHILD (KILOVIA)
 // ==========================
 app.post('/api/external-login-child', async (req, res) => {
-  const { maTreEm, fullname, school } = req.body || {};
+  const { maTreEm } = req.body || {};
 
   if (!maTreEm) {
     return res.status(400).json({ message: 'maTreEm is required' });
@@ -1881,12 +1917,10 @@ app.post('/api/external-login-child', async (req, res) => {
     // Dùng chuỗi cố định cho password, không dùng để đăng nhập thủ công
     const hashed = bcrypt.hashSync(`EXTERNAL_${maTreEm}`, 8);
 
-    const sql = 'INSERT INTO users (username, password, fullname, school, ma_tre_em) VALUES (?, ?, ?, ?, ?)';
+    const sql = 'INSERT INTO users (username, password, ma_tre_em) VALUES (?, ?, ?)';
     const [result] = await pool.execute(sql, [
       username,
       hashed,
-      fullname || null,
-      school || null,
       maTreEm,
     ]);
 
@@ -1956,4 +1990,7 @@ const HOST = '0.0.0.0'; // Cho phép truy cập từ mọi địa chỉ IP (LAN,
 
 app.listen(PORT, HOST, () => {
   console.log(`🚀 Server đang chạy tại http://${HOST}:${PORT}`);
+  console.log(
+    `   Câu hỏi MCQ: tối đa ${MAX_CORRECT_ANSWERS} đáp án đúng + ${MAX_WRONG_ANSWERS} đáp án sai`
+  );
 });
