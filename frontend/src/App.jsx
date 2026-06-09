@@ -40,10 +40,12 @@ function PageFallback() {
 function AppShell() {
   const location = useLocation();
   const hideUserNavbar = location.pathname.startsWith("/admin");
+  const isHome = location.pathname === "/";
 
   return (
     <>
       {!hideUserNavbar && <Navbar />}
+      <div className={hideUserNavbar ? undefined : `app-shell${isHome ? " app-shell--home" : ""}`}>
       <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -64,6 +66,7 @@ function AppShell() {
           <Route path="/admin/*" element={<AdminShell />} />
         </Routes>
       </Suspense>
+      </div>
       {!hideUserNavbar && <ScrollToTopButton />}
     </>
   );

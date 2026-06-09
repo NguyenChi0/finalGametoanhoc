@@ -11,6 +11,7 @@ import {
   writeGradePillFilter,
 } from "../../lib/gradePillFilterStorage";
 import "../styles/userCtaFlashShine.css";
+import NumberPagination from "../components/NumberPagination";
 
 const PAGE_SIZE = 5;
 
@@ -435,26 +436,15 @@ export default function Contest() {
               <p className="contest-status">{copy.empty}</p>
             )}
 
-            {!loading && !error && contests.length > 0 && (
-              <div className="contest-pagination">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  Trang trước
-                </button>
-                <span>
-                  Trang {page}/{totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                >
-                  Trang sau
-                </button>
-              </div>
+            {!loading && !error && contests.length > 0 && totalPages > 0 && (
+              <NumberPagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                ariaLabel="Phân trang danh sách cuộc thi"
+                accentColor={CL.periwinkle}
+                inkColor={CL.ink}
+              />
             )}
           </section>
         </main>
@@ -864,44 +854,6 @@ export default function Contest() {
           cursor: not-allowed;
           transform: none;
           filter: none;
-        }
-        .contest-pagination {
-          margin-top: 24px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
-        .contest-pagination button {
-          border: 2px solid ${CL.periwinkle};
-          background: #fff;
-          color: ${CL.periwinkle};
-          border-radius: 999px;
-          padding: 9px 18px;
-          cursor: pointer;
-          font-weight: 700;
-          font-family: inherit;
-          transition: background 0.2s, color 0.2s, transform 0.15s;
-        }
-        .contest-pagination button:hover:not(:disabled) {
-          background: ${CL.periwinkle};
-          color: #fff;
-          transform: translateY(-1px);
-        }
-        .contest-pagination button:disabled {
-          opacity: 0.45;
-          cursor: not-allowed;
-          border-color: #ccc;
-          color: #999;
-        }
-        .contest-pagination span {
-          color: ${CL.ink};
-          font-size: 14px;
-          font-weight: 600;
-          padding: 6px 14px;
-          border-radius: 999px;
-          background: rgba(146, 185, 227, 0.3);
         }
         @media (max-width: 768px) {
           .contest-panel {

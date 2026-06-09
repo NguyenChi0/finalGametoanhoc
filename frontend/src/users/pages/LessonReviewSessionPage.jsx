@@ -239,7 +239,7 @@ function ReviewSessionStyles() {
   return (
     <style>{`
       .lesson-review-session {
-        min-height: calc(100vh - 64px);
+        min-height: calc(100vh - var(--navbar-height, 76px));
         background: linear-gradient(180deg, #eef2ff 0%, #f8f9ff 40%, #fff 100%);
         padding: 24px 16px 40px;
         box-sizing: border-box;

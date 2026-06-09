@@ -440,21 +440,6 @@ export default function ExamDetailPage() {
               color: #fff;
               border-color: #0f4c75;
             }
-            .exam-detail-picker__confirm {
-              margin-top: 12px;
-              padding: 10px 20px;
-              border: none;
-              border-radius: 40px;
-              background: #0f4c75;
-              color: #fff;
-              font-weight: 600;
-              cursor: pointer;
-              font-family: inherit;
-            }
-            .exam-detail-picker__confirm:disabled {
-              opacity: 0.5;
-              cursor: not-allowed;
-            }
           `}</style>
           {exam && (
             <p
@@ -514,6 +499,7 @@ export default function ExamDetailPage() {
                 value={currentAnswer}
                 onConfirm={handleAnswerConfirm}
                 classNamePrefix="exam-detail-picker"
+                autoConfirm
               />
             </div>
 

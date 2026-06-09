@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { isAdminUser } from "../../admin/auth";
+import { clearItemLoadout } from "../lib/playSession";
 
 const NAV_ICONS = {
   home: (
@@ -78,11 +79,14 @@ const NAV_ICONS = {
   ),
 };
 
+const SCROLL_THRESHOLD = 48;
+
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const menuRef = useRef(null);
   const btnRef = useRef(null);
   const userMenuDesktopRef = useRef(null);
@@ -93,6 +97,7 @@ export default function Navbar() {
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
+    clearItemLoadout();
     setMobileOpen(false);
     setUserMenuOpen(false);
     navigate("/login");
@@ -106,6 +111,19 @@ export default function Navbar() {
   useEffect(() => {
     setMobileOpen(false);
     setUserMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > SCROLL_THRESHOLD);
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    setScrolled(window.scrollY > SCROLL_THRESHOLD);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -207,14 +225,25 @@ export default function Navbar() {
           display: flex;
           align-items: center;
           padding: 10px 16px;
-          background: #6c7ee1;
-          color: #fff;
-          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
-          position: relative;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
           z-index: 1100;
           max-width: 100%;
           box-sizing: border-box;
           overflow-x: clip;
+          transition: background 0.28s ease, box-shadow 0.28s ease, color 0.28s ease;
+        }
+        .navbar-root--top {
+          background: transparent;
+          color: #454038;
+          box-shadow: none;
+        }
+        .navbar-root--scrolled {
+          background: #fff;
+          color: #1a1a1a;
+          box-shadow: 0 1px 14px rgba(0, 0, 0, 0.08);
         }
         .navbar-desktop {
           display: grid;
@@ -228,65 +257,71 @@ export default function Navbar() {
         }
         .navbar-desktop-center {
           display: flex;
-          align-items: center;
+          align-items: flex-end;
           justify-content: center;
           flex-wrap: wrap;
-          gap: 4px 8px;
+          gap: 2px 14px;
         }
         .navbar-desktop-center a,
         .navbar-desktop-right a {
-          color: #fff;
+          color: inherit;
           text-decoration: none;
-          font-weight: 600;
+          font-weight: 500;
           padding: 6px 10px;
           border-radius: 8px;
           transition: background 0.2s;
           white-space: nowrap;
         }
-        .navbar-desktop-right a:hover {
-          background: rgba(255, 255, 255, 0.15);
+        .navbar-root--scrolled .navbar-desktop-right a:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        .navbar-root--top .navbar-desktop-right a:hover {
+          background: rgba(69, 64, 56, 0.08);
         }
         .navbar-desktop-center .navbar-link {
-          position: relative;
           display: inline-flex;
+          flex-direction: column;
           align-items: center;
-          gap: 8px;
-          padding: 8px 12px 10px;
-          font-size: 1.1rem;
+          gap: 5px;
+          padding: 4px 8px 2px;
+          font-size: 0.82rem;
+          font-weight: 500;
+          color: inherit;
           background: transparent;
           border-radius: 0;
-        }
-        .navbar-desktop-center .navbar-link::after {
-          content: "";
-          position: absolute;
-          left: 10px;
-          right: 10px;
-          bottom: 2px;
-          height: 3px;
-          border-radius: 2px;
-          background: #fff;
-          transform: scaleX(0);
-          transform-origin: center;
-          transition: transform 0.22s ease, opacity 0.22s ease;
-          opacity: 0;
-          pointer-events: none;
+          text-align: center;
+          min-width: 64px;
         }
         .navbar-desktop-center .navbar-link:hover {
           background: transparent;
-        }
-        .navbar-desktop-center .navbar-link:hover::after,
-        .navbar-desktop-center .navbar-link--active::after {
-          transform: scaleX(1);
-          opacity: 1;
         }
         .navbar-link-icon {
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          border: 1.5px solid transparent;
+          box-sizing: border-box;
           line-height: 0;
+          transition: border-color 0.22s ease, background 0.22s ease;
+        }
+        .navbar-link--active .navbar-link-icon {
+          border-color: currentColor;
+        }
+        .navbar-root--top .navbar-link--active .navbar-link-icon {
+          background: rgba(69, 64, 56, 0.06);
+        }
+        .navbar-root--scrolled .navbar-link--active .navbar-link-icon {
+          background: rgba(0, 0, 0, 0.04);
         }
         .navbar-link-icon svg {
           display: block;
+        }
+        .navbar-link-label {
+          line-height: 1.2;
+          white-space: nowrap;
         }
         .navbar-desktop-right {
           display: flex;
@@ -305,14 +340,14 @@ export default function Navbar() {
         }
         .navbar-auth-link {
           position: relative;
-          color: #fff;
+          color: inherit;
           text-decoration: none;
-          font-weight: 600;
-          font-size: 1.08rem;
+          font-weight: 500;
+          font-size: 1rem;
           padding: 7px 14px 10px;
           border-radius: 8px;
           white-space: nowrap;
-          transition: background 0.2s, color 0.2s;
+          transition: background 0.2s, color 0.2s, border-color 0.2s;
         }
         .navbar-auth-link::after {
           content: "";
@@ -320,9 +355,9 @@ export default function Navbar() {
           left: 12px;
           right: 12px;
           bottom: 2px;
-          height: 3px;
+          height: 2px;
           border-radius: 2px;
-          background: #fff;
+          background: currentColor;
           transform: scaleX(0);
           transform-origin: center;
           transition: transform 0.22s ease, opacity 0.22s ease;
@@ -341,15 +376,16 @@ export default function Navbar() {
           background: transparent;
         }
         .navbar-auth-link--login {
-          background: #c069a1;
-          color: #fff;
+          background: transparent;
+          border: 1.5px solid currentColor;
         }
-        .navbar-auth-link--login:hover {
-          background: #a8588f;
-          color: #fff;
+        .navbar-root--scrolled .navbar-auth-link--login:hover,
+        .navbar-root--scrolled .navbar-auth-link--login.navbar-auth-link--active {
+          background: rgba(0, 0, 0, 0.06);
         }
-        .navbar-auth-link--login.navbar-auth-link--active {
-          background: #a8588f;
+        .navbar-root--top .navbar-auth-link--login:hover,
+        .navbar-root--top .navbar-auth-link--login.navbar-auth-link--active {
+          background: rgba(69, 64, 56, 0.08);
         }
         .navbar-user-trigger {
           display: inline-flex;
@@ -359,17 +395,21 @@ export default function Navbar() {
           border-radius: 8px;
           border: none;
           background: transparent;
-          color: #fff;
-          font-weight: 600;
-          font-size: 1.1rem;
+          color: inherit;
+          font-weight: 500;
+          font-size: 1.02rem;
           cursor: pointer;
           font-family: inherit;
           max-width: 100%;
           transition: background 0.2s;
         }
-        .navbar-user-trigger:hover,
-        .navbar-user-trigger.open {
-          background: rgba(255, 255, 255, 0.15);
+        .navbar-root--scrolled .navbar-user-trigger:hover,
+        .navbar-root--scrolled .navbar-user-trigger.open {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        .navbar-root--top .navbar-user-trigger:hover,
+        .navbar-root--top .navbar-user-trigger.open {
+          background: rgba(69, 64, 56, 0.08);
         }
         .navbar-user-trigger-label {
           overflow: hidden;
@@ -423,8 +463,8 @@ export default function Navbar() {
           border: none;
           background: transparent;
           color: #fff;
-          font-size: 1.08rem;
-          font-weight: 600;
+          font-size: 1rem;
+          font-weight: 500;
           text-decoration: none;
           cursor: pointer;
           font-family: inherit;
@@ -455,13 +495,13 @@ export default function Navbar() {
           flex: 1;
           min-width: 0;
           text-decoration: none;
-          color: #fff;
+          color: inherit;
           overflow: visible;
           padding-right: 4px;
         }
         .navbar-mobile-brand-text {
-          font-weight: 800;
-          font-size: clamp(1rem, 4.2vw, 1.25rem);
+          font-weight: 500;
+          font-size: clamp(1rem, 4.2vw, 1.2rem);
           line-height: 1.3;
           letter-spacing: 0.02em;
           min-width: 0;
@@ -480,24 +520,29 @@ export default function Navbar() {
           -webkit-box-orient: vertical;
         }
         .navbar-fab {
-          width: 48px;
-          height: 48px;
+          width: 44px;
+          height: 44px;
           border-radius: 50%;
-          border: none;
+          border: 1.5px solid currentColor;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(145deg, #0b5067, #157a9a);
-          color: #fff;
-          box-shadow: 0 4px 14px rgba(11, 80, 103, 0.45);
-          transition: transform 0.2s ease, box-shadow 0.2s;
+          background: transparent;
+          color: inherit;
+          box-shadow: none;
+          transition: transform 0.2s ease, background 0.2s;
           flex-shrink: 0;
           touch-action: manipulation;
         }
+        .navbar-root--scrolled .navbar-fab:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        .navbar-root--top .navbar-fab:hover {
+          background: rgba(69, 64, 56, 0.08);
+        }
         .navbar-fab:hover {
-          transform: scale(1.05);
-          box-shadow: 0 6px 18px rgba(11, 80, 103, 0.55);
+          transform: scale(1.03);
         }
         .navbar-fab:active {
           transform: scale(0.98);
@@ -512,7 +557,7 @@ export default function Navbar() {
         .navbar-fab-icon span {
           display: block;
           height: 2px;
-          background: #fff;
+          background: currentColor;
           border-radius: 1px;
           transition: transform 0.25s ease, opacity 0.2s;
         }
@@ -539,7 +584,7 @@ export default function Navbar() {
         .navbar-mobile-panel {
           display: none;
           position: fixed;
-          top: 72px;
+          top: calc(var(--navbar-height, 76px) + 8px);
           right: 12px;
           left: 12px;
           max-width: 320px;
@@ -569,8 +614,8 @@ export default function Navbar() {
           border: none;
           background: transparent;
           color: #fff;
-          font-size: 1.15rem;
-          font-weight: 600;
+          font-size: 1.05rem;
+          font-weight: 500;
           text-decoration: none;
           cursor: pointer;
           font-family: inherit;
@@ -580,11 +625,22 @@ export default function Navbar() {
         .navbar-mobile-panel button:hover {
           background: rgba(255, 255, 255, 0.12);
         }
+        .navbar-mobile-panel .navbar-link {
+          flex-direction: row;
+          gap: 12px;
+          min-width: 0;
+        }
         .navbar-mobile-panel .navbar-link--active {
-          background: rgba(255, 255, 255, 0.18);
+          background: rgba(255, 255, 255, 0.12);
+        }
+        .navbar-mobile-panel .navbar-link--active .navbar-link-icon {
+          border-color: rgba(255, 255, 255, 0.9);
+          background: rgba(255, 255, 255, 0.1);
         }
         .navbar-mobile-panel .navbar-link-icon {
           flex-shrink: 0;
+          width: 36px;
+          height: 36px;
         }
         .navbar-mobile-panel .nav-divider {
           height: 1px;
@@ -629,7 +685,7 @@ export default function Navbar() {
         }
       `}</style>
 
-      <nav className="navbar-root">
+      <nav className={`navbar-root ${scrolled ? "navbar-root--scrolled" : "navbar-root--top"}`}>
         <div className="navbar-desktop">
           <div className="navbar-desktop-spacer" aria-hidden />
           <div className="navbar-desktop-center">{navLinks}</div>

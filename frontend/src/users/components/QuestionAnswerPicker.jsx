@@ -18,12 +18,14 @@ function staticAssetUrl(path) {
  * @param {number|number[]} [props.value] - Chỉ số đã chọn.
  * @param {(indices: number[]) => void} props.onConfirm
  * @param {string} [props.classNamePrefix]
+ * @param {boolean} [props.autoConfirm] - Lưu ngay khi chọn, không hiện nút Xác nhận.
  */
 export default function QuestionAnswerPicker({
   answers,
   value,
   onConfirm,
   classNamePrefix = "q-picker",
+  autoConfirm = false,
 }) {
   const options = Array.isArray(answers) ? answers : [];
   const correctIndices = useMemo(() => getCorrectIndices(options), [options]);
@@ -37,11 +39,17 @@ export default function QuestionAnswerPicker({
 
   const toggle = (idx) => {
     if (isMulti) {
-      setSelected((prev) =>
-        prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx].sort((a, b) => a - b)
-      );
+      setSelected((prev) => {
+        const next = prev.includes(idx)
+          ? prev.filter((i) => i !== idx)
+          : [...prev, idx].sort((a, b) => a - b);
+        if (autoConfirm) onConfirm?.(next);
+        return next;
+      });
     } else {
-      setSelected([idx]);
+      const next = [idx];
+      setSelected(next);
+      if (autoConfirm) onConfirm?.(next);
     }
   };
 
@@ -49,9 +57,14 @@ export default function QuestionAnswerPicker({
 
   return (
     <div className={prefix}>
-      {isMulti ? (
+      {isMulti && !autoConfirm ? (
         <p className={`${prefix}__multi-hint`}>
           Câu này có {correctIndices.length} đáp án đúng — chọn tất cả rồi bấm Xác nhận.
+        </p>
+      ) : null}
+      {isMulti && autoConfirm ? (
+        <p className={`${prefix}__multi-hint`}>
+          Câu này có {correctIndices.length} đáp án đúng — chọn tất cả các đáp án đúng.
         </p>
       ) : null}
       <div className={`${prefix}__list`} role="group" aria-label="Chọn đáp án">
@@ -78,14 +91,16 @@ export default function QuestionAnswerPicker({
           );
         })}
       </div>
-      <button
-        type="button"
-        className={`${prefix}__confirm`}
-        disabled={selected.length === 0}
-        onClick={() => onConfirm?.(selected)}
-      >
-        Xác nhận
-      </button>
+      {!autoConfirm ? (
+        <button
+          type="button"
+          className={`${prefix}__confirm`}
+          disabled={selected.length === 0}
+          onClick={() => onConfirm?.(selected)}
+        >
+          Xác nhận
+        </button>
+      ) : null}
     </div>
   );
 }

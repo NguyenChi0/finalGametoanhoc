@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getLessons, getMyItems, getTypes, lessonImageUrl } from "../../api";
+import { getLessons, getTypes, lessonImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import { GAME_OPTIONS } from "../lib/gameInterfaces";
 import GameInterfaceCarousel from "../components/GameInterfaceCarousel";
 import ItemLoadoutModal from "../components/ItemLoadoutModal";
 import {
+  persistItemLoadout,
   persistLastGameInterface,
   persistPlayState,
   persistPregamePayload,
+  readItemLoadout,
   readLastGameInterface,
   readPregamePayload,
 } from "../lib/playSession";
@@ -78,8 +80,25 @@ export default function PreGameSetUp() {
   const [missing, setMissing] = useState(false);
   const [lessonImgFailed, setLessonImgFailed] = useState(false);
   const [loadoutOpen, setLoadoutOpen] = useState(false);
-  const [playStarting, setPlayStarting] = useState(false);
+  const [savedItemIds, setSavedItemIds] = useState([]);
   const hydrateAttempted = useRef(false);
+
+  const loadoutUserId =
+    payload?.user?.id ||
+    (() => {
+      try {
+        const raw = localStorage.getItem("user");
+        return raw ? JSON.parse(raw)?.id : null;
+      } catch {
+        return null;
+      }
+    })();
+
+  const canUseLoadout = Boolean(
+    !payload?.reviewMode &&
+      localStorage.getItem("token") &&
+      loadoutUserId
+  );
 
   useEffect(() => {
     const fromNav = location.state;
@@ -106,6 +125,14 @@ export default function PreGameSetUp() {
   useEffect(() => {
     persistLastGameInterface(gameId);
   }, [gameId]);
+
+  useEffect(() => {
+    if (!canUseLoadout || !loadoutUserId) {
+      setSavedItemIds([]);
+      return;
+    }
+    setSavedItemIds(readItemLoadout(loadoutUserId) ?? []);
+  }, [canUseLoadout, loadoutUserId]);
 
   useEffect(() => {
     if (!payload || !needsPayloadHydration(payload) || hydrateAttempted.current) {
@@ -218,52 +245,27 @@ export default function PreGameSetUp() {
     [payload, gameId, navigate]
   );
 
-  const handlePlay = async () => {
+  const handlePlay = () => {
     if (!payload || !isValidPlayPayload(payload)) return;
-    if (payload.reviewMode) {
+    if (payload.reviewMode || !canUseLoadout) {
       startGame([]);
       return;
     }
-    const token = localStorage.getItem("token");
-    let userId = payload?.user?.id;
-    if (!userId) {
-      try {
-        const raw = localStorage.getItem("user");
-        if (raw) userId = JSON.parse(raw)?.id;
-      } catch {
-        /* bỏ qua */
-      }
-    }
-    if (!token || !userId) {
-      startGame([]);
-      return;
-    }
-    setPlayStarting(true);
-    try {
-      const owned = await getMyItems(userId);
-      if (!owned.length) {
-        startGame([]);
-        return;
-      }
-      setLoadoutOpen(true);
-    } catch (e) {
-      console.warn("Không tải kho vật phẩm:", e);
-      startGame([]);
-    } finally {
-      setPlayStarting(false);
-    }
+    startGame(savedItemIds);
   };
 
-  const loadoutUserId =
-    payload?.user?.id ||
-    (() => {
-      try {
-        const raw = localStorage.getItem("user");
-        return raw ? JSON.parse(raw)?.id : null;
-      } catch {
-        return null;
-      }
-    })();
+  const handleLoadoutConfirm = (selectedItemIds) => {
+    if (loadoutUserId) {
+      persistItemLoadout(loadoutUserId, selectedItemIds);
+      setSavedItemIds(readItemLoadout(loadoutUserId) ?? []);
+    }
+    setLoadoutOpen(false);
+  };
+
+  const loadoutButtonLabel =
+    savedItemIds.length > 0
+      ? `Đổi vật phẩm (${savedItemIds.length} đã chọn)`
+      : "Chọn vật phẩm";
 
   const lessonUsesDetailBg =
     lessonMeta?.hasLessonDetail && lessonMeta.lessonDetailUrl && !lessonImgFailed;
@@ -286,6 +288,25 @@ export default function PreGameSetUp() {
           color: #8b4cad;
           font-size: 0.85rem;
           font-weight: 700;
+        }
+        .pregame-btn-loadout {
+          flex: 1;
+          width: 100%;
+          padding: 14px 20px;
+          border: 1px solid #b8c4f0;
+          background: #eef1fc;
+          color: #4a5080;
+          font-weight: 700;
+          font-size: 0.95rem;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .pregame-btn-loadout:hover:not(:disabled) {
+          background: #e3e8fa;
+        }
+        .pregame-btn-loadout:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
         }
         .pregame-page {
           position: relative;
@@ -314,13 +335,22 @@ export default function PreGameSetUp() {
         }
         .pregame-card {
           display: flex;
-          gap: clamp(20px, 3vw, 32px);
-          align-items: stretch;
+          flex-direction: column;
+          gap: clamp(20px, 3vw, 28px);
           background: #fff;
           border-radius: 16px;
           padding: clamp(20px, 3vw, 28px);
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
           border: 1px solid #e8eaed;
+        }
+        .pregame-card-header {
+          display: flex;
+          gap: clamp(20px, 3vw, 32px);
+          align-items: stretch;
+        }
+        .pregame-setup {
+          padding-top: clamp(16px, 2.5vw, 24px);
+          border-top: 1px solid #eef0f4;
         }
         .pregame-thumb {
           flex: 0 0 clamp(140px, 32vw, 220px);
@@ -395,27 +425,24 @@ export default function PreGameSetUp() {
           font-weight: 700;
           color: #1a1d26;
         }
-        .pregame-actions {
-          margin-top: 24px;
-          background: #fff;
-          border-radius: 16px;
-          padding: 20px 24px;
-          border: 1px solid #e8eaed;
-          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-        }
         .pregame-carousel-wrap {
           margin-bottom: 20px;
         }
         .pregame-btns {
           display: flex;
-          flex-wrap: wrap;
-          gap: 12px; 
+          gap: 12px;
+          align-items: stretch;
           font-family: inherit;
         }
+        .pregame-btns-side {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          min-width: 0;
+        }
         .pregame-btn-primary {
-          flex: 1 1 160px;
           padding: 14px 20px;
-          border-radius: 12px;
           border: none;
           background: #6c7ee1;
           color: #fff;
@@ -424,11 +451,26 @@ export default function PreGameSetUp() {
           cursor: pointer;
           font-family: inherit;
         }
+        .pregame-btn-play {
+          flex: 1.55;
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9999px 0 0 9999px;
+        }
+        .pregame-btns-side .pregame-btn-loadout {
+          border-radius: 0 9999px 0 0;
+        }
+        .pregame-btns-side .pregame-btn-secondary {
+          border-radius: 0 0 9999px 0;
+        }
         .pregame-btn-primary:hover {
           background: #5a6ed4;
         }
         .pregame-btn-secondary {
-          flex: 1 1 120px;
+          flex: 1;
+          width: 100%;
           padding: 14px 20px;
           border-radius: 12px;
           border: 1px solid #d8dce3;
@@ -444,7 +486,7 @@ export default function PreGameSetUp() {
           color: #37474f;
         }
         @media (max-width: 640px) {
-          .pregame-card {
+          .pregame-card-header {
             flex-direction: column;
           }
           .pregame-thumb {
@@ -452,6 +494,18 @@ export default function PreGameSetUp() {
             flex: none;
             max-width: 280px;
             margin: 0 auto;
+          }
+          .pregame-btns {
+            flex-direction: column;
+          }
+          .pregame-btn-play {
+            flex: none;
+            min-height: 52px;
+            border-radius: 9999px;
+          }
+          .pregame-btns-side .pregame-btn-loadout,
+          .pregame-btns-side .pregame-btn-secondary {
+            border-radius: 9999px;
           }
         }
       `}</style>
@@ -479,80 +533,92 @@ export default function PreGameSetUp() {
           {!missing && payload && lessonMeta && (
             <>
               <article className="pregame-card">
-                <div
-                  className={`pregame-thumb${
-                    lessonUsesDetailBg ? " pregame-thumb--detail" : " pregame-thumb--chip"
-                  }`}
-                  style={
-                    lessonThumbBg
-                      ? { backgroundImage: `url(${lessonThumbBg})` }
-                      : { background: lessonMeta.thumbColor }
-                  }
-                  role="img"
-                  aria-label={lessonMeta.lessonName}
-                >
-                  {showLessonThumbLabel && (
-                    <span className="pregame-thumb-label">{lessonMeta.lessonName}</span>
-                  )}
-                  {lessonUsesDetailBg && (
-                    <img
-                      src={lessonMeta.lessonDetailUrl}
-                      alt=""
-                      aria-hidden
-                      style={{
-                        position: "absolute",
-                        width: 0,
-                        height: 0,
-                        opacity: 0,
-                        pointerEvents: "none",
-                      }}
-                      onError={() => setLessonImgFailed(true)}
-                    />
-                  )}
-                </div>
-                <div className="pregame-body">
-                  {payload.reviewMode ? (
-                    <p className="pregame-review-badge">
-                      Chế độ ôn tập ·{" "}
-                      {payload.reviewQuestionCount ?? payload.questions?.length ?? 5} câu
-                    </p>
-                  ) : null}
-                  <h1 className="pregame-title">{lessonMeta.title}</h1>
-                  <p className="pregame-desc">{lessonMeta.description}</p>
+                <div className="pregame-card-header">
+                  <div
+                    className={`pregame-thumb${
+                      lessonUsesDetailBg ? " pregame-thumb--detail" : " pregame-thumb--chip"
+                    }`}
+                    style={
+                      lessonThumbBg
+                        ? { backgroundImage: `url(${lessonThumbBg})` }
+                        : { background: lessonMeta.thumbColor }
+                    }
+                    role="img"
+                    aria-label={lessonMeta.lessonName}
+                  >
+                    {showLessonThumbLabel && (
+                      <span className="pregame-thumb-label">{lessonMeta.lessonName}</span>
+                    )}
+                    {lessonUsesDetailBg && (
+                      <img
+                        src={lessonMeta.lessonDetailUrl}
+                        alt=""
+                        aria-hidden
+                        style={{
+                          position: "absolute",
+                          width: 0,
+                          height: 0,
+                          opacity: 0,
+                          pointerEvents: "none",
+                        }}
+                        onError={() => setLessonImgFailed(true)}
+                      />
+                    )}
+                  </div>
+                  <div className="pregame-body">
+                    {payload.reviewMode ? (
+                      <p className="pregame-review-badge">
+                        Chế độ ôn tập ·{" "}
+                        {payload.reviewQuestionCount ?? payload.questions?.length ?? 5} câu
+                      </p>
+                    ) : null}
+                    <h1 className="pregame-title">{lessonMeta.title}</h1>
+                    <p className="pregame-desc">{lessonMeta.description}</p>
 
-                  <div className="pregame-course">
-                    <div className="pregame-course-kicker">Nằm trong chủ đề</div>
-                    <div className="pregame-course-name">{lessonMeta.courseName}</div>
+                    <div className="pregame-course">
+                      <div className="pregame-course-kicker">Nằm trong chủ đề</div>
+                      <div className="pregame-course-name">{lessonMeta.courseName}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pregame-setup" aria-label="Cài đặt trước khi chơi">
+                  <div className="pregame-carousel-wrap">
+                    <GameInterfaceCarousel
+                      options={GAME_OPTIONS}
+                      value={gameId}
+                      onChange={setGameId}
+                    />
+                  </div>
+                  <div className="pregame-btns">
+                    <button
+                      type="button"
+                      className="pregame-btn-primary pregame-btn-play"
+                      onClick={handlePlay}
+                    >
+                      Chơi
+                    </button>
+                    <div className="pregame-btns-side">
+                      <button
+                        type="button"
+                        className="pregame-btn-loadout"
+                        onClick={() => setLoadoutOpen(true)}
+                        disabled={!canUseLoadout}
+                        aria-disabled={!canUseLoadout}
+                      >
+                        {loadoutButtonLabel}
+                      </button>
+                      <button
+                        type="button"
+                        className="pregame-btn-secondary"
+                        onClick={() => navigate("/lessons")}
+                      >
+                        Quay lại
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>
-
-              <section className="pregame-actions" aria-label="Cài đặt trước khi chơi">
-                <div className="pregame-carousel-wrap">
-                  <GameInterfaceCarousel
-                    options={GAME_OPTIONS}
-                    value={gameId}
-                    onChange={setGameId}
-                  />
-                </div>
-                <div className="pregame-btns">
-                  <button
-                    type="button"
-                    className="pregame-btn-primary"
-                    onClick={handlePlay}
-                    disabled={playStarting}
-                  >
-                    {playStarting ? "Đang tải…" : "Chơi"}
-                  </button>
-                  <button
-                    type="button"
-                    className="pregame-btn-secondary"
-                    onClick={() => navigate("/lessons")}
-                  >
-                    Quay lại
-                  </button>
-                </div>
-              </section>
             </>
           )}
         </div>
@@ -561,8 +627,9 @@ export default function PreGameSetUp() {
       <ItemLoadoutModal
         open={loadoutOpen}
         userId={loadoutUserId}
+        initialSelectedIds={savedItemIds}
         onClose={() => setLoadoutOpen(false)}
-        onConfirm={(ids) => startGame(ids)}
+        onConfirm={handleLoadoutConfirm}
       />
     </>
   );

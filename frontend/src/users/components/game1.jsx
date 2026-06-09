@@ -209,47 +209,48 @@ export default function Game10({ payload, onLessonComplete }) {
   return (
     <div className="game10-quiz">
       <style>{`
+        .game10-quiz .game10-question-card {
+          background: #ffffff;
+          border-radius: 16px;
+          padding: 24px 24px 28px;
+          box-shadow: 0 10px 36px rgba(0, 0, 0, 0.08);
+        }
+        .game10-quiz .game10-question-progress {
+          margin: 0 0 16px;
+          text-align: center;
+          color: #3282b8;
+          font-weight: 600;
+          font-size: 16px;
+        }
+        .game10-quiz .game10-question-text {
+          margin: 0 0 16px;
+          color: #0f4c75;
+          font-size: clamp(1.15rem, 3.2vw, 1.75rem);
+          text-align: center;
+          line-height: 1.35;
+        }
         .game10-quiz .game10-answer-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 12px;
+          margin-top: 8px;
         }
         @media (max-width: 640px) {
           .game10-quiz .game10-answer-grid {
             grid-template-columns: 1fr;
           }
+          .game10-quiz .game10-question-card {
+            padding: 20px 16px 24px;
+          }
         }
       `}</style>
 
-      <p
-        style={{
-          margin: "0 0 12px",
-          textAlign: "center",
-          color: "#3282b8",
-          fontWeight: 600,
-          fontSize: 16,
-        }}
-      >
-        Câu {currentIndex + 1} / {qs.length}
-      </p>
+      <section className="game10-question-card">
+        <p className="game10-question-progress">
+          Câu {currentIndex + 1} / {qs.length}
+        </p>
 
-      <section
-        style={{
-          background: "#ffffff",
-          borderRadius: 16,
-          padding: "28px 24px",
-          boxShadow: "0 10px 36px rgba(0,0,0,0.08)",
-        }}
-      >
-        <h2
-          style={{
-            margin: "0 0 16px",
-            color: "#0f4c75",
-            fontSize: 28,
-            textAlign: "center",
-            lineHeight: 1.35,
-          }}
-        >
+        <h2 className="game10-question-text">
           {currentQuestion.question_text}
         </h2>
 
@@ -269,7 +270,7 @@ export default function Game10({ payload, onLessonComplete }) {
         )}
 
         {hasHintFeature && (
-          <div style={{ textAlign: "center" }}>
+          <div style={{ textAlign: "center", marginBottom: 4 }}>
             <GameHintButton
               hintsRemaining={hintsRemaining}
               disabled={

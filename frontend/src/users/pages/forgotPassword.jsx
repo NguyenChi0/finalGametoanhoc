@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { publicUrl } from "../../lib/publicUrl";
 
-const NAVBAR_OFFSET = 52;
+import { NAVBAR_OFFSET } from "../lib/navbarLayout";
 
 const t = {
   title: "Qu\u00EAn m\u1EADt kh\u1EA9u",

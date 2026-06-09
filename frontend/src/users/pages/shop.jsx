@@ -5,6 +5,7 @@ import { publicUrl } from "../../lib/publicUrl";
 import { levelItemAuraFilter } from "../lib/itemRarity";
 import { formatItemEffectDescription } from "../lib/itemEffects";
 import "../styles/userCtaFlashShine.css";
+import NumberPagination from "../components/NumberPagination";
 
 const PAGE_SIZE = 5;
 
@@ -218,26 +219,15 @@ export default function Shop() {
               <p className="shop-loading">Chưa có vật phẩm nào. Vui lòng quay lại sau.</p>
             )}
 
-            {!loading && items.length > 0 && (
-              <div className="shop-pagination">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  Trang trước
-                </button>
-                <span>
-                  Trang {page}/{totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                >
-                  Trang sau
-                </button>
-              </div>
+            {!loading && items.length > 0 && totalPages > 0 && (
+              <NumberPagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                ariaLabel="Phân trang cửa hàng"
+                accentColor={CL.periwinkle}
+                inkColor={CL.ink}
+              />
             )}
 
             <style>{`
@@ -363,40 +353,6 @@ export default function Shop() {
               .card-button .shop-buy-cta:hover {
                 filter: brightness(1.06);
                 transform: translateY(-1px);
-              }
-              .shop-pagination {
-                margin-top: 20px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 12px;
-                flex-wrap: wrap;
-              }
-              .shop-pagination button {
-                border: 2px solid ${CL.periwinkle};
-                background: #fff;
-                color: ${CL.periwinkle};
-                border-radius: 999px;
-                padding: 8px 16px;
-                cursor: pointer;
-                font-weight: 700;
-                font-family: inherit;
-                transition: background 0.2s, color 0.2s;
-              }
-              .shop-pagination button:hover:not(:disabled) {
-                background: ${CL.periwinkle};
-                color: #fff;
-              }
-              .shop-pagination button:disabled {
-                opacity: 0.45;
-                cursor: not-allowed;
-                border-color: #ccc;
-                color: #999;
-              }
-              .shop-pagination span {
-                color: ${CL.ink};
-                font-size: 14px;
-                font-weight: 600;
               }
               @media (max-width: 768px) {
                 .card-content {

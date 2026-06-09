@@ -50,28 +50,21 @@ export default function AdminSidebar({ variant = "default", onRequestClose }) {
           .admin-nav-link {
             outline: none !important;
             -webkit-tap-highlight-color: transparent;
-            border: 1px solid #ffffff !important;
+            border: none !important;
             box-shadow: none !important;
-          }
-          .admin-nav-link[aria-current="page"] {
-            box-shadow: inset 3px 0 0 #2d5a76 !important;
           }
           .admin-nav-link:focus {
             outline: none !important;
           }
-          .admin-nav-link:focus:not(:focus-visible):not([aria-current="page"]) {
-            border: 1px solid #ffffff !important;
-            box-shadow: none !important;
-          }
           .admin-nav-link:focus-visible {
-            outline: 2px solid #2d5a76 !important;
+            outline: 2px solid #3d8f5c !important;
             outline-offset: 2px;
-          }
-          .admin-nav-link:focus-visible[aria-current="page"] {
-            outline-offset: 4px;
           }
           .admin-nav-link:active {
             outline: none !important;
+          }
+          .admin-nav-link:hover:not([aria-current="page"]) {
+            background: #f6f8fa;
           }
         `}
       </style>
@@ -297,13 +290,13 @@ const styles = {
     gap: 10,
     color: "#24292f",
     textDecoration: "none",
-    padding: "10px 12px",
-    borderRadius: 8,
-    fontWeight: 600,
+    padding: "10px 14px",
+    borderRadius: "50px",
+    fontWeight: 500,
     fontSize: "0.92rem",
-    border: "1px solid #ffffff",
+    border: "none",
     boxSizing: "border-box",
-    transition: "background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s",
+    transition: "background 0.15s, color 0.15s",
     outline: "none",
     WebkitTapHighlightColor: "transparent",
   },
@@ -312,9 +305,8 @@ const styles = {
     lineHeight: 1.35,
   },
   navLinkActive: {
-    color: "#2d5a76",
-    background: "#ddf4ff",
-    border: "1px solid #b6e3ff",
-    boxShadow: "inset 3px 0 0 #2d5a76",
+    color: "#1f6b3f",
+    background: "#d8f0de",
+    fontWeight: 500,
   },
 };

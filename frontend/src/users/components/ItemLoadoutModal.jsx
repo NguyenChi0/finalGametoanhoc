@@ -9,7 +9,13 @@ import {
 
 const MAX_SELECT = 3;
 
-export default function ItemLoadoutModal({ open, userId, onClose, onConfirm }) {
+export default function ItemLoadoutModal({
+  open,
+  userId,
+  initialSelectedIds = [],
+  onClose,
+  onConfirm,
+}) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -17,10 +23,15 @@ export default function ItemLoadoutModal({ open, userId, onClose, onConfirm }) {
 
   useEffect(() => {
     if (!open) {
-      setSelectedIds(new Set());
       setError(null);
       return;
     }
+    const initial = Array.isArray(initialSelectedIds)
+      ? initialSelectedIds
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      : [];
+    setSelectedIds(new Set(initial));
     if (!userId) {
       setItems([]);
       return;
@@ -44,7 +55,7 @@ export default function ItemLoadoutModal({ open, userId, onClose, onConfirm }) {
     return () => {
       cancelled = true;
     };
-  }, [open, userId]);
+  }, [open, userId, initialSelectedIds]);
 
   const selectedCount = selectedIds.size;
   const atMax = selectedCount >= MAX_SELECT;

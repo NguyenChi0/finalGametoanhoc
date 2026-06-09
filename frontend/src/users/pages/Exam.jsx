@@ -10,6 +10,7 @@ import {
   writeGradePillFilter,
 } from "../../lib/gradePillFilterStorage";
 import "../styles/userCtaFlashShine.css";
+import NumberPagination from "../components/NumberPagination";
 
 const copy = {
   pageTitle: "Ngân hàng đề thi",
@@ -332,26 +333,15 @@ export default function Exam() {
               <p className="exam-status">{copy.empty}</p>
             )}
 
-            {!loading && !error && exams.length > 0 && (
-              <div className="exam-pagination">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  Trang trước
-                </button>
-                <span>
-                  Trang {page}/{totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                >
-                  Trang sau
-                </button>
-              </div>
+            {!loading && !error && exams.length > 0 && totalPages > 0 && (
+              <NumberPagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                ariaLabel="Phân trang danh sách đề thi"
+                accentColor={CL.periwinkle}
+                inkColor={CL.ink}
+              />
             )}
           </section>
         </main>
@@ -698,44 +688,6 @@ export default function Exam() {
         }
         .exam-cta:active {
           transform: scale(0.98);
-        }
-        .exam-pagination {
-          margin-top: 24px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
-        .exam-pagination button {
-          border: 2px solid ${CL.periwinkle};
-          background: #fff;
-          color: ${CL.periwinkle};
-          border-radius: 999px;
-          padding: 9px 18px;
-          cursor: pointer;
-          font-weight: 700;
-          font-family: inherit;
-          transition: background 0.2s, color 0.2s, transform 0.15s;
-        }
-        .exam-pagination button:hover:not(:disabled) {
-          background: ${CL.periwinkle};
-          color: #fff;
-          transform: translateY(-1px);
-        }
-        .exam-pagination button:disabled {
-          opacity: 0.45;
-          cursor: not-allowed;
-          border-color: #ccc;
-          color: #999;
-        }
-        .exam-pagination span {
-          color: ${CL.ink};
-          font-size: 14px;
-          font-weight: 600;
-          padding: 6px 14px;
-          border-radius: 999px;
-          background: rgba(146, 185, 227, 0.3);
         }
         @media (max-width: 768px) {
           .exam-panel {

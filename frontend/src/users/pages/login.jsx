@@ -4,7 +4,8 @@ import api from "../../api";
 import { isAdminUser } from "../../admin/auth";
 import { publicUrl } from "../../lib/publicUrl";
 
-const NAVBAR_OFFSET = 52;
+import { NAVBAR_OFFSET } from "../lib/navbarLayout";
+import { clearItemLoadout } from "../lib/playSession";
 
 const t = {
   loginFail: "\u0110\u0103ng nh\u1EADp th\u1EA5t b\u1EA1i. Ki\u1EC3m tra backend.",
@@ -59,6 +60,7 @@ export default function Login() {
 
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
+      clearItemLoadout();
       setMessage(msg || t.loginOk);
       if (isAdminUser(user)) {
         navigate("/admin");

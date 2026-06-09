@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { register as registerApi } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
-const NAVBAR_OFFSET = 52;
+import { NAVBAR_OFFSET } from "../lib/navbarLayout";
 
 const t = {
   loginFooterHint: "\u0110\u00E3 c\u00F3 t\u00E0i kho\u1EA3n? ",

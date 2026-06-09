@@ -12,6 +12,9 @@ export const PREGAME_SESSION_KEY = "game_pregame_state_v1";
 /** Key sessionStorage: payload phiên ôn tập. */
 export const REVIEW_SESSION_KEY = "lesson_review_session_v1";
 
+/** Key sessionStorage: vật phẩm đã chọn cho phiên đăng nhập hiện tại. */
+export const ITEM_LOADOUT_SESSION_KEY = "item_loadout_session_v1";
+
 /** Key localStorage: game interface (game1…game11) user chọn lần gần nhất. */
 export const LAST_GAME_INTERFACE_KEY = "game_interface_last_v1";
 
@@ -150,5 +153,85 @@ export function readReviewSession() {
   } catch (e) {
     console.warn("Lỗi đọc phiên ôn tập:", e);
     return null;
+  }
+}
+
+function normalizeItemLoadoutIds(selectedItemIds) {
+  if (!Array.isArray(selectedItemIds)) return [];
+  return selectedItemIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .slice(0, 3);
+}
+
+function readItemLoadoutRecord() {
+  try {
+    const raw = sessionStorage.getItem(ITEM_LOADOUT_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.userId == null) return null;
+    return parsed;
+  } catch (e) {
+    console.warn("Lỗi đọc loadout vật phẩm:", e);
+    return null;
+  }
+}
+
+/**
+ * Lưu vật phẩm đã chọn cho phiên hiện tại (sessionStorage).
+ *
+ * @param {number|string} userId
+ * @param {number[]} selectedItemIds - Tối đa 3 id.
+ */
+export function persistItemLoadout(userId, selectedItemIds) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) return;
+  try {
+    sessionStorage.setItem(
+      ITEM_LOADOUT_SESSION_KEY,
+      JSON.stringify({
+        userId: uid,
+        selectedItemIds: normalizeItemLoadoutIds(selectedItemIds),
+        confirmedAt: Date.now(),
+      })
+    );
+  } catch (e) {
+    console.warn("Không lưu được loadout vật phẩm:", e);
+  }
+}
+
+/**
+ * Đọc ids vật phẩm đã chọn nếu cùng user.
+ *
+ * @param {number|string} userId
+ * @returns {number[]|null} `null` nếu chưa xác nhận hoặc user khác.
+ */
+export function readItemLoadout(userId) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+  const record = readItemLoadoutRecord();
+  if (!record || Number(record.userId) !== uid) return null;
+  return normalizeItemLoadoutIds(record.selectedItemIds);
+}
+
+/**
+ * User đã xác nhận chọn vật phẩm ít nhất một lần trong phiên này.
+ *
+ * @param {number|string} userId
+ * @returns {boolean}
+ */
+export function hasConfirmedItemLoadout(userId) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) return false;
+  const record = readItemLoadoutRecord();
+  return Boolean(record && Number(record.userId) === uid && record.confirmedAt);
+}
+
+/** Xóa loadout vật phẩm (đăng nhập mới / đăng xuất). */
+export function clearItemLoadout() {
+  try {
+    sessionStorage.removeItem(ITEM_LOADOUT_SESSION_KEY);
+  } catch (e) {
+    console.warn("Không xóa được loadout vật phẩm:", e);
   }
 }
