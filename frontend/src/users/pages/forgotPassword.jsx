@@ -1,17 +1,16 @@
-import React, { useEffect } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { forgotPassword as forgotPasswordApi } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
-
 import { NAVBAR_OFFSET } from "../lib/navbarLayout";
 
-const t = {
-  title: "Qu\u00EAn m\u1EADt kh\u1EA9u",
-  body:
-    "Hi\u1EC7n ch\u01B0a c\u00F3 ch\u1EE9c n\u0103ng \u0111\u1EB7t l\u1EA1i m\u1EADt kh\u1EA9u t\u1EF1 \u0111\u1ED9ng. Vui l\u00F2ng li\u00EAn h\u1EC7 qu\u1EA3n tr\u1ECB vi\u00EAn ho\u1EB7c b\u1ED9 ph\u1EADn h\u1ED7 tr\u1EE3 \u0111\u1EC3 \u0111\u01B0\u1EE3c c\u1EA5p l\u1EA1i m\u1EADt kh\u1EA9u.",
-  back: "Quay l\u1EA1i \u0111\u0103ng nh\u1EADp",
-};
-
 export default function ForgotPassword() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
     const prevBody = document.body.style.overflow;
     const prevHtml = document.documentElement.style.overflow;
@@ -23,14 +22,57 @@ export default function ForgotPassword() {
     };
   }, []);
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSuccess(false);
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const res = await forgotPasswordApi(email);
+      setSuccess(true);
+      setMessage(
+        res.data?.message ||
+          "Nếu email tồn tại, chúng tôi đã gửi mã OTP. Chuyển sang trang nhập mã…"
+      );
+      setTimeout(() => {
+        navigate(`/reset-password?email=${encodeURIComponent(email)}`, { replace: true });
+      }, 1500);
+    } catch (err) {
+      setMessage(err.response?.data?.message || "Không gửi được email. Vui lòng thử lại.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div style={styles.page}>
       <div style={styles.overlay}>
-        <h1 style={styles.title}>{t.title}</h1>
-        <p style={styles.text}>{t.body}</p>
-        <Link to="/login" style={styles.backLink}>
-          {t.back}
-        </Link>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <h1 style={styles.title}>Quên mật khẩu</h1>
+          <p style={styles.hint}>
+            Nhập email đã đăng ký. Chúng tôi sẽ gửi mã OTP 6 số để đặt lại mật khẩu (hết hạn sau 10 phút).
+          </p>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+            style={styles.input}
+          />
+          <button type="submit" style={styles.button} disabled={submitting}>
+            {submitting ? "Đang gửi…" : "Gửi mã OTP"}
+          </button>
+          {message && (
+            <p style={success ? styles.successMessage : styles.message}>{message}</p>
+          )}
+          <p style={styles.footerHint}>
+            <Link to="/login" style={styles.textLink}>
+              Quay lại đăng nhập
+            </Link>
+          </p>
+        </form>
       </div>
     </div>
   );
@@ -56,24 +98,72 @@ const styles = {
     padding: "40px",
     width: "90%",
     maxWidth: "390px",
-    textAlign: "center",
+  },
+  form: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "15px",
   },
   title: {
+    textAlign: "center",
     color: "#333",
-    marginBottom: "16px",
-    fontSize: "1.5rem",
+    marginBottom: "4px",
+    fontFamily: "inherit",
   },
-  text: {
+  hint: {
+    textAlign: "center",
     color: "#333",
-    lineHeight: 1.55,
-    marginBottom: "24px",
+    lineHeight: 1.5,
+    fontSize: "15px",
+    margin: 0,
+  },
+  input: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "20px",
+    paddingLeft: "30px",
     fontSize: "16px",
+    borderRadius: "40px",
+    border: "1px solid rgb(255, 255, 255)",
+    outline: "none",
+    backgroundColor: "rgba(0, 0, 0, 0)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    color: "black",
+    fontFamily: "inherit",
   },
-  backLink: {
+  button: {
+    padding: "16px",
+    background: "linear-gradient(90deg,rgb(230, 114, 114),rgb(29, 176, 206))",
+    color: "white",
+    border: "none",
+    borderRadius: "40px",
+    fontSize: "16px",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  message: {
+    textAlign: "center",
+    color: "#d9534f",
+    fontWeight: 500,
+    marginTop: "4px",
+  },
+  successMessage: {
+    textAlign: "center",
+    color: "#28a745",
+    fontWeight: 500,
+    marginTop: "4px",
+  },
+  textLink: {
     color: "#1d5f7a",
     textDecoration: "underline",
     textUnderlineOffset: "3px",
     fontWeight: 500,
+    fontSize: "15px",
+  },
+  footerHint: {
+    textAlign: "center",
+    marginTop: "-4px",
   },
 };
 

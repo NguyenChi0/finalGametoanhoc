@@ -77,6 +77,57 @@ const NAV_ICONS = {
       />
     </svg>
   ),
+  login: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  register: (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  profile: (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden>
+      <path d="M20 21a8 8 0 10-16 0" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+  password: (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden>
+      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+  logout: (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden>
+      <path
+        d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  user: (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden>
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 20c1.5-3.5 5-5 8-5s6.5 1.5 8 5" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
 };
 
 const SCROLL_THRESHOLD = 48;
@@ -210,9 +261,15 @@ export default function Navbar() {
       role="menu"
     >
       <Link to="/profile" role="menuitem" onClick={closeMenus}>
+        <span className="navbar-menu-icon">{NAV_ICONS.profile}</span>
         Trang cá nhân
       </Link>
+      <Link to="/change-password" role="menuitem" onClick={closeMenus}>
+        <span className="navbar-menu-icon">{NAV_ICONS.password}</span>
+        Đổi mật khẩu
+      </Link>
       <button type="button" className="logout" role="menuitem" onClick={handleLogout}>
+        <span className="navbar-menu-icon">{NAV_ICONS.logout}</span>
         Đăng xuất
       </button>
     </div>
@@ -248,7 +305,7 @@ export default function Navbar() {
         .navbar-desktop {
           display: grid;
           grid-template-columns: 1fr auto 1fr;
-          align-items: center;
+          align-items: flex-end;
           width: 100%;
           gap: 12px;
         }
@@ -272,13 +329,14 @@ export default function Navbar() {
           transition: background 0.2s;
           white-space: nowrap;
         }
-        .navbar-root--scrolled .navbar-desktop-right a:hover {
+        .navbar-root--scrolled .navbar-desktop-right a:not(.navbar-link):hover {
           background: rgba(0, 0, 0, 0.05);
         }
-        .navbar-root--top .navbar-desktop-right a:hover {
+        .navbar-root--top .navbar-desktop-right a:not(.navbar-link):hover {
           background: rgba(69, 64, 56, 0.08);
         }
-        .navbar-desktop-center .navbar-link {
+        .navbar-desktop-center .navbar-link,
+        .navbar-desktop-right .navbar-link {
           display: inline-flex;
           flex-direction: column;
           align-items: center;
@@ -292,7 +350,8 @@ export default function Navbar() {
           text-align: center;
           min-width: 64px;
         }
-        .navbar-desktop-center .navbar-link:hover {
+        .navbar-desktop-center .navbar-link:hover,
+        .navbar-desktop-right .navbar-link:hover {
           background: transparent;
         }
         .navbar-link-icon {
@@ -325,67 +384,22 @@ export default function Navbar() {
         }
         .navbar-desktop-right {
           display: flex;
-          align-items: center;
+          align-items: flex-end;
           justify-content: flex-end;
           gap: 8px;
-          position: relative;
           min-width: 0;
           max-width: 100%;
+          flex-shrink: 0;
+        }
+        .navbar-user-wrap {
+          position: relative;
+          flex-shrink: 0;
         }
         .navbar-auth-links {
           display: flex;
-          align-items: center;
-          gap: 8px;
+          align-items: flex-end;
+          gap: 2px 14px;
           flex-shrink: 0;
-        }
-        .navbar-auth-link {
-          position: relative;
-          color: inherit;
-          text-decoration: none;
-          font-weight: 500;
-          font-size: 1rem;
-          padding: 7px 14px 10px;
-          border-radius: 8px;
-          white-space: nowrap;
-          transition: background 0.2s, color 0.2s, border-color 0.2s;
-        }
-        .navbar-auth-link::after {
-          content: "";
-          position: absolute;
-          left: 12px;
-          right: 12px;
-          bottom: 2px;
-          height: 2px;
-          border-radius: 2px;
-          background: currentColor;
-          transform: scaleX(0);
-          transform-origin: center;
-          transition: transform 0.22s ease, opacity 0.22s ease;
-          opacity: 0;
-          pointer-events: none;
-        }
-        .navbar-auth-link:hover::after,
-        .navbar-auth-link--active::after {
-          transform: scaleX(1);
-          opacity: 1;
-        }
-        .navbar-desktop-right .navbar-auth-link:hover {
-          background: transparent;
-        }
-        .navbar-auth-link--register:hover {
-          background: transparent;
-        }
-        .navbar-auth-link--login {
-          background: transparent;
-          border: 1.5px solid currentColor;
-        }
-        .navbar-root--scrolled .navbar-auth-link--login:hover,
-        .navbar-root--scrolled .navbar-auth-link--login.navbar-auth-link--active {
-          background: rgba(0, 0, 0, 0.06);
-        }
-        .navbar-root--top .navbar-auth-link--login:hover,
-        .navbar-root--top .navbar-auth-link--login.navbar-auth-link--active {
-          background: rgba(69, 64, 56, 0.08);
         }
         .navbar-user-trigger {
           display: inline-flex;
@@ -452,7 +466,9 @@ export default function Navbar() {
         }
         .navbar-user-menu a,
         .navbar-user-menu button {
-          display: block;
+          display: flex;
+          align-items: center;
+          gap: 10px;
           width: 100%;
           max-width: 100%;
           min-width: 0;
@@ -472,6 +488,14 @@ export default function Navbar() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+        .navbar-menu-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          line-height: 0;
+          opacity: 0.95;
         }
         .navbar-user-menu a:hover,
         .navbar-user-menu button:hover {
@@ -651,6 +675,9 @@ export default function Navbar() {
           padding: 12px 16px;
           font-size: 1.05rem;
           color: rgba(255, 255, 255, 0.85);
+          display: flex;
+          align-items: center;
+          gap: 10px;
         }
         .navbar-mobile-panel .logout {
           color: #ffb4b4;
@@ -692,31 +719,11 @@ export default function Navbar() {
           <div className="navbar-desktop-right">
             {!user ? (
               <div className="navbar-auth-links">
-                <NavLink
-                  to="/login"
-                  onClick={closeMenus}
-                  className={({ isActive }) =>
-                    `navbar-auth-link navbar-auth-link--login${
-                      isActive ? " navbar-auth-link--active" : ""
-                    }`
-                  }
-                >
-                  Đăng nhập
-                </NavLink>
-                <NavLink
-                  to="/register"
-                  onClick={closeMenus}
-                  className={({ isActive }) =>
-                    `navbar-auth-link navbar-auth-link--register${
-                      isActive ? " navbar-auth-link--active" : ""
-                    }`
-                  }
-                >
-                  Đăng ký
-                </NavLink>
+                {renderNavLink("/login", "Đăng nhập", NAV_ICONS.login)}
+                {renderNavLink("/register", "Đăng ký", NAV_ICONS.register)}
               </div>
             ) : (
-              <>
+              <div className="navbar-user-wrap">
                 <button
                   ref={userBtnDesktopRef}
                   type="button"
@@ -735,7 +742,7 @@ export default function Navbar() {
                   </span>
                 </button>
                 {renderUserMenu(userMenuDesktopRef)}
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -795,20 +802,24 @@ export default function Navbar() {
         <div className="nav-divider" />
         {!user ? (
           <>
-            <Link to="/login" role="menuitem" onClick={closeMenus}>
-              Đăng nhập
-            </Link>
-            <Link to="/register" role="menuitem" onClick={closeMenus}>
-              Đăng ký
-            </Link>
+            {renderNavLink("/login", "Đăng nhập", NAV_ICONS.login)}
+            {renderNavLink("/register", "Đăng ký", NAV_ICONS.register)}
           </>
         ) : (
           <>
             {user.username && (
-              <div className="nav-user">👤 {user.username}</div>
+              <div className="nav-user">
+                <span className="navbar-menu-icon">{NAV_ICONS.user}</span>
+                {user.username}
+              </div>
             )}
             <Link to="/profile" role="menuitem" onClick={closeMenus}>
+              <span className="navbar-menu-icon">{NAV_ICONS.profile}</span>
               Trang cá nhân
+            </Link>
+            <Link to="/change-password" role="menuitem" onClick={closeMenus}>
+              <span className="navbar-menu-icon">{NAV_ICONS.password}</span>
+              Đổi mật khẩu
             </Link>
             <button
               type="button"
@@ -816,6 +827,7 @@ export default function Navbar() {
               role="menuitem"
               onClick={handleLogout}
             >
+              <span className="navbar-menu-icon">{NAV_ICONS.logout}</span>
               Đăng xuất
             </button>
           </>

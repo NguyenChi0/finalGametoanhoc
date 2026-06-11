@@ -9,6 +9,10 @@ const LessonPage = lazy(() => import("./users/pages/lessonPage"));
 const Login = lazy(() => import("./users/pages/login"));
 const Register = lazy(() => import("./users/pages/register"));
 const ForgotPassword = lazy(() => import("./users/pages/forgotPassword"));
+const ChangePassword = lazy(() => import("./users/pages/changePassword"));
+const VerifyEmail = lazy(() => import("./users/pages/verifyEmail"));
+const VerifyEmailPending = lazy(() => import("./users/pages/verifyEmailPending"));
+const ResetPassword = lazy(() => import("./users/pages/resetPassword"));
 const Contest = lazy(() => import("./users/pages/contest"));
 const ContestDetailPage = lazy(() => import("./users/pages/contestDetailPage"));
 const Exam = lazy(() => import("./users/pages/Exam"));
@@ -54,6 +58,10 @@ function AppShell() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/change-password" element={<ChangePassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/verify-email-pending" element={<VerifyEmailPending />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/contest" element={<Contest />} />
           <Route path="/contest/:contestId" element={<ContestDetailPage />} />
           <Route path="/exam" element={<Exam />} />

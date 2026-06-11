@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import api from "../../api";
+import api, { resendVerification } from "../../api";
 import { isAdminUser } from "../../admin/auth";
 import { publicUrl } from "../../lib/publicUrl";
 
@@ -26,6 +26,9 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -49,6 +52,8 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setUnverifiedEmail("");
+    setNeedsVerification(false);
     try {
       const res = await api.post("/login", { username, password });
       const { user, token, message: msg } = res.data || {};
@@ -69,8 +74,37 @@ export default function Login() {
       }
     } catch (err) {
       console.error(err);
-      const msg = err.response?.data?.message || t.wrongCreds;
+      const data = err.response?.data;
+      if (err.response?.status === 403 && data?.code === "EMAIL_NOT_VERIFIED") {
+        setUnverifiedEmail(data.email || "");
+        setNeedsVerification(true);
+        setMessage(data.message || "Tài khoản chưa được xác minh.");
+        return;
+      }
+      setUnverifiedEmail("");
+      setNeedsVerification(false);
+      const msg = data?.message || t.wrongCreds;
       setMessage(msg);
+    }
+  };
+
+  const goToVerifyAccount = async () => {
+    if (!unverifiedEmail) return;
+    setSendingOtp(true);
+    try {
+      await resendVerification(unverifiedEmail);
+      navigate(
+        `/verify-email-pending?email=${encodeURIComponent(unverifiedEmail)}`,
+        {
+          state: { message: "Đã gửi mã OTP đến email của bạn." },
+        }
+      );
+    } catch (err) {
+      setMessage(
+        err.response?.data?.message || "Không gửi được mã OTP. Vui lòng thử lại."
+      );
+    } finally {
+      setSendingOtp(false);
     }
   };
 
@@ -79,16 +113,24 @@ export default function Login() {
       <div style={styles.overlay}>
         <form onSubmit={handleLogin} style={styles.form}>
           <h1 style={styles.title}>{t.loginTitle}</h1>
-          <input
-            type="text"
-            placeholder={t.usernamePh}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            autoComplete="username"
-            style={styles.input}
-          />
+          <div style={styles.inputWrap}>
+            <span style={styles.inputIcon} aria-hidden>
+              <UserIcon />
+            </span>
+            <input
+              type="text"
+              placeholder={t.usernamePh}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              autoComplete="username"
+              style={styles.inputWithIcon}
+            />
+          </div>
           <div style={styles.passwordWrap}>
+            <span style={styles.inputIcon} aria-hidden>
+              <LockIcon />
+            </span>
             <input
               type={showPassword ? "text" : "password"}
               placeholder={t.passwordPh}
@@ -96,7 +138,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              style={{ ...styles.input, paddingRight: 54 }}
+              style={styles.inputWithIconPassword}
             />
             <button
               type="button"
@@ -122,9 +164,22 @@ export default function Login() {
             </Link>
           </div>
           <button type="submit" style={styles.button}>
-            {t.submit}
+            <LogInIcon />
+            <span>{t.submit}</span>
           </button>
           <p style={styles.message}>{message}</p>
+          {needsVerification && (
+            <div style={styles.verifyBlock}>
+              <button
+                type="button"
+                style={styles.verifyBtn}
+                onClick={goToVerifyAccount}
+                disabled={sendingOtp || !unverifiedEmail}
+              >
+                {sendingOtp ? "Đang gửi mã OTP…" : "Xác minh tài khoản"}
+              </button>
+            </div>
+          )}
           <p style={styles.registerHint}>
             {t.registerHint}
             <Link to="/register" style={styles.textLink}>
@@ -152,6 +207,34 @@ function EyeOffIcon() {
       <path d="M17.94 17.94A10.7 10.7 0 0112 19C5 19 1 12 1 12a21.7 21.7 0 015.06-6.94" />
       <path d="M9.9 4.24A10.94 10.94 0 0112 5c7 0 11 7 11 7a21.35 21.35 0 01-2.17 3.19" />
       <path d="M1 1l22 22" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 21a8 8 0 10-16 0" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0110 0v4" />
+    </svg>
+  );
+}
+
+function LogInIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
+      <path d="M10 17l5-5-5-5" />
+      <path d="M15 12H3" />
     </svg>
   );
 }
@@ -190,22 +273,53 @@ const styles = {
     marginBottom: "10px",
     fontFamily: "inherit",
   },
-  input: {
+  inputWrap: {
+    position: "relative",
+    width: "100%",
+  },
+  inputIcon: {
+    position: "absolute",
+    left: 18,
+    top: "50%",
+    transform: "translateY(-50%)",
+    color: "#555",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+    zIndex: 1,
+  },
+  inputWithIcon: {
     width: "100%",
     boxSizing: "border-box",
-    padding: "20px",
-    paddingLeft: "30px",
+    padding: "20px 20px 20px 50px",
     fontSize: "16px",
     borderRadius: "40px",
-    border: "4px solid rgba(255,255,255,0.3)",
+    border: "none",
     outline: "none",
     transition: "0.3s",
-    border: "1px solid rgb(255, 255, 255)",
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(0, 0, 0, 0)",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
     color: "black",
     fontFamily: "inherit",
+    boxShadow: "inset 0 0 0 1px rgb(255, 255, 255)",
+  },
+  inputWithIconPassword: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "20px 54px 20px 50px",
+    fontSize: "16px",
+    borderRadius: "40px",
+    border: "none",
+    outline: "none",
+    transition: "0.3s",
+    backgroundColor: "rgba(0, 0, 0, 0)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    color: "black",
+    fontFamily: "inherit",
+    boxShadow: "inset 0 0 0 1px rgb(255, 255, 255)",
   },
   passwordWrap: {
     position: "relative",
@@ -256,12 +370,33 @@ const styles = {
     cursor: "pointer",
     transition: "0.3s",
     fontFamily: "inherit",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    width: "100%",
   },
   message: {
     textAlign: "center",
     color: "#d9534f",
     fontWeight: 500,
     marginTop: "10px",
+  },
+  verifyBlock: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    marginTop: "4px",
+  },
+  verifyBtn: {
+    padding: "10px 18px",
+    background: "transparent",
+    color: "#1d5f7a",
+    border: "1px solid #1d5f7a",
+    borderRadius: "24px",
+    fontSize: "14px",
+    cursor: "pointer",
+    fontFamily: "inherit",
   },
 };
 
@@ -271,7 +406,8 @@ const styles = {
 if (window.innerWidth < 768) {
   styles.overlay.width = "85%";
   styles.overlay.padding = "30px";
-  styles.input.fontSize = "15px";
+  styles.inputWithIcon.fontSize = "15px";
+  styles.inputWithIconPassword.fontSize = "15px";
   styles.button.fontSize = "15px";
 }
 

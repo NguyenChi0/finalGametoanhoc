@@ -1,0 +1,317 @@
+================================================================================
+  GAMETOANHOC — XƯƠNG THAM CHIẾU HỆ THỐNG (hethong.txt)
+  Mục đích: File này mô tả cấu trúc & đặc điểm hệ thống để AI/học viên
+  generate nhanh các phần báo cáo đồ án. Khi cần viết 1 mục, đọc file này
+  và thay nội dung cho đúng đề tài (không copy nguyên ví dụ đề tài khác).
+  Cập nhật: 2026-06-10
+  Lưu ý báo cáo: Chỉ trình bày 8 giao diện game (game1–game8) trong đồ án.
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+A. THÔNG TIN ĐỀ TÀI (dùng cho trang bìa, mở đầu, tóm tắt)
+────────────────────────────────────────────────────────────────────────────────
+
+Tên đề tài (gợi ý):
+  "Xây dựng website học toán gamification Game Toán Học"
+
+Tên sản phẩm: Game Toán Học
+Loại hình: Website học tập trực tuyến (Web Application, SPA)
+Đối tượng: Học sinh tiểu học / THCS (khối lớp 1–5), phụ huynh, giáo viên, quản trị viên
+Mục tiêu: Biến việc học toán thành trải nghiệm vui, tương tác, có động lực qua game,
+          điểm thưởng, cuộc thi và theo dõi tiến độ cá nhân.
+
+Bối cảnh / vấn đề (mẫu đoạn văn — chỉnh tên SV khi dùng):
+  Trong bối cảnh chuyển đổi số giáo dục, việc học toán trực tuyến ngày càng phổ biến
+  nhưng nhiều nền tảng vẫn mang tính "làm bài tập" đơn điệu, khó giữ sự chú ý của học
+  sinh tiểu học. Học sinh thường thiếu động lực tự luyện tập, khó theo dõi tiến bộ và
+  ít có môi trường thi đấu lành mạnh. Xuất phát từ thực tế đó, đề tài "Xây dựng website
+  học toán gamification Game Toán Học" đã được lựa chọn thực hiện nhằm kết hợp nội dung
+  bài học theo khối–chủ đề–bài với nhiều giao diện game, hệ thống điểm–sao–cửa hàng và
+  cuộc thi có thời gian.
+
+Nhiệm vụ chính (mẫu — thay thế đoạn nhiệm vụ đề tài khác):
+  Nhiệm vụ chính của đề tài bao gồm các nội dung sau:
+  - Nghiên cứu công nghệ: Tìm hiểu và ứng dụng React 19, Vite 8 cho giao diện SPA;
+    Node.js + Express 5 xây dựng REST API; MySQL lưu trữ dữ liệu; JWT + bcrypt cho
+    xác thực; gamification (điểm, sao, bảng xếp hạng, vật phẩm, cuộc thi).
+  - Phân tích và thiết kế hệ thống: Xây dựng kiến trúc Client–Server (React frontend,
+    Express backend). Thiết kế CSDL phân cấp Grade → Type → Lesson → Question; luồng
+    luyện bài, ôn tập, đề luyện, cuộc thi, cửa hàng; phân quyền User/Admin.
+  - Cài đặt và triển khai: Hoàn thiện website người dùng (8 giao diện game MCQ),
+    trang quản trị Admin Web, Backend API. Sản phẩm đảm bảo: luyện bài theo khối/chủ đề,
+    chơi game chấm điểm, đề luyện & cuộc thi có giới hạn thời gian, cửa hàng vật phẩm,
+    hồ sơ & bảng xếp hạng, dashboard thống kê cho admin.
+
+Phạm vi đề tài:
+  - Trong phạm vi: Web học sinh + Admin CRUD nội dung + API + MySQL + 8 skin game (game1–game8).
+  - Ngoài phạm vi / chưa hoàn thiện: App mobile native, quên mật khẩu (chỉ UI),
+    chatbot AI, deploy production có tài liệu chính thức.
+
+
+────────────────────────────────────────────────────────────────────────────────
+B. KIẾN TRÚC & CÔNG NGHỆ
+────────────────────────────────────────────────────────────────────────────────
+
+Mô hình kiến trúc: Client–Server (2-tier ứng dụng web)
+  - Client: Single Page Application (SPA) — React + Vite, React Router 7, Axios
+  - Server: REST API — Express 5, tách server.js (user API) và server-admin.js (admin API)
+  - Database: MySQL (database: gametoanhoc), mysql2 connection pool
+  - Static: Ảnh câu hỏi/vật phẩm/khối/chủ đề/bài học, file nhạc
+
+Tech stack chi tiết:
+  Frontend:
+    React 19, Vite 8, React Router DOM 7, Axios, CSS thuần, ESLint
+    Lazy loading theo route (code splitting)
+    PWA manifest: "Ứng dụng học toán vui"
+    Production base path: /gametoanhoc/
+  Backend:
+    Node.js, Express 5, mysql2, bcryptjs, jsonwebtoken, multer, cors, dotenv
+    Port mặc định: 5050, bind 0.0.0.0
+  Dev:
+    Vite proxy /api → localhost:5050
+    Biến môi trường: VITE_API_BASE, JWT_SECRET, JWT_EXPIRES_IN, PORT
+
+Sơ đồ luồng tổng quát (mô tả bằng lời):
+  Browser (React) → HTTP/JSON → Express API → MySQL
+  Upload ảnh → Multer → thư mục *-images/ → serve static
+  Đăng nhập → JWT lưu localStorage → Axios interceptor gắn Bearer token
+
+
+────────────────────────────────────────────────────────────────────────────────
+C. CẤU TRÚC THƯ MỤC DỰ ÁN
+────────────────────────────────────────────────────────────────────────────────
+
+gametoanhoc-vite/
+├── frontend/
+│   ├── public/                 # Ảnh UI, game preview, manifest PWA
+│   ├── src/
+│   │   ├── App.jsx             # Router chính (lazy routes)
+│   │   ├── api.js              # Toàn bộ API client
+│   │   ├── admin/              # Trang & component quản trị
+│   │   └── users/
+│   │       ├── pages/          # home, lessons, game, contest, exam, shop, profile…
+│   │       ├── components/     # game1–11, navbar, leaderboard…
+│   │       └── lib/            # gameInterfaces, playSession, scoring…
+│   └── vite.config.js
+├── backend/
+│   ├── server.js               # API người dùng + auth
+│   ├── server-admin.js         # CRUD admin (/api/admin/*)
+│   ├── db.js                   # MySQL pool
+│   ├── lib/                    # questionAnswers, queryParams
+│   ├── docs/                   # Tài liệu API questions
+│   ├── scripts/                # autotest, smoke test, migrate
+│   └── *-images/               # Upload ảnh theo loại
+├── func.txt                    # Tổng hợp chức năng & API
+├── autotest.txt                # Kịch bản kiểm thử thủ công
+└── hethong.txt                 # File xương này
+
+
+────────────────────────────────────────────────────────────────────────────────
+D. ĐỐI TƯỢNG SỬ DỤNG & PHÂN QUYỀN
+────────────────────────────────────────────────────────────────────────────────
+
+Vai trò:
+  - Học sinh (role = 0): luyện bài, chơi game, đề luyện, cuộc thi, shop, xem profile
+  - Admin (role = 1): toàn bộ /api/admin/*, CRUD nội dung, dashboard thống kê
+  - Khách (chưa đăng nhập): xem trang chủ, leaderboard; một số API public
+
+Xác thực:
+  - POST /api/register, POST /api/login → JWT (mặc định hết hạn 1 ngày)
+  - GET /api/auth/me — kiểm tra phiên
+  - Mật khẩu bcrypt (cost 8)
+  - Frontend: ProtectedAdminRoute kiểm tra role trước khi vào /admin
+  - Backend: authenticateToken + requireAdminRole (đọc lại role từ DB)
+
+
+────────────────────────────────────────────────────────────────────────────────
+E. PHÂN CẤP NỘI DUNG HỌC TẬP
+────────────────────────────────────────────────────────────────────────────────
+
+Cây nội dung:
+  Khối/Lớp (grades)
+    └── Chủ đề toán (types) — theo grade_id
+          └── Bài học (lessons) — theo type_id
+                └── Câu hỏi MCQ (questions) — theo lesson_id (+ grade_id, type_id)
+
+Câu hỏi (answers_json):
+  - 1 cột JSON: mảng { id, text, image, correct }
+  - Tối đa 3 đáp án đúng + 3 đáp án sai (tổng ≤ 6)
+  - Chấm điểm full_set: chọn ĐỦ và CHỈ các đáp án correct=true
+  - scope=play khi load câu cho game/bài học
+
+Mẫu đề & cuộc thi:
+  - exam_templates + exam_template_questions (N-N với questions)
+  - contests gắn template_id, có start_time, end_time, prize, duration_time
+  - user_contests: mỗi user nộp 1 lần/contest (score, times)
+
+
+────────────────────────────────────────────────────────────────────────────────
+F. CÁC MODULE / CHỨC NĂNG CHÍNH
+────────────────────────────────────────────────────────────────────────────────
+
+1. TRANG NGƯỜI DÙNG (routes)
+   /              Trang chủ — giới thiệu 4 dịch vụ: Luyện bài, Thi thử, Cá nhân hóa, Theo dõi tiến độ
+   /lessons       Chọn khối → chủ đề → bài học → vào play-setup
+   /play-setup    Cấu hình: số câu, chọn 1 trong 8 game, nhạc, vật phẩm mang theo (tối đa 3)
+   /game/:gameId  Chơi game MCQ (game1–game8 — phạm vi báo cáo đồ án)
+   /lesson-review Ôn tập bài đã hoàn thành (3 hoặc 7 ngày gần nhất)
+   /exam          Danh sách đề luyện
+   /exam/:id      Làm đề có giới hạn thời gian
+   /contest       Danh sách cuộc thi
+   /contest/:id   Thi đấu + nộp điểm + xem top 3
+   /shop          Mua vật phẩm bằng điểm
+   /profile       Hồ sơ: điểm, xếp hạng tuần, thành tích, vật phẩm
+   /login, /register, /forgot-password (UI quên MK, chưa có API reset)
+
+2. TÁM GIAO DIỆN GAME (cùng engine MCQ, skin UI khác nhau — phạm vi báo cáo)
+   game1 — Cổ điển (trắc nghiệm tập trung nội dung)
+   game2 — Diệt ruồi (đáp án bay, chạm đúng)
+   game3 — Ai là triệu phú (gameshow từng câu)
+   game4 — Vượt chướng ngại vật (runner nhiều làn)
+   game5 — Finding Dory (chủ đề đại dương)
+   game6 — Chém hoa quả (phản xạ nhanh)
+   game7 — Nhà thám hiểm tài ba (hành trình phiêu lưu)
+   game8 — Bài kiểm tra (giao diện nghiêm túc như trên lớp)
+
+3. GAMIFICATION
+   - Điểm tổng (users.score) và điểm tuần (users.week_score) — reset tuần ISO
+   - Sao bài học 1–3 (user_lesson_progress.stars) theo tỷ lệ đúng
+   - Cửa hàng: items mua bằng điểm; effect_type: bonus điểm / gợi ý câu
+   - Cuộc thi: top 3 nhận prize khi kết thúc
+   - Bảng xếp hạng: top 10 tổng / tuần
+   - Thành tích (achievements) theo top tuần
+
+4. TRANG QUẢN TRỊ (/admin/*)
+   Dashboard      — KPI, biểu đồ hiệu suất
+   Questions      — CRUD câu hỏi MCQ + upload ảnh
+   Grades         — CRUD khối lớp
+   Math Types     — CRUD chủ đề + bài học
+   Exams          — CRUD mẫu đề + gán câu hỏi
+   Contest        — CRUD cuộc thi, lịch, giải thưởng
+   Users          — CRUD người dùng
+   Items          — CRUD vật phẩm shop
+
+
+────────────────────────────────────────────────────────────────────────────────
+G. CƠ SỞ DỮ LIỆU (bảng chính)
+────────────────────────────────────────────────────────────────────────────────
+
+users                  id, username, password, ma_tre_em, email, phone, role, score, week_score, items
+grades                 id, name, description, image
+types                  id, grade_id, name, description, image, sort_order
+lessons                id, type_id, name, description, status, image, sort_order
+questions              id, grade_id, type_id, lesson_id, question_text, question_image, answers_json
+exam_templates         id, name, grade_id, description, status, duration_time, start_date
+exam_template_questions template_id, question_id
+contests               id, name, template_id, grade_id, start/end_time, status, prize, duration_time
+user_contests          user_id, contest_id, score, times
+user_lesson_progress   user_id, lesson_id, grade_id, type_id, game_id, correct/total, stars, attempt_count
+items                  id, name, description, link, require_score, effect_type, lesson_bonus_points, hint_questions
+user_items             user_id, item_id, purchased_at
+achievements           id, name, description, link
+app_runtime_state      key_name, value_text (vd: reset leaderboard tuần)
+
+
+────────────────────────────────────────────────────────────────────────────────
+H. API TỔNG QUAN (base: /api)
+────────────────────────────────────────────────────────────────────────────────
+
+Auth:        POST /register, /login | GET /auth/me
+Curriculum:  GET /grades, /types/:grade_id, /lessons/:type_id, /hierarchy-labels
+Questions:   GET/POST/PUT/DELETE /questions (admin cho write)
+Progress:    GET/POST /lesson-progress, POST /score/increment
+Leaderboard: GET /leaderboard/all, /leaderboard/week
+Exams:       GET /exams, /exams/:id
+Contests:    GET /contests, /contests/:id, /contests/:id/leaderboard, POST .../submit
+Shop:        GET /items, GET /item-effects, POST /buy, GET /my-items/:userId
+Admin:       /api/admin/* — dashboard, users, grades, types, lessons, exam-templates, contests, items
+
+
+────────────────────────────────────────────────────────────────────────────────
+I. ĐẶC ĐIỂM NỔI BẬT (dùng cho phần đóng góp / ưu điểm)
+────────────────────────────────────────────────────────────────────────────────
+
+- Gamification đa tầng: không chỉ làm bài mà còn chọn skin game, tích điểm, mua vật phẩm, thi đấu
+- 8 giao diện game trên cùng một engine câu hỏi MCQ — tái sử dụng logic chấm điểm
+- Phân cấp nội dung rõ: khối → chủ đề → bài → câu hỏi, admin quản lý trực quan
+- Hỗ trợ câu hỏi multi-correct (tối đa 3 đáp án đúng)
+- Đề luyện & cuộc thi có thời gian, bảng xếp hạng real-time
+- Code splitting lazy load — tối ưu tải trang
+- Có tài liệu kiểm thử (autotest.txt) và audit API (backend/docs)
+
+
+────────────────────────────────────────────────────────────────────────────────
+J. HẠN CHẾ & HƯỚNG PHÁT TRIỂN (dùng cho kết luận)
+────────────────────────────────────────────────────────────────────────────────
+
+Hạn chế hiện tại:
+  - Chưa có chức năng quên/đặt lại mật khẩu (backend)
+  - Chưa có README/tài liệu deploy chính thức, cấu hình DB hardcode trong db.js
+  - GET /api/questions public — đáp án correct có trong response (chấm client-side)
+  - Chưa có app mobile native
+
+Hướng phát triển:
+  - Reset mật khẩu qua email/SMS
+  - Chấm điểm phía server, ẩn đáp án đúng khi play
+  - Docker + CI/CD, biến môi trường đầy đủ
+  - Gợi ý bài học thông minh (AI) theo kết quả
+  - Thống kê chi tiết cho giáo viên/phụ huynh
+  - PWA offline một phần
+
+
+────────────────────────────────────────────────────────────────────────────────
+K. MẪU CÂU VĂN THEO TỪNG LOẠI PHẦN BÁO CÁO
+     (Khi user ném đoạn mẫu đề tài khác → thay bằng nội dung tương ứng bên dưới)
+────────────────────────────────────────────────────────────────────────────────
+
+[K.1 — MỞ ĐẦU / LÝ DO CHỌN ĐỀ TÀI]
+  → Dùng đoạn "Bối cảnh / vấn đề" ở mục A.
+
+[K.2 — NHIỆM VỤ CHÍNH CỦA ĐỀ TÀI]
+  → Dùng bullet "Nhiệm vụ chính" ở mục A.
+
+[K.3 — MỤC TIÊU NGHIÊN CỨU]
+  - Xây dựng website học toán trực tuyến có gamification cho học sinh.
+  - Thiết kế hệ thống quản lý nội dung phân cấp và nhiều giao diện game.
+  - Triển khai cơ chế điểm, sao, cửa hàng, cuộc thi và bảng xếp hạng.
+  - Xây dựng trang quản trị CRUD đầy đủ và dashboard thống kê.
+[K.4 — ĐỐI TƯỢNG & PHẠM VI]
+  → Dùng mục A (phạm vi) + mục D (vai trò).
+
+[K.5 — CƠ SỞ LÝ THUYẾT / CÔNG NGHỆ]
+  - SPA (Single Page Application): React, routing client-side, trải nghiệm mượt.
+  - REST API: giao tiếp JSON giữa frontend và backend.
+  - JWT: xác thực stateless, Bearer token.
+  - Gamification: điểm, huy hiệu/sao, leaderboard, virtual goods (shop).
+  - MySQL quan hệ: lưu phân cấp nội dung và tiến độ người học.
+
+[K.6 — KIẾN TRÚC HỆ THỐNG]
+  → Mô tả Client–Server mục B; có thể vẽ 3 tầng: Presentation (React) – Application (Express) – Data (MySQL).
+
+[K.7 — PHÂN TÍCH YÊU CẦU]
+  Yêu cầu chức năng (tóm tắt):
+    F1–F4: Đăng ký/đăng nhập, luyện bài, 8 game, ôn tập
+    F5–F6: Đề luyện, cuộc thi
+    F7–F9: Cửa hàng, hồ sơ, bảng xếp hạng
+    F10: Admin CRUD + dashboard
+  Yêu cầu phi chức năng:
+    Giao diện thân thiện trẻ em; responsive; bảo mật JWT/bcrypt;
+    tải trang nhanh (lazy load); API có phân quyền admin.
+
+[K.8 — KẾT QUẢ ĐẠT ĐƯỢC]
+  - Website Game Toán Học hoạt động đầy đủ luồng học sinh và admin.
+  - 8 giao diện game MCQ triển khai và chấm điểm thống nhất.
+  - Hệ thống điểm, sao, shop, contest, leaderboard vận hành ổn định.
+  - Admin quản lý toàn bộ nội dung học tập qua giao diện web.
+  - Có bộ kịch bản kiểm thử (autotest.txt) và script smoke test API.
+
+[K.9 — KẾT LUẬN]
+  Đề tài đã xây dựng thành công nền tảng học toán gamification, góp phần tăng hứng thú
+  tự học của học sinh. Hệ thống đáp ứng các yêu cầu cốt lõi: luyện bài đa dạng, thi đấu,
+  theo dõi tiến độ và quản trị nội dung tập trung. Hướng phát triển: bảo mật chấm điểm
+  server-side, AI gợi ý lộ trình, triển khai production chuẩn hóa.
+
+================================================================================
+  HẾT FILE — Tham chiếu thêm: func.txt (chi tiết API), autotest.txt (test cases)
+================================================================================

@@ -1,25 +1,23 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { register as registerApi } from "../../api";
+import { Link, Navigate } from "react-router-dom";
+import { changePassword as changePasswordApi } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 
 import { NAVBAR_OFFSET } from "../lib/navbarLayout";
 
-const t = {
-  loginFooterHint: "\u0110\u00E3 c\u00F3 t\u00E0i kho\u1EA3n? ",
-  loginFooterLink: "\u0110\u0103ng nh\u1EADp ngay",
-};
+export default function ChangePassword() {
+  const user = JSON.parse(localStorage.getItem("user") || "null");
+  const token = localStorage.getItem("token");
 
-export default function Register() {
-  const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const prevBody = document.body.style.overflow;
@@ -32,70 +30,72 @@ export default function Register() {
     };
   }, []);
 
-  const handleRegister = async (e) => {
+  if (!user || !token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password !== confirmPassword) {
+    setSuccess(false);
+
+    if (newPassword !== confirmPassword) {
       setMessage("Mật khẩu xác nhận không khớp.");
       return;
     }
+    if (newPassword === currentPassword) {
+      setMessage("Mật khẩu mới phải khác mật khẩu hiện tại.");
+      return;
+    }
+
+    setSubmitting(true);
+    setMessage("");
     try {
-      const res = await registerApi({
-        username,
-        password,
-        email,
-        phone,
-      });
-      navigate(`/verify-email-pending?email=${encodeURIComponent(email)}`, {
-        replace: true,
-        state: {
-          message: res.data?.message || "Đăng ký thành công! Vui lòng kiểm tra email để xác minh.",
-        },
-      });
+      const res = await changePasswordApi({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setSuccess(true);
+      setMessage(res.data?.message || "Đổi mật khẩu thành công");
     } catch (err) {
       console.error(err);
-      const msg = err.response?.data?.message || "Lỗi khi đăng ký!";
+      const msg = err.response?.data?.message || "Lỗi khi đổi mật khẩu!";
       setMessage(msg);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div style={styles.page}>
       <div style={styles.overlay}>
-        <form onSubmit={handleRegister} style={styles.form}>
-          <h1 style={styles.title}>Đăng ký</h1>
-          <input
-            type="text"
-            placeholder="Tên đăng nhập"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            autoComplete="username"
-            style={styles.input}
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-            style={styles.input}
-          />
-          <input
-            type="text"
-            placeholder="Số điện thoại"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
-            autoComplete="tel"
-            style={styles.input}
-          />
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <h1 style={styles.title}>Đổi mật khẩu</h1>
           <div style={styles.passwordWrap}>
             <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Mật khẩu"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              type={showCurrentPassword ? "text" : "password"}
+              placeholder="Mật khẩu hiện tại"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              style={{ ...styles.input, paddingRight: 54 }}
+            />
+            <button
+              type="button"
+              style={styles.eyeBtn}
+              onClick={() => setShowCurrentPassword((v) => !v)}
+              aria-label={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
+              title={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
+            >
+              {showCurrentPassword ? <EyeOffIcon /> : <EyeIcon />}
+            </button>
+          </div>
+          <div style={styles.passwordWrap}>
+            <input
+              type={showNewPassword ? "text" : "password"}
+              placeholder="Mật khẩu mới"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
               required
               autoComplete="new-password"
               minLength={4}
@@ -104,17 +104,17 @@ export default function Register() {
             <button
               type="button"
               style={styles.eyeBtn}
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-              title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+              onClick={() => setShowNewPassword((v) => !v)}
+              aria-label={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
+              title={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
             >
-              {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+              {showNewPassword ? <EyeOffIcon /> : <EyeIcon />}
             </button>
           </div>
           <div style={styles.passwordWrap}>
             <input
               type={showConfirmPassword ? "text" : "password"}
-              placeholder="Nhập lại mật khẩu"
+              placeholder="Nhập lại mật khẩu mới"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
@@ -132,14 +132,15 @@ export default function Register() {
               {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
             </button>
           </div>
-          <button type="submit" style={styles.button}>
-            Đăng ký
+          <button type="submit" style={styles.button} disabled={submitting}>
+            {submitting ? "Đang xử lý…" : "Đổi mật khẩu"}
           </button>
-          <p style={styles.message}>{message}</p>
-          <p style={styles.registerHint}>
-            {t.loginFooterHint}
-            <Link to="/login" style={styles.textLink}>
-              {t.loginFooterLink}
+          {message && (
+            <p style={success ? styles.successMessage : styles.message}>{message}</p>
+          )}
+          <p style={styles.footerHint}>
+            <Link to="/profile" style={styles.textLink}>
+              Quay lại trang cá nhân
             </Link>
           </p>
         </form>
@@ -254,6 +255,12 @@ const styles = {
     fontWeight: 500,
     marginTop: "10px",
   },
+  successMessage: {
+    textAlign: "center",
+    color: "#28a745",
+    fontWeight: 500,
+    marginTop: "10px",
+  },
   textLink: {
     color: "#1d5f7a",
     textDecoration: "underline",
@@ -261,7 +268,7 @@ const styles = {
     fontWeight: 500,
     fontSize: "15px",
   },
-  registerHint: {
+  footerHint: {
     textAlign: "center",
     marginTop: "-8px",
     color: "#333",

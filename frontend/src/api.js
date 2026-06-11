@@ -117,6 +117,22 @@ export const getAuthMe = async () => {
   return res.data;
 };
 
+export const changePassword = async ({ currentPassword, newPassword }) => {
+  return api.post("/auth/change-password", { currentPassword, newPassword });
+};
+
+export const verifyEmail = ({ email, otp }) =>
+  api.post("/auth/verify-email", { email, otp });
+
+export const resendVerification = (email) =>
+  api.post("/auth/resend-verification", { email });
+
+export const forgotPassword = (email) =>
+  api.post("/auth/forgot-password", { email });
+
+export const resetPassword = ({ email, otp, newPassword }) =>
+  api.post("/auth/reset-password", { email, otp, newPassword });
+
 // ==========================
 // Contests (trang user — không qua /admin)
 // ==========================

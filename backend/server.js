@@ -22,6 +22,47 @@ const {
   clampLimitOffset,
   parseScope,
 } = require('./lib/queryParams');
+const { createEmailOtp, consumeEmailOtp } = require('./lib/emailTokens');
+const { sendVerifyEmail, sendResetPasswordEmail } = require('./lib/mailer');
+
+/** Rate limit gửi email: tối đa 3 lần / email / 15 phút. */
+const emailRateLimit = new Map();
+
+function checkEmailRateLimit(email, action, max = 3, windowMs = 15 * 60 * 1000) {
+  const key = `${action}:${String(email || '').trim().toLowerCase()}`;
+  const now = Date.now();
+  let entry = emailRateLimit.get(key);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + windowMs };
+    emailRateLimit.set(key, entry);
+  }
+  if (entry.count >= max) return false;
+  entry.count += 1;
+  return true;
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+/** Rate limit nhập OTP sai: tối đa 5 lần / email / 15 phút. */
+const otpVerifyRateLimit = new Map();
+
+function checkOtpVerifyRateLimit(email, max = 5, windowMs = 15 * 60 * 1000) {
+  const key = String(email || '').trim().toLowerCase();
+  const now = Date.now();
+  let entry = otpVerifyRateLimit.get(key);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + windowMs };
+    otpVerifyRateLimit.set(key, entry);
+  }
+  if (entry.count >= max) return false;
+  entry.count += 1;
+  return true;
+}
+
+const GENERIC_EMAIL_SENT_MSG =
+  'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi mã OTP. Vui lòng kiểm tra hộp thư.';
 
 /** Cột SELECT cho API — tránh SELECT *. */
 const QUESTION_PLAY_SELECT = `q.id, q.question_text, q.question_image, q.answers_json`;
@@ -155,19 +196,34 @@ app.post('/api/register', async (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ message: 'Thiếu username hoặc password' });
   }
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ message: 'Email không hợp lệ' });
+  }
 
   try {
     const hashed = bcrypt.hashSync(password, 8);
     const sql =
-      'INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)';
+      'INSERT INTO users (username, password, email, phone, email_verified) VALUES (?, ?, ?, ?, 0)';
     const [result] = await pool.execute(sql, [
       username,
       hashed,
-      email || null,
+      String(email).trim(),
       phone || null,
     ]);
 
-    res.json({ message: 'Đăng ký thành công', userId: result.insertId });
+    const userId = result.insertId;
+    const otp = await createEmailOtp(pool, {
+      userId,
+      type: 'verify_email',
+      ttlMinutes: 10,
+    });
+    await sendVerifyEmail(String(email).trim(), otp);
+
+    res.json({
+      message: 'Đăng ký thành công. Vui lòng kiểm tra email để lấy mã OTP xác minh (6 số).',
+      needsVerification: true,
+      userId,
+    });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       const sqlMessage = String(err.sqlMessage || '');
@@ -180,7 +236,10 @@ app.post('/api/register', async (req, res) => {
       return res.status(409).json({ message: 'Username đã tồn tại' });
     }
     console.error(err);
-    res.status(500).json({ message: 'Lỗi server' });
+    const msg = String(err.message || '').includes('SMTP')
+      ? err.message
+      : 'Lỗi server';
+    res.status(500).json({ message: msg });
   }
 });
 
@@ -204,6 +263,16 @@ app.post('/api/login', async (req, res) => {
     const match = bcrypt.compareSync(password, user.password);
     if (!match) {
       return res.status(401).json({ message: 'Sai username hoặc password' });
+    }
+
+    const hasKilovia = user.ma_tre_em != null && String(user.ma_tre_em).trim() !== '';
+    const hasEmail = user.email != null && String(user.email).trim() !== '';
+    if (hasEmail && !hasKilovia && Number(user.email_verified) !== 1) {
+      return res.status(403).json({
+        message: 'Tài khoản chưa được xác minh.',
+        code: 'EMAIL_NOT_VERIFIED',
+        email: user.email,
+      });
     }
 
     const { password: _pw, ...safeUser } = user;
@@ -234,6 +303,198 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     return res.json({ user: rows[0] });
   } catch (err) {
     console.error('Error /api/auth/me:', err);
+    return res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
+// ==========================
+//  API: CHANGE PASSWORD (user đã đăng nhập)
+// ==========================
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Thiếu mật khẩu hiện tại hoặc mật khẩu mới' });
+  }
+  if (String(newPassword).length < 4) {
+    return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 4 ký tự' });
+  }
+
+  try {
+    const userId = Number(req.auth?.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ message: 'Token không hợp lệ' });
+    }
+
+    const [rows] = await pool.query('SELECT password FROM users WHERE id = ? LIMIT 1', [userId]);
+    if (!rows.length) {
+      return res.status(401).json({ message: 'Tài khoản không tồn tại' });
+    }
+
+    const match = bcrypt.compareSync(String(currentPassword), rows[0].password);
+    if (!match) {
+      return res.status(401).json({ message: 'Mật khẩu hiện tại không đúng' });
+    }
+
+    if (bcrypt.compareSync(String(newPassword), rows[0].password)) {
+      return res.status(400).json({ message: 'Mật khẩu mới phải khác mật khẩu hiện tại' });
+    }
+
+    const hashed = bcrypt.hashSync(String(newPassword), 8);
+    await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashed, userId]);
+
+    return res.json({ message: 'Đổi mật khẩu thành công' });
+  } catch (err) {
+    console.error('Error /api/auth/change-password:', err);
+    return res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
+// ==========================
+//  API: VERIFY EMAIL (OTP 6 số)
+// ==========================
+app.post('/api/auth/verify-email', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const otp = String(req.body?.otp || '').trim().replace(/\D/g, '');
+
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ message: 'Email không hợp lệ' });
+  }
+  if (otp.length !== 6) {
+    return res.status(400).json({ message: 'Mã OTP phải gồm 6 chữ số' });
+  }
+
+  try {
+    const userId = await consumeEmailOtp(pool, { email, otp, type: 'verify_email' });
+    if (!userId) {
+      if (!checkOtpVerifyRateLimit(email)) {
+        return res.status(429).json({ message: 'Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau.' });
+      }
+      return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn' });
+    }
+
+    await pool.query('UPDATE users SET email_verified = 1 WHERE id = ?', [userId]);
+    return res.json({ message: 'Xác minh email thành công. Bạn có thể đăng nhập.' });
+  } catch (err) {
+    console.error('Error /api/auth/verify-email:', err);
+    return res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
+// ==========================
+//  API: RESEND VERIFICATION EMAIL
+// ==========================
+app.post('/api/auth/resend-verification', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ message: 'Email không hợp lệ' });
+  }
+
+  if (!checkEmailRateLimit(email, 'resend-verification')) {
+    return res.status(429).json({ message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.' });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, email_verified FROM users WHERE LOWER(email) = ? LIMIT 1',
+      [email]
+    );
+
+    if (rows.length && Number(rows[0].email_verified) !== 1) {
+      const otp = await createEmailOtp(pool, {
+        userId: rows[0].id,
+        type: 'verify_email',
+        ttlMinutes: 10,
+      });
+      await sendVerifyEmail(email, otp);
+    }
+
+    return res.json({ message: GENERIC_EMAIL_SENT_MSG });
+  } catch (err) {
+    console.error('Error /api/auth/resend-verification:', err);
+    const msg = String(err.message || '').includes('SMTP')
+      ? err.message
+      : 'Lỗi server';
+    return res.status(500).json({ message: msg });
+  }
+});
+
+// ==========================
+//  API: FORGOT PASSWORD
+// ==========================
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ message: 'Email không hợp lệ' });
+  }
+
+  if (!checkEmailRateLimit(email, 'forgot-password')) {
+    return res.status(429).json({ message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.' });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, email FROM users WHERE LOWER(email) = ? LIMIT 1',
+      [email]
+    );
+
+    if (rows.length) {
+      const otp = await createEmailOtp(pool, {
+        userId: rows[0].id,
+        type: 'reset_password',
+        ttlMinutes: 10,
+      });
+      await sendResetPasswordEmail(rows[0].email, otp);
+    }
+
+    return res.json({ message: GENERIC_EMAIL_SENT_MSG });
+  } catch (err) {
+    console.error('Error /api/auth/forgot-password:', err);
+    const msg = String(err.message || '').includes('SMTP')
+      ? err.message
+      : 'Lỗi server';
+    return res.status(500).json({ message: msg });
+  }
+});
+
+// ==========================
+//  API: RESET PASSWORD (OTP 6 số từ email)
+// ==========================
+app.post('/api/auth/reset-password', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const otp = String(req.body?.otp || '').trim().replace(/\D/g, '');
+  const { newPassword } = req.body || {};
+
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ message: 'Email không hợp lệ' });
+  }
+  if (otp.length !== 6) {
+    return res.status(400).json({ message: 'Mã OTP phải gồm 6 chữ số' });
+  }
+  if (!newPassword) {
+    return res.status(400).json({ message: 'Thiếu mật khẩu mới' });
+  }
+  if (String(newPassword).length < 4) {
+    return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 4 ký tự' });
+  }
+
+  try {
+    const userId = await consumeEmailOtp(pool, { email, otp, type: 'reset_password' });
+    if (!userId) {
+      if (!checkOtpVerifyRateLimit(`reset:${email}`)) {
+        return res.status(429).json({ message: 'Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau.' });
+      }
+      return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn' });
+    }
+
+    const hashed = bcrypt.hashSync(String(newPassword), 8);
+    await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashed, userId]);
+
+    return res.json({ message: 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập.' });
+  } catch (err) {
+    console.error('Error /api/auth/reset-password:', err);
     return res.status(500).json({ message: 'Lỗi server' });
   }
 });
@@ -1917,7 +2178,7 @@ app.post('/api/external-login-child', async (req, res) => {
     // Dùng chuỗi cố định cho password, không dùng để đăng nhập thủ công
     const hashed = bcrypt.hashSync(`EXTERNAL_${maTreEm}`, 8);
 
-    const sql = 'INSERT INTO users (username, password, ma_tre_em) VALUES (?, ?, ?)';
+    const sql = 'INSERT INTO users (username, password, ma_tre_em, email_verified) VALUES (?, ?, ?, 1)';
     const [result] = await pool.execute(sql, [
       username,
       hashed,
