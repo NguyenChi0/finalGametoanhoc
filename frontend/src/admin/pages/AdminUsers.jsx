@@ -28,6 +28,10 @@ function roleLabel(role) {
   return "Người chơi";
 }
 
+function emailVerifiedLabel(emailVerified) {
+  return Number(emailVerified) === 1 ? "Đã xác minh" : "Chưa xác minh";
+}
+
 function formatDateTime(isoLike) {
   if (!isoLike) return "—";
   const d = new Date(isoLike.replace(" ", "T"));
@@ -120,6 +124,7 @@ export default function AdminUsers() {
     email: "",
     phone: "",
     password: "",
+    email_verified: 0,
   });
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -192,6 +197,7 @@ export default function AdminUsers() {
       email: user.email || "",
       phone: user.phone || "",
       password: "",
+      email_verified: Number(user.email_verified) === 1 ? 1 : 0,
     });
     setShowModal(true);
   };
@@ -208,6 +214,7 @@ export default function AdminUsers() {
       email: "",
       phone: "",
       password: "",
+      email_verified: 1,
     });
     setShowModal(true);
   };
@@ -224,6 +231,7 @@ export default function AdminUsers() {
       email: "",
       phone: "",
       password: "",
+      email_verified: 0,
     });
   };
 
@@ -234,8 +242,8 @@ export default function AdminUsers() {
         const n = value === "" ? 0 : Number(value);
         return { ...prev, [name]: Number.isNaN(n) ? 0 : n };
       }
-      if (name === "role") {
-        return { ...prev, role: Number(value) };
+      if (name === "role" || name === "email_verified") {
+        return { ...prev, [name]: Number(value) };
       }
       return { ...prev, [name]: value };
     });
@@ -266,6 +274,7 @@ export default function AdminUsers() {
             editForm.week_score === "" || editForm.week_score === null
               ? null
               : Number(editForm.week_score),
+          email_verified: Number(editForm.email_verified),
         });
       } else if (editingUser) {
         const payload = {
@@ -278,6 +287,7 @@ export default function AdminUsers() {
             editForm.week_score === "" || editForm.week_score === null
               ? null
               : Number(editForm.week_score),
+          email_verified: Number(editForm.email_verified),
         };
         if (editForm.password.trim()) {
           payload.password = editForm.password.trim();
@@ -454,6 +464,20 @@ export default function AdminUsers() {
                   </span>
                 </div>
                 <div style={styles.cardField}>
+                  <span style={styles.cardLabel}>Xác minh email</span>
+                  <span>
+                    <span
+                      style={
+                        Number(u.email_verified) === 1
+                          ? styles.badgeVerified
+                          : styles.badgeUnverified
+                      }
+                    >
+                      {emailVerifiedLabel(u.email_verified)}
+                    </span>
+                  </span>
+                </div>
+                <div style={styles.cardField}>
                   <span style={styles.cardLabel}>Số điện thoại</span>
                   <span style={{ ...styles.cardValue, color: "#57606a" }}>
                     {u.phone || "—"}
@@ -496,13 +520,14 @@ export default function AdminUsers() {
           <table style={styles.table}>
             <colgroup>
               <col style={{ width: 76 }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "14%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: 96 }} />
+              <col style={{ width: "12%" }} />
               <col style={{ width: 108 }} />
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "13%" }} />
-              <col style={{ width: 156 }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: 140 }} />
               <col style={{ width: 124 }} />
             </colgroup>
             <thead>
@@ -513,6 +538,7 @@ export default function AdminUsers() {
                 <th style={{ ...styles.th, textAlign: "right" }}>Điểm tất cả</th>
                 <th style={styles.th}>Vai trò</th>
                 <th style={styles.th}>Email</th>
+                <th style={styles.th}>Xác minh email</th>
                 <th style={styles.th}>Số điện thoại</th>
                 <th style={styles.th}>Thời gian tạo</th>
                 <th style={{ ...styles.th, textAlign: "right" }}>Thao tác</th>
@@ -521,7 +547,7 @@ export default function AdminUsers() {
             <tbody>
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={styles.tdEmpty}>
+                  <td colSpan={10} style={styles.tdEmpty}>
                     Không có dữ liệu trên trang này.
                   </td>
                 </tr>
@@ -567,6 +593,17 @@ export default function AdminUsers() {
                       <CellTruncate title={u.email || undefined}>
                         {u.email || "—"}
                       </CellTruncate>
+                    </td>
+                    <td style={{ ...styles.td, whiteSpace: "nowrap" }}>
+                      <span
+                        style={
+                          Number(u.email_verified) === 1
+                            ? styles.badgeVerified
+                            : styles.badgeUnverified
+                        }
+                      >
+                        {emailVerifiedLabel(u.email_verified)}
+                      </span>
                     </td>
                     <td style={{ ...styles.td, color: "#57606a" }}>
                       <CellTruncate title={u.phone || undefined}>
@@ -716,6 +753,18 @@ export default function AdminUsers() {
                     onChange={handleFormChange}
                     style={styles.input}
                   />
+                </div>
+                <div style={styles.formField}>
+                  <label style={styles.label}>Xác minh email</label>
+                  <select
+                    name="email_verified"
+                    value={editForm.email_verified}
+                    onChange={handleFormChange}
+                    style={styles.select}
+                  >
+                    <option value={1}>Đã xác minh</option>
+                    <option value={0}>Chưa xác minh</option>
+                  </select>
                 </div>
                 <div style={styles.formField}>
                   <label style={styles.label}>Số điện thoại</label>
@@ -1070,6 +1119,26 @@ const styles = {
     border: "1px solid #b6e3ff",
   },
   badgeUser: {
+    display: "inline-block",
+    padding: "4px 10px",
+    borderRadius: 999,
+    fontSize: "0.78rem",
+    fontWeight: 600,
+    background: "#f6f8fa",
+    color: "#57606a",
+    border: "1px solid #d0d7de",
+  },
+  badgeVerified: {
+    display: "inline-block",
+    padding: "4px 10px",
+    borderRadius: 999,
+    fontSize: "0.78rem",
+    fontWeight: 600,
+    background: "#dafbe1",
+    color: "#1a7f37",
+    border: "1px solid #aceebb",
+  },
+  badgeUnverified: {
     display: "inline-block",
     padding: "4px 10px",
     borderRadius: 999,

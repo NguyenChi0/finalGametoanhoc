@@ -1,0 +1,175 @@
+---
+title: Sơ đồ ERD — Game Toán Học (BACKUP1606.sql)
+---
+erDiagram
+    %% ══ QUAN HỆ 1-N (theo FK trong BACKUP1606.sql) ══
+    users ||--o{ email_tokens : "1-N"
+
+    grades ||--o{ types : "1-N"
+    types ||--o{ lessons : "1-N"
+    lessons ||--o{ questions : "1-N"
+    grades ||--o{ questions : "1-N"
+    types ||--o{ questions : "1-N"
+
+    users ||--o{ user_lesson_progress : "1-N"
+    lessons ||--o{ user_lesson_progress : "1-N"
+    grades ||--o{ user_lesson_progress : "1-N"
+    types ||--o{ user_lesson_progress : "1-N"
+
+    grades ||--o{ exam_templates : "1-N"
+    exam_templates ||--o{ contests : "1-N"
+
+    exam_templates ||--o{ exam_template_questions : "1-N"
+    questions ||--o{ exam_template_questions : "1-N"
+
+    users ||--o{ user_contests : "1-N"
+    contests ||--o{ user_contests : "1-N"
+
+    users ||--o{ user_items : "1-N"
+    items ||--o{ user_items : "1-N"
+
+    %% ══ N-N (qua bảng trung gian) ══
+    %% users ↔ lessons       → user_lesson_progress
+    %% users ↔ contests      → user_contests
+    %% users ↔ items         → user_items
+    %% exam_templates ↔ questions → exam_template_questions
+
+    grades {
+        tinyint id PK
+        varchar name
+        text description
+        varchar image
+    }
+
+    types {
+        smallint id PK
+        tinyint grade_id FK
+        varchar name
+        text description
+        varchar image
+        int sort_order
+    }
+
+    lessons {
+        smallint id PK
+        smallint type_id FK
+        varchar name
+        tinyint status
+        varchar image
+        int sort_order
+    }
+
+    questions {
+        bigint id PK
+        tinyint grade_id FK
+        smallint type_id FK
+        smallint lesson_id FK
+        text question_text
+        varchar question_image
+        json answers_json
+    }
+
+    users {
+        int id PK
+        varchar username
+        varchar email
+        varchar phone
+        varchar password
+        bigint score
+        bigint week_score
+        tinyint role
+        tinyint email_verified
+        tinyint is_locked
+    }
+
+    email_tokens {
+        int id PK
+        int user_id FK
+        varchar token_hash
+        enum type
+        datetime expires_at
+        datetime used_at
+    }
+
+    user_lesson_progress {
+        int user_id PK_FK
+        smallint lesson_id PK_FK
+        tinyint grade_id FK
+        smallint type_id FK
+        varchar game_id
+        smallint correct_count
+        smallint total_count
+        tinyint stars
+        int attempt_count
+        timestamp completed_at
+    }
+
+    exam_templates {
+        int id PK
+        varchar name
+        tinyint grade_id FK
+        text description
+        smallint duration_time
+        smallint status
+    }
+
+    exam_template_questions {
+        int id PK
+        int template_id FK
+        bigint question_id FK
+    }
+
+    contests {
+        int id PK
+        varchar name
+        int template_id FK
+        int grade_id
+        datetime start_time
+        datetime end_time
+        tinyint status
+        smallint prize
+        smallint duration_time
+    }
+
+    user_contests {
+        int id PK
+        int user_id FK
+        int contest_id FK
+        int score
+        int times
+        tinyint is_rewarded
+    }
+
+    items {
+        int id PK
+        varchar name
+        varchar description
+        bigint require_score
+        smallint level
+        tinyint effect_type
+    }
+
+    user_items {
+        int id PK
+        int user_id FK
+        int item_id FK
+        timestamp purchased_at
+    }
+
+    achievements {
+        int id PK
+        varchar name
+        varchar description
+        varchar link
+    }
+
+    notifications {
+        int id PK
+        varchar name
+        tinyint status
+    }
+
+    app_runtime_state {
+        varchar key_name PK
+        varchar value_text
+    }

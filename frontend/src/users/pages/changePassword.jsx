@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { changePassword as changePasswordApi } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
-
-import { NAVBAR_OFFSET } from "../lib/navbarLayout";
 
 export default function ChangePassword() {
   const user = JSON.parse(localStorage.getItem("user") || "null");
@@ -18,17 +16,6 @@ export default function ChangePassword() {
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    const prevBody = document.body.style.overflow;
-    const prevHtml = document.documentElement.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevBody;
-      document.documentElement.style.overflow = prevHtml;
-    };
-  }, []);
 
   if (!user || !token) {
     return <Navigate to="/login" replace />;
@@ -175,16 +162,14 @@ const styles = {
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
-    height: `calc(100vh - ${NAVBAR_OFFSET}px)`,
-    maxHeight: `calc(100vh - ${NAVBAR_OFFSET}px)`,
+    minHeight: "calc(100vh - var(--navbar-height, 76px))",
     width: "100%",
     boxSizing: "border-box",
-    overflow: "hidden",
-    overscrollBehavior: "none",
-    touchAction: "manipulation",
+    overflowX: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    padding: "32px 16px",
   },
   overlay: {
     padding: "40px",

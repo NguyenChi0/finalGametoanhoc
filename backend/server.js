@@ -153,6 +153,20 @@ function authenticateToken(req, res, next) {
   }
 }
 
+/** Gắn req.auth nếu có Bearer hợp lệ; không có hoặc sai token vẫn cho qua (public read). */
+function optionalAuthenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme === 'Bearer' && token) {
+    try {
+      req.auth = jwt.verify(token, JWT_SECRET);
+    } catch {
+      req.auth = null;
+    }
+  }
+  next();
+}
+
 async function requireAdminRole(req, res, next) {
   const authUserId = Number(req.auth?.sub);
   if (!Number.isFinite(authUserId) || authUserId <= 0) {
@@ -1260,6 +1274,32 @@ function mapCompletedLessonRow(row) {
   };
 }
 
+function mapProfileLessonRow(row) {
+  return {
+    lessonName: row.lesson_name || null,
+    pointsAdded: Number(row.correct_count) || 0,
+    correctCount: Number(row.correct_count) || 0,
+    totalCount: Number(row.total_count) || 0,
+    stars: Number(row.stars) || 0,
+    completedAt: row.completed_at,
+  };
+}
+
+async function fetchRecentLessonHistory(userId, limit = 5) {
+  const lim = Math.min(Math.max(Number(limit) || 5, 1), 20);
+  const [rows] = await pool.query(
+    `SELECT ulp.correct_count, ulp.total_count, ulp.stars, ulp.completed_at,
+            l.name AS lesson_name
+     FROM user_lesson_progress ulp
+     JOIN lessons l ON l.id = ulp.lesson_id
+     WHERE ulp.user_id = ?
+     ORDER BY ulp.completed_at DESC
+     LIMIT ?`,
+    [userId, lim]
+  );
+  return (rows || []).map(mapProfileLessonRow);
+}
+
 app.get('/api/lesson-progress/completed', authenticateToken, async (req, res) => {
   try {
     const userId = Number(req.auth?.sub);
@@ -1459,15 +1499,11 @@ app.post('/api/score/increment', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/user/:username', authenticateToken, async (req, res) => {
+app.get('/api/user/:username', optionalAuthenticateToken, async (req, res) => {
   const { username } = req.params;
-  if (!isSelfOrAdminByUsername(req, username)) {
-    return res.status(403).json({ message: 'Bạn không có quyền xem thông tin người dùng này' });
-  }
 
   try {
     await resetWeeklyScoresIfNeeded();
-    // 1) Lấy user
     const [rows] = await pool.execute(
       'SELECT * FROM users WHERE username = ?',
       [username]
@@ -1477,45 +1513,57 @@ app.get('/api/user/:username', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
 
-    let user = rows[0];
+    const row = rows[0];
+    const isPrivateView = isSelfOrAdminByUsername(req, username);
 
-    // 2) Tính rank tuần
-    const userWeekScore = Number(user.week_score) || 0;
-
+    const userWeekScore = Number(row.week_score) || 0;
     const [countRows] = await pool.execute(
       'SELECT COUNT(*) AS cnt FROM users WHERE week_score > ?',
       [userWeekScore]
     );
-
     const rank = Number(countRows[0].cnt) + 1;
 
-    // 3) Xác định achievement (KHÔNG lưu DB)
     let achievement = null;
-
     if (userWeekScore > 0 && rank >= 1 && rank <= 5) {
       const [achRows] = await pool.execute(
         'SELECT id, name, description, link FROM achievements WHERE id = ?',
-        [rank] // top1 → id=1, top2 → id=2,...
+        [rank]
       );
       achievement = achRows[0] || null;
     }
 
-    // 4) Lấy items
     const [itemRows] = await pool.execute(
       `SELECT i.id, i.name, i.description, i.link, i.require_score, i.level, ui.purchased_at
        FROM user_items ui
        JOIN items i ON ui.item_id = i.id
        WHERE ui.user_id = ?`,
-      [user.id]
+      [row.id]
     );
 
-    // 5) Trả về
-    user.week_rank = rank;
-    user.achievement = achievement;
-    user.itemsOwned = itemRows;
+    const recentLessons = await fetchRecentLessonHistory(row.id, 5);
+
+    const user = {
+      id: row.id,
+      username: row.username,
+      score: row.score,
+      week_score: row.week_score,
+      created_at: row.created_at,
+      week_rank: rank,
+      achievement,
+      itemsOwned: itemRows,
+      recentLessons,
+    };
+
+    if (isPrivateView) {
+      user.email = row.email;
+      user.phone = row.phone;
+      user.role = row.role;
+      user.email_verified = row.email_verified;
+      user.ma_tre_em = row.ma_tre_em;
+      user.items = row.items;
+    }
 
     return res.json(user);
-
   } catch (err) {
     console.error('Lỗi khi lấy user:', err);
     return res.status(500).json({ message: 'Lỗi server khi lấy thông tin người dùng' });

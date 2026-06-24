@@ -53,18 +53,18 @@ export default function Home() {
       <section className="home-session home-session--hero home-session--solid" style={{ backgroundImage: `url(${BG1})` }}>
         <div className="home-session__inner home-session__inner--hero home-session__inner--text-left">
           <div className="home-hero-copy">
-            <p className="home-hero-kicker">Welcome to the fun world of learning</p>
-            <h1>be kind<br />with kids</h1>
+            <p className="home-hero-kicker">Chào mừng bạn đến với</p>
+            <h1>Game<br />Toán Học</h1>
             <p className="home-hero-desc">
               Chào mừng bạn đến với không gian học toán thân thiện, sinh động và dễ tiếp cận.
-              Học sinh có thể chọn khối, luyện bài, xem kết quả và tiếp tục tiến bộ mỗi ngày.
+              Cùng luyện tập và tiếp tục tiến bộ mỗi ngày.
             </p>
             <div className="home-actions">
               <Link to="/lessons" className="home-btn home-btn--primary">
-                Explore platform
+                Khám phá ngay
               </Link>
               <Link to="/contest" className="home-btn home-btn--secondary">
-                Join a challenge
+                Tham gia cuộc thi
               </Link>
             </div>
           </div>
@@ -130,7 +130,7 @@ export default function Home() {
               quen học tập hiệu quả hơn.
             </p>
             <div className="home-actions">
-              <Link to="/lessons" className="home-btn home-btn--primary">
+              <Link to="/lessons" className="home-btn home-btn--primary home-btn--cta">
                 Vào học ngay
               </Link>
             </div>
@@ -145,13 +145,17 @@ export default function Home() {
           color: #3f423a;
         }
         .home-session {
-          width: 100vw;
-          margin-left: calc(50% - 50vw);
+          width: 100%;
+          max-width: 100%;
           min-height: 100vh;
+          min-height: 100svh;
           background-size: cover;
-          background-position: center;
+          background-position: center center;
           background-repeat: no-repeat;
           position: relative;
+        }
+        .home-session--hero {
+          background-position: center top;
         }
         .home-session::before {
           content: none;
@@ -186,6 +190,9 @@ export default function Home() {
         }
         .home-hero-copy {
           max-width: 470px;
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
         }
         .home-hero-kicker,
         .home-section-label {
@@ -216,30 +223,57 @@ export default function Home() {
           gap: 12px;
           flex-wrap: wrap;
           margin-top: 22px;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
         }
         .home-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-width: 170px;
+          min-width: 0;
+          max-width: 100%;
           padding: 14px 22px;
           border-radius: 16px;
           text-decoration: none;
           font-weight: 800;
           font-size: 0.98rem;
-          transition: transform 0.18s ease, opacity 0.18s ease;
+          transition: transform 0.18s ease;
+          box-sizing: border-box;
+          text-align: center;
         }
         .home-btn:hover {
           transform: translateY(-1px);
-          opacity: 0.96;
         }
         .home-btn--primary {
           background: #9ebc88;
           color: #fff;
         }
         .home-btn--secondary {
-          background: rgba(255, 255, 255, 0.9);
+          background: #fff;
           color: #55604f;
+        }
+        .home-btn--cta {
+          box-shadow: 0 6px 18px rgba(126, 158, 108, 0.32);
+          animation: homeBtnBounce 2s ease-in-out infinite;
+        }
+        .home-btn--cta:hover {
+          animation-play-state: paused;
+          transform: translateY(-2px);
+          box-shadow: 0 10px 22px rgba(126, 158, 108, 0.38);
+        }
+        @keyframes homeBtnBounce {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-10px);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .home-btn--cta {
+            animation: none;
+          }
         }
         .home-hero-art {
           position: relative;
@@ -356,7 +390,6 @@ export default function Home() {
           bottom: 150px;
           height: 210px;
           background: #9ebc88;
-          opacity: 0.95;
         }
         .hero-hill--front {
           bottom: 0;
@@ -440,6 +473,9 @@ export default function Home() {
           -webkit-backdrop-filter: none;
           border: none;
           box-shadow: none;
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
         }
         .home-panel--right {
           max-width: 620px;
@@ -506,9 +542,6 @@ export default function Home() {
           color: #59624e;
           line-height: 1.7;
         }
-        .home-session--reviews::before {
-          background: rgba(103, 153, 109, 0.18);
-        }
         .home-session__inner--feedback {
           gap: 40px;
         }
@@ -558,9 +591,6 @@ export default function Home() {
         .home-session--services {
           min-height: auto;
         }
-        .home-session--services::before {
-          background: rgba(223, 232, 176, 0.08);
-        }
         .home-session__inner--features {
           min-height: auto;
           justify-content: flex-start;
@@ -576,12 +606,6 @@ export default function Home() {
         .home-title-block--features + .home-service-grid {
           transform: translateY(-10vh);
         }
-        .home-session--about::before {
-          background: rgba(223, 232, 176, 0.04);
-        }
-        .home-session--footer::before {
-          background: rgba(223, 232, 176, 0.08);
-        }
         .home-footer-inner {
           align-items: flex-start;
           justify-content: center;
@@ -591,6 +615,11 @@ export default function Home() {
           max-width: 620px;
         }
 
+        @media (min-width: 769px) {
+          .home-btn {
+            min-width: 170px;
+          }
+        }
         @media (max-width: 1100px) {
           .home-session__inner--hero {
             grid-template-columns: 1fr;
@@ -604,43 +633,211 @@ export default function Home() {
             max-width: 100%;
           }
         }
+        @media (max-width: 900px) {
+          .home-actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .home-btn {
+            display: flex;
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+          }
+        }
         @media (max-width: 768px) {
           .home-session {
             min-height: auto;
           }
+          .home-session--hero {
+            min-height: max(520px, 85svh);
+            background-position: 72% top;
+          }
+          .home-session--about {
+            min-height: max(480px, 72svh);
+            background-position: center top;
+          }
+          .home-session--services {
+            background-position: center top;
+          }
+          .home-session--reviews {
+            min-height: auto;
+            background-position: center top;
+          }
+          .home-session--footer {
+            min-height: max(420px, 68svh);
+            background-position: center bottom;
+          }
           .home-session__inner {
-            padding: 28px 12px;
+            padding: 24px 16px;
+            min-height: 0;
+            width: 100%;
+            overflow: hidden;
           }
           .home-session__inner--hero {
-            gap: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding-top: calc(20px + var(--navbar-height, 64px));
+            padding-bottom: 32px;
+            align-items: stretch;
+            justify-content: flex-end;
+            min-height: inherit;
+          }
+          .home-hero-copy {
+            max-width: 100%;
+            width: 100%;
+          }
+          .home-hero-kicker {
+            font-size: 0.88rem;
+            margin-bottom: 8px;
           }
           .home-hero-copy h1 {
-            font-size: clamp(3rem, 15vw, 4.4rem);
+            font-size: clamp(2.5rem, 12vw, 3.6rem);
+            line-height: 0.92;
           }
-          .home-hero-art {
-            min-height: 420px;
+          .home-hero-desc {
+            font-size: 0.92rem;
+            line-height: 1.65;
+            margin-top: 12px;
+          }
+          .home-panel h2,
+          .home-title-block h2,
+          .home-footer-left h2,
+          .home-panel p,
+          .home-title-block + .home-service-grid,
+          .home-footer-left p,
+          .home-title-block--features h2,
+          .home-title-block--features + .home-service-grid {
+            transform: none;
+          }
+          .home-panel h2,
+          .home-title-block h2,
+          .home-footer-left h2 {
+            font-size: clamp(1.65rem, 7vw, 2.35rem);
+            line-height: 1.05;
+            margin-bottom: 10px;
+          }
+          .home-panel p,
+          .home-footer-left p {
+            font-size: 0.92rem;
+            line-height: 1.65;
+          }
+          .home-session__inner--about {
+            align-items: flex-start;
+            justify-content: flex-end;
+            min-height: inherit;
+            padding-top: 32px;
+            padding-bottom: 36px;
+          }
+          .home-panel--left {
+            max-width: 100%;
+            width: 100%;
           }
           .home-service-grid,
           .home-review-grid {
             grid-template-columns: 1fr;
+            gap: 16px;
           }
           .home-service-image {
-            width: 160px;
-            height: 160px;
+            width: 140px;
+            height: 140px;
+            margin-bottom: 12px;
+          }
+          .home-service-card h3 {
+            font-size: 1.05rem;
+          }
+          .home-service-card p {
+            font-size: 0.9rem;
           }
           .home-session__inner--features {
-            padding: 40px 12px 48px;
+            padding: 36px 16px 44px;
+          }
+          .home-title-block--features {
+            margin-bottom: 20px;
+          }
+          .home-title-block--feedback h2 {
+            font-size: clamp(1.5rem, 6.5vw, 2rem);
+          }
+          .home-session__inner--feedback {
+            gap: 24px;
+            padding-top: 36px;
+            padding-bottom: 40px;
+          }
+          .home-review-card {
+            min-height: 0;
+            padding: 28px 22px 24px;
+            background-size: cover;
+            border-radius: 16px;
+          }
+          .home-review-quote {
+            font-size: 0.92rem;
+            line-height: 1.6;
+          }
+          .home-footer-inner {
+            align-items: flex-start;
+            justify-content: flex-end;
+            min-height: inherit;
+            padding-top: 32px;
+            padding-bottom: 36px;
+          }
+          .home-footer-left {
+            padding: 0;
+            max-width: 100%;
+            width: 100%;
           }
           .home-actions {
             flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+            margin-top: 18px;
+            width: 100%;
           }
           .home-btn {
+            display: flex;
             width: 100%;
+            min-width: 0;
+            max-width: 100%;
+            padding: 13px 16px;
+            font-size: 0.95rem;
+          }
+          .home-btn--cta {
+            animation: none;
+            box-shadow: 0 4px 14px rgba(126, 158, 108, 0.28);
           }
           .home-panel,
           .home-footer-left,
           .home-service-card {
-            border-radius: 20px;
+            border-radius: 16px;
+          }
+        }
+        @media (max-width: 480px) {
+          .home-session--hero {
+            min-height: max(480px, 82svh);
+            background-position: 78% top;
+          }
+          .home-session__inner {
+            padding: 20px 14px;
+          }
+          .home-session__inner--hero {
+            padding-top: calc(16px + var(--navbar-height, 64px));
+          }
+          .home-hero-copy {
+            max-width: 100%;
+          }
+          .home-hero-copy h1 {
+            font-size: clamp(2.2rem, 11vw, 3rem);
+          }
+          .home-panel--left,
+          .home-footer-left {
+            max-width: 100%;
+          }
+          .home-service-image {
+            width: 120px;
+            height: 120px;
+          }
+          .home-review-card {
+            padding: 24px 18px 20px;
           }
         }
       `}</style>

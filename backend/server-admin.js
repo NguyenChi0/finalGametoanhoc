@@ -13,7 +13,7 @@ const { parsePositiveInt, clampLimitOffset } = require('./lib/queryParams');
 
 /** Cột users cho list — không SELECT password. */
 const USER_LIST_COLUMNS =
-  'id, username, ma_tre_em, email, phone, role, score, week_score, items, created_at';
+  'id, username, ma_tre_em, email, phone, role, score, week_score, items, created_at, email_verified';
 
 const ITEMS_IMAGES_DIR = path.join(__dirname, 'items-images');
 fs.mkdirSync(ITEMS_IMAGES_DIR, { recursive: true });
@@ -1115,24 +1115,36 @@ module.exports = function mountAdminCrud(app, pool) {
         role,
         score,
         week_score,
+        email_verified,
       } = req.body || {};
       if (!username || !password) {
         return res.status(400).json({ message: 'username và password là bắt buộc' });
       }
       const hashed = bcrypt.hashSync(String(password), 8);
+      const emailVal =
+        email != null && String(email).trim() !== '' ? String(email).trim() : null;
+      const emailVerifiedVal =
+        email_verified !== undefined && email_verified !== ''
+          ? Number(email_verified) === 1
+            ? 1
+            : 0
+          : emailVal
+            ? 1
+            : 0;
       const sql = `
-        INSERT INTO users (username, password, ma_tre_em, email, phone, role, score, week_score)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (username, password, ma_tre_em, email, phone, role, score, week_score, email_verified)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const params = [
         String(username).trim(),
         hashed,
         ma_tre_em != null && String(ma_tre_em).trim() !== '' ? String(ma_tre_em).trim() : null,
-        email != null && String(email).trim() !== '' ? String(email).trim() : null,
+        emailVal,
         phone != null && String(phone).trim() !== '' ? String(phone).trim() : null,
         role != null && role !== '' ? Number(role) : 0,
         score != null && score !== '' ? Number(score) : 0,
         week_score != null && week_score !== '' ? Number(week_score) : null,
+        emailVerifiedVal,
       ];
       const [result] = await pool.query(sql, params);
       const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
@@ -1162,6 +1174,7 @@ module.exports = function mountAdminCrud(app, pool) {
         score,
         week_score,
         items,
+        email_verified,
       } = req.body || {};
 
       const [existing] = await pool.query('SELECT id FROM users WHERE id = ?', [id]);
@@ -1205,6 +1218,10 @@ module.exports = function mountAdminCrud(app, pool) {
       if (items !== undefined) {
         updates.push('items = ?');
         params.push(items === '' || items === null ? null : Number(items));
+      }
+      if (email_verified !== undefined && email_verified !== '') {
+        updates.push('email_verified = ?');
+        params.push(Number(email_verified) === 1 ? 1 : 0);
       }
 
       if (!updates.length) {

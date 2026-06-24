@@ -84,10 +84,15 @@ export default function LessonCompleteScreen({
   totalQuestions,
   onReplay,
   onHome,
+  homeLabel = "Về trang chủ",
   shellStyle = {},
   height = "75vh",
+  fullBleed = false,
 }) {
   const navigate = useNavigate();
+  const viewportHeight = fullBleed
+    ? "calc(100vh - var(--navbar-height, 76px))"
+    : height;
   const [nextLessonAvailable, setNextLessonAvailable] = useState(false);
   const [nextLessonLoading, setNextLessonLoading] = useState(false);
   const [nextLessonError, setNextLessonError] = useState(null);
@@ -97,7 +102,7 @@ export default function LessonCompleteScreen({
   const goHome =
     onHome ||
     (() => {
-      window.location.href = "/gametoanhoc";
+      navigate("/", { replace: true });
     });
 
   useEffect(() => {
@@ -170,6 +175,15 @@ export default function LessonCompleteScreen({
     totalQuestions,
   ]);
 
+  useEffect(() => {
+    if (!fullBleed) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [fullBleed]);
+
   async function handleGoNextLesson() {
     setNextLessonError(null);
     setNextLessonLoading(true);
@@ -193,25 +207,36 @@ export default function LessonCompleteScreen({
 
   return (
     <div
-      className="lesson-complete-shell"
+      className={`lesson-complete-shell${fullBleed ? " lesson-complete-shell--full-bleed" : ""}`}
       style={{
         ...shellStyle,
-        minHeight: height,
-        height,
+        ...(fullBleed
+          ? { overflow: "hidden" }
+          : { minHeight: viewportHeight, height: viewportHeight }),
       }}
     >
       <style>{`
-        .lesson-complete-shell {
-          min-height: ${height} !important;
-          height: ${height} !important;
-          max-height: ${height} !important;
+        .lesson-complete-shell:not(.lesson-complete-shell--full-bleed) {
+          min-height: ${viewportHeight} !important;
+          height: ${viewportHeight} !important;
+          max-height: ${viewportHeight} !important;
+        }
+        .lesson-complete-shell--full-bleed {
+          position: fixed;
+          top: var(--navbar-height, 76px);
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100%;
+          height: auto !important;
+          min-height: 0 !important;
+          max-height: none !important;
+          overflow: hidden;
+          z-index: 30;
         }
         .lesson-complete-shell .lesson-complete-bg {
           position: relative;
           width: 100%;
-          min-height: ${height};
-          height: ${height};
-          max-height: ${height};
           display: flex;
           flex-direction: column;
           justify-content: flex-start;
@@ -220,6 +245,22 @@ export default function LessonCompleteScreen({
           border-radius: 0 !important;
           box-sizing: border-box;
           padding-top: clamp(20px, 4vh, 40px);
+        }
+        .lesson-complete-shell:not(.lesson-complete-shell--full-bleed) .lesson-complete-bg {
+          min-height: ${viewportHeight};
+          height: ${viewportHeight};
+          max-height: ${viewportHeight};
+        }
+        .lesson-complete-shell--full-bleed .lesson-complete-bg {
+          position: absolute;
+          inset: 0;
+          height: 100%;
+          min-height: 0 !important;
+          max-height: none !important;
+          padding-top: clamp(20px, 7vh, 64px);
+        }
+        .lesson-complete-shell--full-bleed .lesson-complete-scene {
+          background-position: center bottom;
         }
         .lesson-complete-shell .lesson-complete-scene {
           position: absolute;
@@ -299,15 +340,18 @@ export default function LessonCompleteScreen({
           }
         }
         @media (max-width: 767px) {
-          .lesson-complete-shell {
-            min-height: ${height} !important;
-            height: ${height} !important;
-            max-height: ${height} !important;
+          .lesson-complete-shell:not(.lesson-complete-shell--full-bleed) {
+            min-height: ${viewportHeight} !important;
+            height: ${viewportHeight} !important;
+            max-height: ${viewportHeight} !important;
           }
-          .lesson-complete-shell .lesson-complete-bg {
-            min-height: ${height};
-            height: ${height};
-            max-height: ${height};
+          .lesson-complete-shell:not(.lesson-complete-shell--full-bleed) .lesson-complete-bg {
+            min-height: ${viewportHeight};
+            height: ${viewportHeight};
+            max-height: ${viewportHeight};
+          }
+          .lesson-complete-shell--full-bleed .lesson-complete-bg {
+            padding-top: clamp(16px, 6vh, 48px);
           }
           .lesson-complete-shell .lesson-complete-title {
             font-size: clamp(2.05rem, 8.5vw, 2.85rem) !important;
@@ -402,7 +446,7 @@ export default function LessonCompleteScreen({
             >
               <span className="user-cta-flash__label">
                 <HomeLineIcon />
-                <span>Về trang chủ</span>
+                <span>{homeLabel}</span>
               </span>
             </button>
             {nextLessonAvailable && !payload?.reviewMode && (

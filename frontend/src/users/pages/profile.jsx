@@ -5,18 +5,44 @@ import api, { itemImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import { levelItemAuraFilter, levelLabel, levelLabelColor } from "../lib/itemRarity";
 
+function formatCompletedAt(isoLike) {
+  if (!isoLike) return "—";
+  const d = new Date(String(isoLike).replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return String(isoLike);
+  const datePart = d.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const timePart = d.toLocaleTimeString("vi-VN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${timePart} ${datePart}`;
+}
+
 export default function Profile() {
   const { username: paramUsername } = useParams();
   const storedUser = JSON.parse(localStorage.getItem("user") || "null");
   const [userData, setUserData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   const viewedUsername = paramUsername || storedUser?.username;
+  const isOwnProfile = !paramUsername || paramUsername === storedUser?.username;
 
   useEffect(() => {
     if (!viewedUsername) return;
+    setLoadError(null);
     api.get(`/user/${viewedUsername}`)
-      .then(res => setUserData(res.data))
-      .catch(err => console.error(err));
+      .then((res) => setUserData(res.data))
+      .catch((err) => {
+        console.error(err);
+        setUserData(null);
+        setLoadError(
+          err?.response?.data?.message || "Không tải được thông tin người dùng."
+        );
+      });
   }, [viewedUsername]);
 
   const pageBg = `${publicUrl}/component-images/home-background.png`;
@@ -50,16 +76,24 @@ export default function Profile() {
     </div>
   );
 
-  if (!storedUser && !viewedUsername) {
+  if (!viewedUsername) {
     return pageShell(<p>Bạn cần đăng nhập để xem trang cá nhân.</p>);
+  }
+  if (loadError) {
+    return pageShell(<p>{loadError}</p>);
   }
   if (!userData) {
     return pageShell(<p>Đang tải thông tin...</p>);
   }
 
+  const recentLessons = Array.isArray(userData.recentLessons) ? userData.recentLessons : [];
+
   return pageShell(
     <div style={styles.container}>
         <h2>👤 {userData.username}</h2>
+        {!isOwnProfile && (
+          <p style={styles.viewingHint}>Đang xem hồ sơ công khai của người chơi khác</p>
+        )}
         <p><strong>Điểm tổng:</strong> {userData.score ?? 0}</p>
 
         {/* Phần Thành tích – tên nằm cùng dòng với label */}
@@ -83,6 +117,34 @@ export default function Profile() {
             </>
           ) : (
             <span>Chưa có</span>
+          )}
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <h3 style={{ marginBottom: 8 }}>Bài học gần nhất</h3>
+          {recentLessons.length > 0 ? (
+            <div style={styles.historyList}>
+              {recentLessons.map((item, idx) => (
+                <article
+                  key={`${item.lessonName}-${item.completedAt}-${idx}`}
+                  style={styles.historyCard}
+                >
+                  <div style={styles.historyTitle}>{item.lessonName || "Bài học"}</div>
+                  <div style={styles.historyMeta}>
+                    <span style={styles.historyPoints}>+{item.pointsAdded ?? 0} điểm</span>
+                    <span>
+                      {item.correctCount ?? 0}/{item.totalCount ?? 0} câu đúng
+                      {item.stars ? ` · ${item.stars} sao` : ""}
+                    </span>
+                  </div>
+                  <div style={styles.historyTime}>
+                    Hoàn thành lúc {formatCompletedAt(item.completedAt)}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p style={styles.emptyHint}>Chưa có bài học nào được ghi nhận.</p>
           )}
         </div>
 
@@ -145,6 +207,53 @@ const styles = {
     padding: 24,
     borderRadius: 16,
     boxSizing: "border-box",
+  },
+  viewingHint: {
+    margin: "0 0 8px",
+    fontSize: "0.9rem",
+    color: "#57606a",
+    fontStyle: "italic",
+  },
+  historyList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  historyCard: {
+    padding: "12px 14px",
+    borderRadius: 12,
+    border: "1px solid rgba(255, 255, 255, 0.45)",
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+  },
+  historyTitle: {
+    fontWeight: 700,
+    fontSize: "1rem",
+    color: "#1f2328",
+    marginBottom: 6,
+  },
+  historyMeta: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px 14px",
+    fontSize: "0.92rem",
+    color: "#454038",
+    marginBottom: 4,
+  },
+  historyPoints: {
+    fontWeight: 700,
+    color: "#1a7f37",
+  },
+  historyTime: {
+    fontSize: "0.88rem",
+    color: "#57606a",
+  },
+  emptyHint: {
+    fontStyle: "italic",
+    color: "#666",
+    margin: 0,
   },
   itemsGrid: {
     display: "grid",

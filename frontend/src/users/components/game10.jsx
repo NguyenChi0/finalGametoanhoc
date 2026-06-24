@@ -248,10 +248,6 @@ export default function Game3({ payload, onLessonComplete }) {
     startGame();
   }
 
-  function goHome() {
-    window.location.href = "/gametoanhoc";
-  }
-
   if (qs.length === 0) {
     return <div style={{ padding: 20 }}>Không có câu hỏi</div>;
   }

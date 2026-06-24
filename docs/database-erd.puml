@@ -1,0 +1,193 @@
+@startuml
+skinparam shadowing false
+skinparam linetype ortho
+hide circle
+skinparam entity {
+  BackgroundColor #E8F4FC
+  BorderColor #4A90D9
+}
+
+title Sơ đồ ERD - Game Toán Học
+
+entity "users" as users {
+  * **id** : INT <<PK>>
+  --
+  * username : VARCHAR(100)
+  email : VARCHAR(150)
+  phone : VARCHAR(20)
+  password : VARCHAR(255)
+  score : BIGINT
+  week_score : BIGINT
+  role : TINYINT
+  email_verified : TINYINT
+  is_locked : TINYINT
+}
+
+entity "email_tokens" as email_tokens {
+  * **id** : INT <<PK>>
+  --
+  * user_id : INT <<FK>>
+  token_hash : VARCHAR(64)
+  type : ENUM
+  expires_at : DATETIME
+  used_at : DATETIME
+}
+
+entity "grades" as grades {
+  * **id** : TINYINT <<PK>>
+  --
+  name : VARCHAR(20)
+  description : TEXT
+  image : VARCHAR(512)
+}
+
+entity "types" as types {
+  * **id** : SMALLINT <<PK>>
+  --
+  * grade_id : TINYINT <<FK>>
+  name : VARCHAR(50)
+  description : TEXT
+  image : VARCHAR(512)
+  sort_order : INT
+}
+
+entity "lessons" as lessons {
+  * **id** : SMALLINT <<PK>>
+  --
+  * type_id : SMALLINT <<FK>>
+  name : VARCHAR(400)
+  status : TINYINT
+  image : VARCHAR(512)
+  sort_order : INT
+}
+
+entity "questions" as questions {
+  * **id** : BIGINT <<PK>>
+  --
+  * grade_id : TINYINT <<FK>>
+  * type_id : SMALLINT <<FK>>
+  * lesson_id : SMALLINT <<FK>>
+  question_text : TEXT
+  question_image : VARCHAR(512)
+  answers_json : JSON
+}
+
+entity "user_lesson_progress" as ulp {
+  * **user_id** : INT <<PK,FK>>
+  * **lesson_id** : SMALLINT <<PK,FK>>
+  --
+  grade_id : TINYINT <<FK>>
+  type_id : SMALLINT <<FK>>
+  game_id : VARCHAR(50)
+  correct_count : SMALLINT
+  total_count : SMALLINT
+  stars : TINYINT
+  attempt_count : INT
+  completed_at : TIMESTAMP
+}
+
+entity "exam_templates" as exam_templates {
+  * **id** : INT <<PK>>
+  --
+  name : VARCHAR(100)
+  * grade_id : TINYINT <<FK>>
+  description : TEXT
+  duration_time : SMALLINT
+  status : SMALLINT
+}
+
+entity "exam_template_questions" as etq {
+  * **id** : INT <<PK>>
+  --
+  * template_id : INT <<FK>>
+  * question_id : BIGINT <<FK>>
+}
+
+entity "contests" as contests {
+  * **id** : INT <<PK>>
+  --
+  name : VARCHAR(255)
+  * template_id : INT <<FK>>
+  grade_id : TINYINT
+  start_time : DATETIME
+  end_time : DATETIME
+  status : TINYINT
+  prize : SMALLINT
+  duration_time : SMALLINT
+}
+
+entity "user_contests" as user_contests {
+  * **id** : INT <<PK>>
+  --
+  * user_id : INT <<FK>>
+  * contest_id : INT <<FK>>
+  score : INT
+  times : INT
+  is_rewarded : TINYINT
+}
+
+entity "items" as items {
+  * **id** : INT <<PK>>
+  --
+  name : VARCHAR(45)
+  description : VARCHAR(45)
+  require_score : BIGINT
+  level : SMALLINT
+  effect_type : TINYINT
+}
+
+entity "user_items" as user_items {
+  * **id** : INT <<PK>>
+  --
+  * user_id : INT <<FK>>
+  * item_id : INT <<FK>>
+  purchased_at : TIMESTAMP
+}
+
+entity "achievements" as achievements {
+  * **id** : INT <<PK>>
+  --
+  name : VARCHAR(45)
+  description : VARCHAR(45)
+  link : VARCHAR(45)
+}
+
+entity "notifications" as notifications {
+  * **id** : INT <<PK>>
+  --
+  name : VARCHAR(500)
+  status : TINYINT
+}
+
+entity "app_runtime_state" as app_runtime_state {
+  * **key_name** : VARCHAR(64) <<PK>>
+  --
+  value_text : VARCHAR(64)
+}
+
+' --- Quan hệ 1-N: nội dung học ---
+grades ||--o{ types : "1-N"
+types ||--o{ lessons : "1-N"
+lessons ||--o{ questions : "1-N"
+grades ||--o{ questions : "1-N"
+types ||--o{ questions : "1-N"
+
+' --- Quan hệ 1-N: người dùng ---
+users ||--o{ email_tokens : "1-N"
+users ||--o{ ulp : "1-N"
+lessons ||--o{ ulp : "1-N"
+grades ||--o{ ulp : "1-N"
+types ||--o{ ulp : "1-N"
+
+' --- Quan hệ 1-N: đề thi & cuộc thi ---
+grades ||--o{ exam_templates : "1-N"
+exam_templates ||--o{ etq : "1-N"
+questions ||--o{ etq : "1-N"
+exam_templates ||--o{ contests : "1-N"
+users ||--o{ user_contests : "1-N"
+contests ||--o{ user_contests : "1-N"
+
+' --- Quan hệ 1-N: cửa hàng ---
+users ||--o{ user_items : "1-N"
+items ||--o{ user_items : "1-N"
+@enduml

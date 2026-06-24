@@ -1,5 +1,6 @@
 // src/components/games/game8.jsx
 import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { questionImageUrl } from "../../api";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import GameHintButton from "./GameHintButton";
@@ -14,6 +15,7 @@ import {
 import { isAnswerSetFullyCorrect } from "../lib/questionScoring";
 
 export default function Game1({ payload, onReturnHome, onLessonComplete }) {
+  const navigate = useNavigate();
   const questions = payload?.questions || [];
   const questionsPerPage = 5;
 
@@ -120,6 +122,8 @@ export default function Game1({ payload, onReturnHome, onLessonComplete }) {
   function handleReturnHome() {
     if (onReturnHome) {
       onReturnHome();
+    } else {
+      navigate("/", { replace: true });
     }
   }
 

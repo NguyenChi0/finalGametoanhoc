@@ -321,10 +321,6 @@ export default function Game1({ payload, onLessonComplete }) {
     startGame();
   }
 
-  function goHome() {
-    window.location.href = "/gametoanhoc";
-  }
-
   const questionImageRaw =
     currentQuestion?.image ||
     currentQuestion?.question_image ||

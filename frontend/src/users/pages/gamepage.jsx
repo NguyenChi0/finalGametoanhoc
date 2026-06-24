@@ -205,17 +205,25 @@ export default function GamePage() {
   };
 
   const LazyGame = gameId ? gameLazyMap[gameId] : null;
+  const isFullBleedGame = gameId === "game1" || gameId === "game2" || gameId === "game4";
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh" }}>
+    <div
+      style={{
+        position: "relative",
+        minHeight: isFullBleedGame ? 0 : "100vh",
+        height: isFullBleedGame ? "calc(100vh - var(--navbar-height, 76px))" : undefined,
+        overflow: isFullBleedGame ? "hidden" : undefined,
+      }}
+    >
       <div style={bgFixedLayer} aria-hidden />
       <div
         style={{
           position: "relative",
           zIndex: 1,
-          maxWidth: 980,
+          maxWidth: isFullBleedGame ? "100%" : 980,
           margin: "0 auto",
-          padding: 16,
+          padding: isFullBleedGame ? 0 : 16,
           boxSizing: "border-box",
         }}
       >
@@ -226,17 +234,19 @@ export default function GamePage() {
 
         {payload && (
           <div>
-            <header style={{ marginBottom: 12 }}>
-              <h2 style={{ margin: 0 }}>{displayName}</h2>
-              <div style={{ color: "#455a64", fontSize: 13 }}>
-                Lớp {payload?.grade?.id} / Dạng{" "}
-                {payload?.type?.name || payload?.type?.id} / Bài{" "}
-                {payload?.lesson?.name ||
-                  payload?.lesson?.id ||
-                  payload?.operation?.name ||
-                  payload?.operation?.id}
-              </div>
-            </header>
+            {!isFullBleedGame && (
+              <header style={{ marginBottom: 12 }}>
+                <h2 style={{ margin: 0 }}>{displayName}</h2>
+                <div style={{ color: "#455a64", fontSize: 13 }}>
+                  Lớp {payload?.grade?.id} / Dạng{" "}
+                  {payload?.type?.name || payload?.type?.id} / Bài{" "}
+                  {payload?.lesson?.name ||
+                    payload?.lesson?.id ||
+                    payload?.operation?.name ||
+                    payload?.operation?.id}
+                </div>
+              </header>
+            )}
 
             <div>
               {LazyGame ? (

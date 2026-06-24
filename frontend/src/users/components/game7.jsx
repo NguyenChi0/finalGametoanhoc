@@ -1,5 +1,6 @@
 // src/components/games/game7.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
@@ -15,6 +16,7 @@ import {
 import { isAnswerSetFullyCorrect } from "../lib/questionScoring";
 
 export default function Game7({ payload, onLessonComplete, onReturnHome }) {
+  const navigate = useNavigate();
   const questions = payload?.questions || [];
 
   const [gameState, setGameState] = useState('playing'); // 'playing', 'finished'
@@ -213,7 +215,7 @@ export default function Game7({ payload, onLessonComplete, onReturnHome }) {
     if (onReturnHome) {
       onReturnHome();
     } else {
-      window.location.href = "/gametoanhoc";
+      navigate("/", { replace: true });
     }
   }
 

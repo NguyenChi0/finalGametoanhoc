@@ -6,6 +6,7 @@ export default function GameMcqConfirmBar({
   pendingIndices,
   disabled,
   onConfirm,
+  showHint = true,
   style,
 }) {
   const correctCount = getCorrectIndices(answers).length;
@@ -15,15 +16,17 @@ export default function GameMcqConfirmBar({
 
   return (
     <div style={{ textAlign: "center", marginTop: 12, marginBottom: 8, ...style }}>
-      <p
-        style={{
-          margin: "0 0 10px",
-          fontSize: "clamp(0.85rem, 2.5vw, 0.95rem)",
-          color: "#546e7a",
-        }}
-      >
-        Câu này có {correctCount} đáp án đúng — chọn tất cả rồi bấm Xác nhận.
-      </p>
+      {showHint && (
+        <p
+          style={{
+            margin: "0 0 10px",
+            fontSize: "clamp(0.85rem, 2.5vw, 0.95rem)",
+            color: "#546e7a",
+          }}
+        >
+          Câu này có {correctCount} đáp án đúng — chọn tất cả rồi bấm Xác nhận.
+        </p>
+      )}
       <button
         type="button"
         disabled={disabled || pendingLen === 0}

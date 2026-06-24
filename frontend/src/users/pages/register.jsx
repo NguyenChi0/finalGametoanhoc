@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register as registerApi } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
-
-import { NAVBAR_OFFSET } from "../lib/navbarLayout";
 
 const t = {
   loginFooterHint: "\u0110\u00E3 c\u00F3 t\u00E0i kho\u1EA3n? ",
@@ -20,17 +18,6 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    const prevBody = document.body.style.overflow;
-    const prevHtml = document.documentElement.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevBody;
-      document.documentElement.style.overflow = prevHtml;
-    };
-  }, []);
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -174,16 +161,14 @@ const styles = {
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
-    height: `calc(100vh - ${NAVBAR_OFFSET}px)`,
-    maxHeight: `calc(100vh - ${NAVBAR_OFFSET}px)`,
+    minHeight: "calc(100vh - var(--navbar-height, 76px))",
     width: "100%",
     boxSizing: "border-box",
-    overflow: "hidden",
-    overscrollBehavior: "none",
-    touchAction: "manipulation",
+    overflowX: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    padding: "32px 16px",
   },
   overlay: {
     padding: "40px",

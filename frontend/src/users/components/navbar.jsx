@@ -174,7 +174,8 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    setScrolled(window.scrollY > SCROLL_THRESHOLD);
+    window.scrollTo(0, 0);
+    setScrolled(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -281,7 +282,8 @@ export default function Navbar() {
         .navbar-root {
           display: flex;
           align-items: center;
-          padding: 10px 16px;
+          min-height: var(--navbar-height, 76px);
+          padding: 0 16px;
           position: fixed;
           top: 0;
           left: 0;
@@ -305,8 +307,9 @@ export default function Navbar() {
         .navbar-desktop {
           display: grid;
           grid-template-columns: 1fr auto 1fr;
-          align-items: flex-end;
+          align-items: center;
           width: 100%;
+          min-height: var(--navbar-height, 76px);
           gap: 12px;
         }
         .navbar-desktop-spacer {
@@ -314,7 +317,7 @@ export default function Navbar() {
         }
         .navbar-desktop-center {
           display: flex;
-          align-items: flex-end;
+          align-items: center;
           justify-content: center;
           flex-wrap: wrap;
           gap: 2px 14px;
@@ -384,12 +387,13 @@ export default function Navbar() {
         }
         .navbar-desktop-right {
           display: flex;
-          align-items: flex-end;
+          align-items: center;
           justify-content: flex-end;
           gap: 8px;
           min-width: 0;
           max-width: 100%;
           flex-shrink: 0;
+          align-self: center;
         }
         .navbar-user-wrap {
           position: relative;
@@ -397,7 +401,7 @@ export default function Navbar() {
         }
         .navbar-auth-links {
           display: flex;
-          align-items: flex-end;
+          align-items: center;
           gap: 2px 14px;
           flex-shrink: 0;
         }
@@ -405,7 +409,8 @@ export default function Navbar() {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          padding: 6px 10px;
+          padding: 8px 10px;
+          line-height: 1.25;
           border-radius: 8px;
           border: none;
           background: transparent;
@@ -509,7 +514,7 @@ export default function Navbar() {
           align-items: center;
           justify-content: space-between;
           width: 100%;
-          min-height: 44px;
+          min-height: var(--navbar-height, 76px);
           gap: 10px;
         }
         .navbar-mobile-brand-row {

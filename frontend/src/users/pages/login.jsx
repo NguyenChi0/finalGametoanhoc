@@ -4,7 +4,6 @@ import api, { resendVerification } from "../../api";
 import { isAdminUser } from "../../admin/auth";
 import { publicUrl } from "../../lib/publicUrl";
 
-import { NAVBAR_OFFSET } from "../lib/navbarLayout";
 import { clearItemLoadout } from "../lib/playSession";
 
 const t = {
@@ -38,17 +37,6 @@ export default function Login() {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.pathname, location.state?.message, navigate]);
-
-  useEffect(() => {
-    const prevBody = document.body.style.overflow;
-    const prevHtml = document.documentElement.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevBody;
-      document.documentElement.style.overflow = prevHtml;
-    };
-  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -246,16 +234,14 @@ const styles = {
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
-    height: `calc(100vh - ${NAVBAR_OFFSET}px)`,
-    maxHeight: `calc(100vh - ${NAVBAR_OFFSET}px)`,
+    minHeight: "calc(100vh - var(--navbar-height, 76px))",
     width: "100%",
     boxSizing: "border-box",
-    overflow: "hidden",
-    overscrollBehavior: "none",
-    touchAction: "manipulation",
+    overflowX: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    padding: "32px 16px",
   },
   overlay: {
     padding: "40px",
