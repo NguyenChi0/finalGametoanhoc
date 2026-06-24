@@ -205,7 +205,15 @@ export default function GamePage() {
   };
 
   const LazyGame = gameId ? gameLazyMap[gameId] : null;
-  const isFullBleedGame = gameId === "game1" || gameId === "game2" || gameId === "game4";
+  const isFullBleedGame =
+    gameId === "game1" ||
+    gameId === "game2" ||
+    gameId === "game4" ||
+    gameId === "game5" ||
+    gameId === "game6" ||
+    gameId === "game9" ||
+    gameId === "game10" ||
+    gameId === "game11";
 
   return (
     <div

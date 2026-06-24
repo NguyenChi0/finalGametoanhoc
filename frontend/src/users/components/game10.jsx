@@ -1,77 +1,145 @@
-// Game 3: đáp án trên bóng bay trượt ngang; phi tiêu dưới bắn lên; sai → explode, đúng → pop
-import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
+// Game 10: bắn bóng bay bằng súng cao su — kéo dây để ngắm & bắn
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { questionImageUrl } from "../../api";
+import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import GameHintButton from "./GameHintButton";
-import { publicUrl } from "../../lib/publicUrl";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
-import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import GameMcqConfirmBar from "./GameMcqConfirmBar";
+import { prepareSessionQuestions, getAnswerLabel } from "../lib/lessonQuestions";
 import { useGameMcqSelection } from "../lib/useGameMcqSelection";
+import game10BackIcon from "../../assets/game-images/back.png";
+import game10RestartIcon from "../../assets/game-images/restart.png";
+import game10MusicOnIcon from "../../assets/game-images/music_on.png";
+import game10MusicOffIcon from "../../assets/game-images/music-off.png";
+import game10SoundOnIcon from "../../assets/game-images/sound_on.png";
+import game10SoundOffIcon from "../../assets/game-images/sound-off.png";
+import game10CoinIcon from "../../assets/game-images/coin.png";
+import game10Balloon1 from "../../assets/game-images/game10/ballon1.png";
+import game10Balloon4 from "../../assets/game-images/game10/ballon4.png";
+import game10Balloon2 from "../../assets/game-images/game10/balloon2.png";
+import game10Balloon3 from "../../assets/game-images/game10/balloon3.png";
+import game10Dart from "../../assets/game-images/game10/dart.png";
+import game10ExplodeFx from "../../assets/game-images/game10/explode.png";
+import game10PopFx from "../../assets/game-images/game10/pop.png";
+import game10Background from "../../assets/game-images/game10/background.png";
+import game10Clouds from "../../assets/game-images/game10/clouds.png";
+import game10ShootSfx from "../../assets/game-images/game10/shoot.mp3";
+import game10PopSfx from "../../assets/game-images/game10/pop.mp3";
+import game10BoomSfx from "../../assets/game-images/game10/boom.mp3";
+import game10LoadSfx from "../../assets/game-images/game10/bulletLoad.mp3";
 
-const BALLOON_SRC = [
-  "game3-ballon1.png",
-  "game3-ballon4.png",
-  "game3-balloon2.png",
-  "game3-balloon3.png",
-];
+const BALLOON_IMGS = [game10Balloon1, game10Balloon4, game10Balloon2, game10Balloon3];
 
-function balloonUrl(i) {
-  return `${publicUrl}/game-images/${BALLOON_SRC[i % BALLOON_SRC.length]}`;
+const MIN_PULL = 32;
+const MAX_PULL = 150;
+const POWER = 0.26;
+const GRAVITY = 0.18;
+const HORIZONTAL_BOOST = 1.2;
+const PROJECTILE_R = 14;
+
+function balloonImg(i) {
+  return BALLOON_IMGS[i % BALLOON_IMGS.length];
 }
 
-/** Ô trúng tâm ngắm: chỉ số đáp án + chỉ số ô trong track (bản nhân đôi) */
-function findHitInfo(blockEls, centerScreenX) {
-  for (let i = 0; i < blockEls.length; i++) {
-    const r = blockEls[i].getBoundingClientRect();
-    if (centerScreenX >= r.left && centerScreenX <= r.right) {
-      return {
-        ansIdx: parseInt(blockEls[i].dataset.idx || "0", 10),
-        loopIndex: parseInt(blockEls[i].dataset.loopIndex || String(i), 10),
-      };
-    }
-  }
-  let bestI = 0;
-  let bestDist = Infinity;
-  for (let i = 0; i < blockEls.length; i++) {
-    const r = blockEls[i].getBoundingClientRect();
-    const mid = (r.left + r.right) / 2;
-    const d = Math.abs(centerScreenX - mid);
-    if (d < bestDist) {
-      bestDist = d;
-      bestI = i;
-    }
-  }
-  const el = blockEls[bestI];
+function dist(x1, y1, x2, y2) {
+  return Math.hypot(x2 - x1, y2 - y1);
+}
+
+function clampPull(len) {
+  return Math.max(MIN_PULL, Math.min(MAX_PULL, len));
+}
+
+function getSlingshotGeometry(w, h) {
+  const s = Math.min(w, h);
+  const foot = { x: w * 0.84, y: h * 0.84 };
+  const neck = { x: w * 0.84, y: h * 0.735 };
+  const leftTip = { x: neck.x - s * 0.058, y: neck.y - s * 0.1 };
+  const rightTip = { x: neck.x + s * 0.052, y: neck.y - s * 0.092 };
+  const rest = { x: neck.x - s * 0.01, y: neck.y - s * 0.042 };
   return {
-    ansIdx: parseInt(el.dataset.idx || "0", 10),
-    loopIndex: parseInt(el.dataset.loopIndex || String(bestI), 10),
+    foot,
+    neck,
+    leftTip,
+    rightTip,
+    rest,
+    hitRadius: s * 0.12,
   };
 }
 
-export default function Game3({ payload, onLessonComplete }) {
+function slingshotBodyPath(g, s) {
+  const bw = s * 0.026;
+  const nw = s * 0.013;
+  const { foot, neck, leftTip, rightTip } = g;
+  return [
+    `M ${foot.x - bw} ${foot.y}`,
+    `L ${foot.x + bw} ${foot.y}`,
+    `L ${neck.x + nw} ${neck.y + nw * 0.35}`,
+    `L ${rightTip.x} ${rightTip.y}`,
+    `L ${neck.x} ${neck.y - nw * 0.45}`,
+    `L ${leftTip.x} ${leftTip.y}`,
+    `L ${neck.x - nw} ${neck.y + nw * 0.35}`,
+    "Z",
+  ].join(" ");
+}
+
+function clampPouchDrag(rest, point, maxPull) {
+  const dx = point.x - rest.x;
+  const dy = point.y - rest.y;
+  const len = Math.hypot(dx, dy);
+  if (len <= maxPull || len === 0) return point;
+  return {
+    x: rest.x + (dx / len) * maxPull,
+    y: rest.y + (dy / len) * maxPull,
+  };
+}
+
+function getUserId(payload) {
+  if (payload?.user?.id) return payload.user.id;
+  try {
+    const raw = localStorage.getItem("user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export default function Game10({ payload, onLessonComplete }) {
+  const navigate = useNavigate();
   const questions = payload?.questions || [];
 
   const mcq = useGameMcqSelection();
-  const [userScore, setUserScore] = useState(payload?.user?.score ?? null);
-  const [weekScore, setWeekScore] = useState(payload?.user?.week_score ?? 0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [gameStarted, setGameStarted] = useState(true);
   const [gameEnded, setGameEnded] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
-  /** idle: sẵn sàng | flying: bay lên | hit: trúng bóng — dừng và ẩn, không bay tiếp */
-  const [dartPhase, setDartPhase] = useState("idle");
-  const [trackPaused, setTrackPaused] = useState(false);
-  /** hiệu ứng tại ô vừa trúng: nổ bom / nổ bóng */
+  const [userScore, setUserScore] = useState(payload?.user?.score ?? 0);
+  const [musicEnabled, setMusicEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [scorePops, setScorePops] = useState([]);
+  const [phase, setPhase] = useState("idle"); // idle | aiming | flying | hit | wrong
+  const [drag, setDrag] = useState(null);
+  const [projectile, setProjectile] = useState(null);
   const [hitEffect, setHitEffect] = useState(null);
+  const [arenaSize, setArenaSize] = useState({ w: 800, h: 500 });
 
-  const viewportRef = useRef(null);
-  const fireTimersRef = useRef([]);
-  /** Số vòng lặp full `answers` trong mỗi đoạn — đủ rộng để luôn phủ kín khung (không bị trắng một nửa) */
-  const [segmentRepeat, setSegmentRepeat] = useState(3);
+  const arenaRef = useRef(null);
+  const backgroundMusicRef = useRef(null);
+  const scorePopIdRef = useRef(0);
+  const animRef = useRef(null);
+  const projectileRef = useRef(null);
+  const balloonRectsRef = useRef([]);
+  const timersRef = useRef([]);
+  const gameEndedRef = useRef(false);
+  const shootSoundRef = useRef(null);
+  const popSoundRef = useRef(null);
+  const boomSoundRef = useRef(null);
+  const loadSoundRef = useRef(null);
+
   const {
     hintsRemaining,
     hasHintFeature,
@@ -86,170 +154,362 @@ export default function Game3({ payload, onLessonComplete }) {
     [questions, shuffleSeed]
   );
 
+  const currentQuestion = qs[currentQuestionIndex];
+  const answers = currentQuestion?.answers || [];
+  const hiddenIndices = getHiddenIndices(currentQuestion?.id);
+  const visibleAnswers = answers
+    .map((a, i) => ({ a, i }))
+    .filter(({ i }) => !hiddenIndices.has(i));
+  const balloonColumnClass =
+    visibleAnswers.length >= 6
+      ? "game10-balloon-column game10-balloon-column--compact"
+      : visibleAnswers.length >= 4
+        ? "game10-balloon-column game10-balloon-column--medium"
+        : "game10-balloon-column";
+
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+  }, []);
+
+  useEffect(() => () => clearTimers(), [clearTimers]);
+
   useEffect(() => {
+    gameEndedRef.current = gameEnded;
+  }, [gameEnded]);
+
+  useEffect(() => {
+    shootSoundRef.current = new Audio(game10ShootSfx);
+    popSoundRef.current = new Audio(game10PopSfx);
+    boomSoundRef.current = new Audio(game10BoomSfx);
+    loadSoundRef.current = new Audio(game10LoadSfx);
+    backgroundMusicRef.current = new Audio(`${publicUrl}/music/nhac6.mp3`);
+    backgroundMusicRef.current.loop = true;
+    backgroundMusicRef.current.volume = 0.6;
+    backgroundMusicRef.current.play().catch(() => {});
+
     return () => {
-      fireTimersRef.current.forEach(clearTimeout);
+      if (backgroundMusicRef.current) {
+        backgroundMusicRef.current.pause();
+        backgroundMusicRef.current.currentTime = 0;
+      }
     };
   }, []);
 
   useEffect(() => {
-    setDartPhase("idle");
+    if (!backgroundMusicRef.current) return;
+    if (musicEnabled) {
+      backgroundMusicRef.current.play().catch(() => {});
+    } else {
+      backgroundMusicRef.current.pause();
+    }
+  }, [musicEnabled]);
+
+  function playSfx(ref) {
+    if (!soundEnabled || !ref.current) return;
+    ref.current.currentTime = 0;
+    ref.current.play().catch(() => {});
+  }
+
+  function spawnScorePop() {
+    const id = scorePopIdRef.current + 1;
+    scorePopIdRef.current = id;
+    setScorePops((prev) => [...prev, id]);
+    const t = setTimeout(() => {
+      setScorePops((prev) => prev.filter((popId) => popId !== id));
+    }, 900);
+    timersRef.current.push(t);
+  }
+
+  function addPoint() {
+    setUserScore((s) => s + 1);
+    spawnScorePop();
+  }
+
+  function toggleMusic() {
+    setMusicEnabled((prev) => !prev);
+  }
+
+  function toggleSound() {
+    setSoundEnabled((prev) => !prev);
+  }
+
+  function stopControlPointer(e) {
+    e.stopPropagation();
+  }
+
+  useEffect(() => {
+    setPhase("idle");
+    setDrag(null);
+    setProjectile(null);
+    setHitEffect(null);
+    projectileRef.current = null;
   }, [currentQuestionIndex]);
 
-  const currentQuestion = qs[currentQuestionIndex];
-  const answers = currentQuestion?.answers || [];
-
-  const hiddenBalloonIndices = getHiddenIndices(currentQuestion?.id);
-
-  const segmentItems = useMemo(() => {
-    const items = [];
-    const reps = Math.max(2, segmentRepeat);
-    for (let t = 0; t < reps; t++) {
-      answers.forEach((answer, origIdx) => {
-        if (hiddenBalloonIndices.has(origIdx)) return;
-        items.push({ answer, origIdx, tile: t });
-      });
-    }
-    return items;
-  }, [answers, segmentRepeat, hiddenBalloonIndices]);
-
-  useLayoutEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp || !answers.length) return;
-
-    function compute() {
-      const w = vp.clientWidth;
-      const narrow = typeof window !== "undefined" && window.matchMedia("(max-width: 480px)").matches;
-      const cell = narrow ? 80 : 96;
-      const gap = 18;
-      const L = answers.length;
-      const oneRound = L * cell + Math.max(0, L - 1) * gap;
-      const repeats = Math.max(2, Math.ceil((w + gap) / Math.max(oneRound, 1)) + 1);
-      setSegmentRepeat(repeats);
-    }
-
-    compute();
-    const ro = new ResizeObserver(() => compute());
-    ro.observe(vp);
+  useEffect(() => {
+    const el = arenaRef.current;
+    if (!el) return undefined;
+    const update = () =>
+      setArenaSize({ w: el.clientWidth || 800, h: el.clientHeight || 500 });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
     return () => ro.disconnect();
-  }, [answers, currentQuestionIndex]);
+  }, [currentQuestionIndex, gameEnded]);
 
-  const finishDartQuestion = (nextScore, isLast) => {
-    const userId =
-      payload?.user?.id ||
-      (localStorage.getItem("user") && JSON.parse(localStorage.getItem("user")).id);
-    if (!isLast) {
-      setCurrentQuestionIndex((i) => i + 1);
-      return;
-    }
-    if (userId && nextScore > 0) {
-      incrementLessonScore(userId, nextScore, payload).then((data) => {
+  useEffect(() => {
+    if (gameEnded) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [gameEnded]);
+
+  function getArenaPoint(clientX, clientY) {
+    const arena = arenaRef.current;
+    if (!arena) return { x: 0, y: 0, w: 1, h: 1 };
+    const r = arena.getBoundingClientRect();
+    return {
+      x: clientX - r.left,
+      y: clientY - r.top,
+      w: r.width,
+      h: r.height,
+    };
+  }
+
+  function getSlingshotPx(w, h) {
+    return getSlingshotGeometry(w, h).rest;
+  }
+
+  function refreshBalloonRects() {
+    const arena = arenaRef.current;
+    if (!arena) return;
+    const ar = arena.getBoundingClientRect();
+    balloonRectsRef.current = visibleAnswers.map((_, vi) => {
+      const el = arena.querySelector(`[data-balloon-vi="${vi}"]`);
+      if (!el) return null;
+      const br = el.getBoundingClientRect();
+      return {
+        vi,
+        ansIdx: visibleAnswers[vi].i,
+        left: br.left - ar.left,
+        top: br.top - ar.top,
+        right: br.right - ar.left,
+        bottom: br.bottom - ar.top,
+      };
+    }).filter(Boolean);
+  }
+
+  function finishGame(totalCorrect) {
+    if (gameEndedRef.current) return;
+    clearTimers();
+    setGameEnded(true);
+    onLessonComplete?.(totalCorrect);
+
+    const userId = getUserId(payload);
+    if (userId && totalCorrect > 0) {
+      incrementLessonScore(userId, totalCorrect, payload).then((data) => {
         if (data?.success) {
           setUserScore(data.score);
-          setWeekScore(data.week_score ?? 0);
         }
-        setGameEnded(true);
-        setGameStarted(false);
       });
-    } else {
-      setGameEnded(true);
-      setGameStarted(false);
     }
-    onLessonComplete?.(nextScore);
-  };
+  }
 
-  const confirmDartAnswer = () => {
+  function goToNextQuestion(totalCorrect, questionIndex) {
+    if (gameEndedRef.current) return;
+    const idx = questionIndex ?? currentQuestionIndex;
+    if (idx < qs.length - 1) {
+      setCurrentQuestionIndex(idx + 1);
+      return;
+    }
+    finishGame(totalCorrect);
+  }
+
+  function continueAfterWrong() {
+    setHitEffect(null);
+    setPhase("idle");
+    const qIndex = currentQuestionIndex;
+    setCorrectCount((score) => {
+      goToNextQuestion(score, qIndex);
+      return score;
+    });
+  }
+
+  function resolveHit(ansIdx, vi) {
     const cq = qs[currentQuestionIndex];
-    if (!cq) return;
-    const ok = mcq.confirmPending(cq.id, cq.answers);
+    if (!cq || mcq.isLocked(cq.id)) return;
+
+    const a = cq.answers[ansIdx];
+    const isCorrect = !!a?.correct;
+
+    setHitEffect({ vi, kind: isCorrect ? "pop" : "explode" });
+    setPhase(isCorrect ? "hit" : "wrong");
+    playSfx(isCorrect ? popSoundRef : boomSoundRef);
+
+    if (!isCorrect) return;
+
+    const isMultiCorrect = mcq.isMultiCorrectQuestion(cq.answers);
+    if (!isMultiCorrect) {
+      mcq.toggleIndex(cq.id, cq.answers, ansIdx);
+    }
+
     let nextScore = 0;
     setCorrectCount((prev) => {
-      nextScore = ok ? prev + 1 : prev;
+      nextScore = prev + 1;
       return nextScore;
     });
-    setDartPhase("idle");
-    setTrackPaused(false);
-    const isLast = currentQuestionIndex >= qs.length - 1;
-    setTimeout(() => finishDartQuestion(nextScore, isLast), 400);
-  };
+    addPoint();
 
-  const handleFireClick = () => {
+    const qIndex = currentQuestionIndex;
+    const t = setTimeout(() => {
+      if (gameEndedRef.current) return;
+      setHitEffect(null);
+      setPhase("idle");
+      goToNextQuestion(nextScore, qIndex);
+    }, 1000);
+    timersRef.current.push(t);
+  }
+
+  function fireProjectile(vx, vy) {
+    const arena = arenaRef.current;
+    if (!arena) return;
+    const { width: w, height: h } = arena.getBoundingClientRect();
+    const anchor = getSlingshotPx(w, h);
+    refreshBalloonRects();
+
+    const p = { x: anchor.x, y: anchor.y, vx, vy };
+    projectileRef.current = p;
+    setProjectile(p);
+    setPhase("flying");
+
+    const step = () => {
+      const cur = projectileRef.current;
+      if (!cur) return;
+
+      cur.vy += GRAVITY;
+      cur.x += cur.vx;
+      cur.y += cur.vy;
+
+      let hit = false;
+      for (const b of balloonRectsRef.current) {
+        const cx = (b.left + b.right) / 2;
+        const cy = (b.top + b.bottom) / 2;
+        const rx = (b.right - b.left) / 2;
+        const ry = (b.bottom - b.top) / 2;
+        if (
+          Math.abs(cur.x - cx) < rx + PROJECTILE_R &&
+          Math.abs(cur.y - cy) < ry + PROJECTILE_R
+        ) {
+          hit = true;
+          projectileRef.current = null;
+          setProjectile(null);
+          resolveHit(b.ansIdx, b.vi);
+          break;
+        }
+      }
+
+      if (hit) return;
+
+      if (cur.y > h + 40 || cur.x < -40 || cur.x > w + 40) {
+        projectileRef.current = null;
+        setProjectile(null);
+        setPhase("idle");
+        return;
+      }
+
+      setProjectile({ ...cur });
+      animRef.current = requestAnimationFrame(step);
+    };
+
+    animRef.current = requestAnimationFrame(step);
+  }
+
+  function onPointerDown(e) {
+    if (gameEnded || phase === "flying" || phase === "hit" || phase === "wrong") return;
     const cq = qs[currentQuestionIndex];
-    if (!cq || mcq.isLocked(cq.id) || dartPhase !== "idle") return;
-    if (mcq.isMultiCorrectQuestion(cq.answers)) {
-      setTrackPaused(true);
-      setDartPhase("selecting");
+    if (!cq || mcq.isLocked(cq.id)) return;
+    const pt = getArenaPoint(e.clientX, e.clientY);
+    const sling = getSlingshotGeometry(pt.w, pt.h);
+    if (
+      dist(pt.x, pt.y, sling.rest.x, sling.rest.y) > sling.hitRadius &&
+      dist(pt.x, pt.y, sling.neck.x, sling.neck.y) > sling.hitRadius &&
+      dist(pt.x, pt.y, sling.foot.x, sling.foot.y) > sling.hitRadius * 1.1
+    ) {
       return;
     }
 
-    const vp = viewportRef.current;
-    if (!vp) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag(clampPouchDrag(sling.rest, { x: pt.x, y: pt.y }, MAX_PULL));
+    setPhase("aiming");
+    playSfx(loadSoundRef);
+  }
 
-    const blocks = vp.querySelectorAll(".game3-answer-block");
-    if (blocks.length === 0) return;
+  function onPointerMove(e) {
+    if (!drag || phase !== "aiming") return;
+    const pt = getArenaPoint(e.clientX, e.clientY);
+    const arena = arenaRef.current;
+    if (!arena) return;
+    const { width: w, height: h } = arena.getBoundingClientRect();
+    const { rest } = getSlingshotGeometry(w, h);
+    setDrag(clampPouchDrag(rest, { x: pt.x, y: pt.y }, MAX_PULL));
+  }
 
-    const rect = vp.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const { ansIdx: rawAns, loopIndex: hitLoopIndex } = findHitInfo(blocks, centerX);
-    const n = cq.answers?.length ?? 0;
-    const ansIdx = n > 0 ? ((rawAns % n) + n) % n : 0;
+  function onPointerUp(e) {
+    if (phase !== "aiming" || !drag) return;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
 
-    const qId = cq.id;
-    const isLast = currentQuestionIndex >= qs.length - 1;
+    const arena = arenaRef.current;
+    if (!arena) return;
+    const { width: w, height: h } = arena.getBoundingClientRect();
+    const anchor = getSlingshotPx(w, h);
+    const pull = dist(drag.x, drag.y, anchor.x, anchor.y);
 
-    fireTimersRef.current.forEach(clearTimeout);
-    fireTimersRef.current = [];
+    setDrag(null);
 
-    setTrackPaused(true);
-    setDartPhase("flying");
+    if (pull < MIN_PULL) {
+      setPhase("idle");
+      return;
+    }
 
-    const t1 = setTimeout(() => {
-      const q = qs.find((x) => x.id === qId);
-      const a = q?.answers?.[ansIdx];
-      const isCorrect = !!(a && a.correct);
+    const len = clampPull(pull);
+    const nx = (anchor.x - drag.x) / pull;
+    const ny = (anchor.y - drag.y) / pull;
+    const vx = nx * len * POWER * HORIZONTAL_BOOST;
+    const vy = ny * len * POWER;
 
-      mcq.toggleIndex(qId, q?.answers || [], ansIdx);
-      setHitEffect({
-        loopIndex: hitLoopIndex,
-        kind: isCorrect ? "pop" : "explode",
-      });
-      setDartPhase("hit");
+    playSfx(shootSoundRef);
+    fireProjectile(vx, vy);
+  }
 
-      let nextScore = 0;
-      setCorrectCount((prev) => {
-        nextScore = isCorrect ? prev + 1 : prev;
-        return nextScore;
-      });
-
-      const t2 = setTimeout(() => {
-        setHitEffect(null);
-        setTrackPaused(false);
-        setDartPhase("idle");
-        finishDartQuestion(nextScore, isLast);
-      }, 1000);
-      fireTimersRef.current.push(t2);
-    }, 420);
-    fireTimersRef.current.push(t1);
-  };
-
-  function startGame() {
-    setGameStarted(true);
+  function restartGame() {
+    clearTimers();
+    setShuffleSeed((s) => s + 1);
     setGameEnded(false);
     setCurrentQuestionIndex(0);
     mcq.resetAll();
     setCorrectCount(0);
-    setHitEffect(null);
-    setDartPhase("idle");
+    setUserScore(payload?.user?.score ?? 0);
+    setScorePops([]);
+    setPhase("idle");
     resetHints();
+    if (musicEnabled && backgroundMusicRef.current) {
+      backgroundMusicRef.current.play().catch(() => {});
+    }
   }
 
-  function restartGame() {
-    setShuffleSeed((s) => s + 1);
-    startGame();
+  function handleComeback() {
+    if (backgroundMusicRef.current) {
+      backgroundMusicRef.current.pause();
+      backgroundMusicRef.current.currentTime = 0;
+    }
+    navigate("/lessons", { replace: true });
   }
 
   if (qs.length === 0) {
-    return <div style={{ padding: 20 }}>Không có câu hỏi</div>;
+    return <div style={{ padding: 20, textAlign: "center" }}>Không có câu hỏi</div>;
   }
 
   if (gameEnded) {
@@ -259,462 +519,679 @@ export default function Game3({ payload, onLessonComplete }) {
         correctCount={correctCount}
         totalQuestions={qs.length}
         onReplay={restartGame}
+        onHome={handleComeback}
+        homeLabel="Về bài học"
+        fullBleed
       />
     );
   }
 
-  const canFire = currentQuestion && !mcq.isLocked(currentQuestion.id) && dartPhase === "idle";
+  if (!currentQuestion) {
+    return (
+      <div style={{ padding: 20, textAlign: "center" }}>Không có câu hỏi nào!</div>
+    );
+  }
 
-  /** Vùng chơi rộng/cao hơn template game 2 (70vh) để component thoáng hơn */
-  const gameShellStyle = {
-    width: "100%",
-    height: "82vh",
-    minHeight: "82vh",
-    position: "relative",
-    overflow: "hidden",
-    boxSizing: "border-box",
-  };
+  const canAim =
+    !mcq.isLocked(currentQuestion.id) &&
+    phase !== "wrong" &&
+    (phase === "idle" || phase === "aiming");
+
+  const slingshot = getSlingshotGeometry(arenaSize.w, arenaSize.h);
+  const pouchPos =
+    phase === "aiming" && drag ? drag : slingshot.rest;
+  const showPouchDart = phase !== "flying";
+  const bandPull = dist(pouchPos.x, pouchPos.y, slingshot.rest.x, slingshot.rest.y);
+  const bandTension = Math.min(1, bandPull / MAX_PULL);
 
   return (
-    <div style={gameShellStyle}>
-    <div style={styles.dartGame}>
-      {dartPhase === "selecting" && currentQuestion && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 40, background: "rgba(0,0,0,0.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: 520, marginBottom: 12 }}>
-            {currentQuestion.answers.map((a, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => mcq.toggleIndex(currentQuestion.id, currentQuestion.answers, idx)}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 8,
-                  border: mcq.getPendingIndices(currentQuestion.id).includes(idx) ? "2px solid #ffb300" : "1px solid #ccc",
-                  background: "#fff",
-                }}
-              >
-                {a.text || ("Đáp án " + (idx + 1))}
-              </button>
-            ))}
-          </div>
-          <GameMcqConfirmBar
-            answers={currentQuestion.answers}
-            pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
-            onConfirm={confirmDartAnswer}
-          />
-          <button type="button" onClick={() => { setDartPhase("idle"); setTrackPaused(false); }} style={{ marginTop: 8, background: "transparent", border: "none", color: "#fff" }}>
-            Hủy
-          </button>
-        </div>
-      )}
-
+    <div className="game10-play">
       <style>{`
-        @keyframes game3scroll {
-          from { transform: translate3d(0, 0, 0); }
-          to { transform: translate3d(-50%, 0, 0); }
-        }
-        .game3-square {
+        .game10-play {
           width: 100%;
-          max-width: min(98vw, 960px);
-          margin: 0 auto;
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          min-height: 0;
-          height: 100%;
-          box-sizing: border-box;
-          --game3-play-gap: clamp(16px, 2.5vmin, 26px);
-          --game3-balloon-gap: 18px;
-        }
-        .game3-play-column {
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          gap: var(--game3-play-gap);
-          width: 100%;
-          flex: 0 0 auto;
-        }
-        .game3-dart-wrap {
-          flex: 0 0 auto;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 88px;
-          width: 100%;
-          pointer-events: none;
-        }
-        .game3-dart-launcher {
+          height: calc(100vh - var(--navbar-height, 76px));
+          max-height: calc(100vh - var(--navbar-height, 76px));
           position: relative;
-          left: auto;
-          bottom: auto;
-          width: 88px;
-          height: 88px;
-          margin-left: 0;
-          z-index: 6;
-          pointer-events: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .game3-dart-launcher img {
-          width: 78px;
-          height: 78px;
-          object-fit: contain;
-          transform: rotate(0deg);
-          transform-origin: center center;
-          filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.4));
-          /* Không transition khi về chỗ cũ — tránh hiệu ứng “bay ngược” xấu */
-          transition: none;
-        }
-        .game3-dart-launcher.shooting img {
-          transform: rotate(0deg) translateY(calc(-1 * min(38vw, 180px)));
-          transition: transform 0.38s cubic-bezier(0.33, 1, 0.68, 1);
-        }
-        .game3-dart-launcher.dart-hit img {
-          transform: rotate(0deg) translateY(calc(-1 * min(38vw, 180px)));
-          opacity: 0;
-          visibility: hidden;
-          transition: none;
-        }
-        .game3-viewport {
-          position: relative;
-          flex: 0 0 auto;
-          min-height: 132px;
           overflow: hidden;
-          width: 100%;
+          box-sizing: border-box;
+          font-family: inherit;
+          user-select: none;
+          touch-action: none;
+        }
+        .game10-bg {
+          position: absolute;
+          inset: 0;
+          background-image: url(${game10Background});
+          background-repeat: no-repeat;
+          background-position: center center;
+          background-size: cover;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .game10-clouds {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+          overflow: hidden;
+        }
+        .game10-clouds-track {
+          position: absolute;
+          top: 0;
+          left: 0;
+          display: flex;
+          width: 200%;
+          height: 52%;
+          animation: game10-clouds-drift 52s linear infinite;
+        }
+        .game10-clouds-track img {
+          flex: 0 0 50%;
+          width: 50%;
+          height: 100%;
+          object-fit: cover;
+          object-position: top center;
+          opacity: 0.9;
+        }
+        @keyframes game10-clouds-drift {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .game10-top-bar {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          z-index: 20;
+          padding: 2px clamp(6px, 1.2vw, 10px) 0;
+          box-sizing: border-box;
+          pointer-events: none;
+        }
+        .game10-top-bar > * {
+          pointer-events: auto;
+        }
+        .game10-hud {
+          position: relative;
+          z-index: 1;
+        }
+        .game10-hud-controls {
+          display: flex;
+          align-items: flex-start;
+          flex-wrap: nowrap;
+          gap: clamp(4px, 1vw, 6px);
+        }
+        .game10-hud-btn {
+          padding: 0;
+          border: none;
           background: transparent;
+          cursor: pointer;
+          line-height: 0;
+          flex-shrink: 0;
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));
+        }
+        .game10-hud-btn img {
+          display: block;
+          width: clamp(36px, 7vw, 48px);
+          height: clamp(36px, 7vw, 48px);
+          object-fit: contain;
+        }
+        .game10-question-block {
+          position: absolute;
+          top: 2px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 0;
+          width: min(640px, 88%);
+          max-width: calc(100% - clamp(240px, 32vw, 300px));
           display: flex;
           flex-direction: column;
-          justify-content: flex-start;
           align-items: stretch;
+          gap: 0;
+          pointer-events: auto;
         }
-        .game3-track {
-          display: flex;
-          flex-direction: row;
-          width: max-content;
-          height: auto;
-          flex: 0 0 auto;
-          align-items: center;
-          gap: var(--game3-balloon-gap);
-          padding: 8px 0;
-          box-sizing: border-box;
-          animation: game3scroll 14s linear infinite;
-          will-change: transform;
-          backface-visibility: hidden;
-        }
-        .game3-track.paused {
-          animation-play-state: paused;
-        }
-        /* Hai đoạn giống hệt nhau → -50% khớp mép nối, không bị “mất” bóng giữa chừng */
-        .game3-track-seg {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          gap: var(--game3-balloon-gap);
-          flex: 0 0 auto;
+        .game10-question-panel {
+          width: 100%;
+          padding: 6px 12px;
+          border-radius: 14px 14px 0 0;
+          background: rgba(255,255,255,0.92);
+          border: 2px solid rgba(126, 87, 194, 0.35);
+          border-bottom: none;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.08);
           box-sizing: border-box;
         }
-        .game3-answer-block {
-          flex: 0 0 auto;
-          position: relative;
-          width: 96px;
-          height: 118px;
+        .game10-question-panel--solo {
+          border-bottom: 2px solid rgba(126, 87, 194, 0.35);
           border-radius: 14px;
-          overflow: hidden;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+        .game10-question-text {
+          margin: 0;
+          font-size: clamp(0.9rem, 2.4vw, 1.1rem);
+          font-weight: 700;
+          color: #37474f;
+          line-height: 1.35;
+          text-align: left;
+        }
+        .game10-question-image-wrap {
+          width: 100%;
+          padding: 8px 12px 10px;
+          border-radius: 0 0 14px 14px;
+          background: #fff;
+          border: 2px solid rgba(126, 87, 194, 0.35);
+          border-top: 1px solid rgba(126, 87, 194, 0.15);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.1);
           box-sizing: border-box;
           display: flex;
           align-items: center;
           justify-content: center;
-          text-align: center;
         }
-        .game3-balloon-bg {
+        .game10-question-image-wrap img {
+          display: block;
+          max-width: 100%;
+          max-height: min(22vh, 160px);
+          margin: 0 auto;
+          object-fit: contain;
+        }
+        .game10-score-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+          align-self: flex-start;
+          flex-shrink: 0;
+          margin-left: 2px;
+        }
+        .game10-stat-pill {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          height: clamp(36px, 7vw, 48px);
+          box-sizing: border-box;
+          padding: 0 12px 0 8px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.92);
+          border: 2px solid #7e57c2;
+          font-weight: 800;
+          font-size: clamp(0.85rem, 2.1vw, 1rem);
+          color: #5e35b1;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+          min-width: 72px;
+          justify-content: center;
+          line-height: 1;
+        }
+        .game10-stat-pill img.coin {
+          width: clamp(30px, 6vw, 40px);
+          height: clamp(30px, 6vw, 40px);
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+        .game10-score-pop {
+          position: absolute;
+          left: calc(100% + 4px);
+          top: 50%;
+          color: #2e7d32;
+          font-weight: 800;
+          font-size: clamp(0.85rem, 2.2vw, 1.05rem);
+          text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+          animation: game10-pop-rise 0.9s ease-out forwards;
+          pointer-events: none;
+          white-space: nowrap;
+        }
+        @keyframes game10-pop-rise {
+          0% { opacity: 0; transform: translateY(-50%) scale(0.5); }
+          15% { opacity: 1; transform: translateY(-50%) scale(1.15); }
+          50% { opacity: 1; transform: translateY(-90%) scale(1); }
+          100% { opacity: 0; transform: translateY(-140%) scale(0.95); }
+        }
+        .game10-arena {
+          position: absolute;
+          inset: 0;
+          z-index: 10;
+        }
+        .game10-balloon-column {
+          position: absolute;
+          left: clamp(6px, 2.5vw, 18px);
+          top: clamp(110px, 18vh, 150px);
+          bottom: clamp(44px, 9vh, 68px);
+          width: clamp(92px, 21vw, 128px);
+          display: flex;
+          flex-direction: column;
+          justify-content: space-evenly;
+          align-items: center;
+          z-index: 12;
+          pointer-events: none;
+        }
+        .game10-balloon-column--medium .game10-balloon {
+          width: clamp(58px, 12vw, 76px);
+          height: clamp(70px, 14vw, 92px);
+        }
+        .game10-balloon-column--medium .game10-balloon-label {
+          font-size: clamp(0.72rem, 1.8vw, 0.88rem);
+        }
+        .game10-balloon-column--compact .game10-balloon {
+          width: clamp(50px, 10vw, 66px);
+          height: clamp(62px, 12vw, 80px);
+        }
+        .game10-balloon-column--compact .game10-balloon-label {
+          font-size: clamp(0.65rem, 1.6vw, 0.78rem);
+          margin-top: 4px;
+        }
+        .game10-balloon {
+          position: relative;
+          flex: 0 0 auto;
+          width: clamp(64px, 14vw, 88px);
+          height: clamp(78px, 16vw, 104px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: auto;
+        }
+        .game10-balloon img.bg {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
           object-fit: contain;
-          object-position: center bottom;
           pointer-events: none;
         }
-        .game3-hit-fx {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          object-position: center;
-          z-index: 2;
-          pointer-events: none;
-        }
-        .game3-answer-label {
+        .game10-balloon-label {
           position: relative;
           z-index: 1;
           font-weight: 800;
-          font-size: 1.42rem;
-          line-height: 1;
+          font-size: clamp(0.85rem, 2.2vw, 1.05rem);
           color: #fff;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.75), 0 0 2px rgba(0,0,0,0.5);
-          padding: 0 4px;
-          margin-bottom: 10px;
-        }
-        .game3-answer-label img {
+          text-shadow: 0 1px 4px rgba(0,0,0,0.65);
+          text-align: center;
+          padding: 0 6px;
+          margin-top: 8px;
           max-width: 100%;
-          max-height: 56px;
-          object-fit: contain;
-          vertical-align: middle;
+          line-height: 1.2;
         }
-        @media (max-width: 480px) {
-          .game3-square { max-width: min(98vw, 560px); --game3-play-gap: 14px; }
-          .game3-answer-block {
-            width: 80px;
-            height: 100px;
+        .game10-balloon-label img {
+          max-height: 40px;
+          max-width: 100%;
+          object-fit: contain;
+        }
+        .game10-balloon--selected {
+          filter: drop-shadow(0 0 8px #ffd54f);
+        }
+        .game10-hit-fx {
+          position: absolute;
+          inset: -8px;
+          width: calc(100% + 16px);
+          height: calc(100% + 16px);
+          object-fit: contain;
+          z-index: 3;
+          pointer-events: none;
+        }
+        .game10-trajectory {
+          position: absolute;
+          inset: 0;
+          z-index: 14;
+          pointer-events: none;
+          overflow: visible;
+        }
+        .game10-slingshot-layer {
+          position: absolute;
+          inset: 0;
+          z-index: 15;
+          pointer-events: none;
+          overflow: visible;
+        }
+        .game10-rubber-band {
+          stroke-linecap: round;
+        }
+        .game10-rubber-band--left,
+        .game10-rubber-band--right {
+          stroke: #7a2e28;
+        }
+        .game10-slingshot-body {
+          fill: #6d4c41;
+          stroke: #4e342e;
+          stroke-width: 2;
+          stroke-linejoin: round;
+          filter: drop-shadow(1px 3px 3px rgba(0,0,0,0.28));
+        }
+        .game10-slingshot-body-shine {
+          fill: none;
+          stroke: rgba(255,255,255,0.22);
+          stroke-width: 2.5;
+          stroke-linecap: round;
+        }
+        .game10-pouch {
+          position: absolute;
+          transform: translate(-50%, -50%);
+          z-index: 16;
+          width: clamp(44px, 9vw, 58px);
+          height: clamp(44px, 9vw, 58px);
+          cursor: grab;
+          pointer-events: auto;
+        }
+        .game10-pouch:active { cursor: grabbing; }
+        .game10-pouch-leather {
+          position: absolute;
+          inset: 0;
+          border-radius: 50% 50% 42% 42%;
+          background: linear-gradient(180deg, #a1887f 0%, #6d4c41 100%);
+          border: 2px solid #4e342e;
+          box-shadow: inset 0 -3px 6px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .game10-pouch img {
+          position: absolute;
+          left: 50%;
+          top: 36%;
+          width: 68%;
+          height: 68%;
+          transform: translate(-50%, -50%);
+          object-fit: contain;
+          pointer-events: none;
+        }
+        .game10-projectile {
+          position: absolute;
+          width: clamp(34px, 7vw, 46px);
+          height: clamp(34px, 7vw, 46px);
+          transform: translate(-50%, -50%);
+          z-index: 16;
+          pointer-events: none;
+        }
+        .game10-projectile img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          filter: none;
+        }
+        .game10-aim-preview {
+          stroke: rgba(255,255,255,0.35);
+          stroke-width: 2;
+          stroke-dasharray: 6 5;
+          fill: none;
+        }
+        .game10-hint-wrap {
+          position: absolute;
+          bottom: clamp(10px, 2vh, 16px);
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 22;
+        }
+        .game10-aim-hint {
+          position: absolute;
+          bottom: clamp(10px, 2vh, 16px);
+          right: clamp(10px, 2vw, 16px);
+          z-index: 22;
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: rgba(0,0,0,0.45);
+          color: #fff;
+          font-size: clamp(0.72rem, 1.8vw, 0.85rem);
+          font-weight: 600;
+        }
+        .game10-continue-wrap {
+          position: absolute;
+          bottom: clamp(12px, 2.5vh, 20px);
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 40;
+        }
+        .game10-continue-btn {
+          padding: 12px 32px;
+          border: none;
+          border-radius: 24px;
+          background: linear-gradient(135deg, #ff9800, #f57c00);
+          color: #fff;
+          font-weight: 700;
+          font-size: clamp(0.9rem, 2.2vw, 1rem);
+          cursor: pointer;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+        }
+        .game10-continue-btn:hover {
+          filter: brightness(1.05);
+        }
+        @media (max-width: 640px) {
+          .game10-question-block {
+            position: relative;
+            top: auto;
+            left: auto;
+            transform: none;
+            width: min(94%, 640px);
+            max-width: 100%;
+            margin: 4px auto 0;
           }
-          .game3-answer-label { font-size: 1.2rem; }
-          .game3-viewport { min-height: 110px; }
-          .game3-dart-launcher {
-            width: 76px;
-            height: 76px;
+          .game10-balloon-column {
+            top: clamp(100px, 17vh, 140px);
+            width: clamp(80px, 24vw, 108px);
           }
-          .game3-dart-launcher img {
-            width: 68px;
-            height: 68px;
+          .game10-question-panel {
+            padding: 5px 8px;
           }
-          .game3-dart-wrap {
-            min-height: 76px;
+          .game10-question-text {
+            font-size: clamp(0.85rem, 2.2vw, 1rem);
           }
-          .game3-dart-launcher.shooting img {
-            transform: rotate(0deg) translateY(calc(-1 * min(34vw, 168px)));
+          .game10-question-image-wrap {
+            padding: 6px 8px 8px;
           }
-          .game3-dart-launcher.dart-hit img {
-            transform: rotate(0deg) translateY(calc(-1 * min(34vw, 168px)));
+          .game10-question-image-wrap img {
+            max-height: min(14vh, 110px);
           }
         }
       `}</style>
 
-      <h3 style={styles.heading}>Game Ném Phi Tiêu</h3>
-      <p style={styles.hint}>
-        Đáp án trên <strong>bóng bay</strong> chạy ngang. Bấm <strong>Bắn</strong> — ô giữa khung là ô chọn.
-      </p>
-
-      <div style={styles.gameInfo}>
-        <span>
-          Câu {currentQuestionIndex + 1}/{qs.length}
-        </span>
+      <div className="game10-bg" aria-hidden />
+      <div className="game10-clouds" aria-hidden>
+        <div className="game10-clouds-track">
+          <img src={game10Clouds} alt="" draggable={false} />
+          <img src={game10Clouds} alt="" draggable={false} />
+        </div>
       </div>
 
-      {hasHintFeature && currentQuestion && (
-        <div style={{ textAlign: "center", marginBottom: 8 }}>
+      <div className="game10-top-bar">
+        <div className="game10-hud">
+          <div className="game10-hud-controls">
+            <button
+              type="button"
+              className="game10-hud-btn"
+              onPointerDown={stopControlPointer}
+              onClick={handleComeback}
+              aria-label="Quay lại"
+            >
+              <img src={game10BackIcon} alt="" />
+            </button>
+            <button
+              type="button"
+              className="game10-hud-btn"
+              onPointerDown={stopControlPointer}
+              onClick={toggleMusic}
+              aria-label={musicEnabled ? "Tắt nhạc" : "Bật nhạc"}
+            >
+              <img src={musicEnabled ? game10MusicOnIcon : game10MusicOffIcon} alt="" />
+            </button>
+            <button
+              type="button"
+              className="game10-hud-btn"
+              onPointerDown={stopControlPointer}
+              onClick={toggleSound}
+              aria-label={soundEnabled ? "Tắt tiếng" : "Bật tiếng"}
+            >
+              <img src={soundEnabled ? game10SoundOnIcon : game10SoundOffIcon} alt="" />
+            </button>
+            <button
+              type="button"
+              className="game10-hud-btn"
+              onPointerDown={stopControlPointer}
+              onClick={restartGame}
+              aria-label="Chơi lại"
+            >
+              <img src={game10RestartIcon} alt="" />
+            </button>
+            <div className="game10-score-wrap">
+              <div className="game10-stat-pill" title="Thành tích">
+                <img className="coin" src={game10CoinIcon} alt="" />
+                {userScore}
+              </div>
+              {scorePops.map((id) => (
+                <span key={id} className="game10-score-pop">
+                  +1
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="game10-question-block">
+          <div
+            className={`game10-question-panel${currentQuestion.question_image ? "" : " game10-question-panel--solo"}`}
+          >
+            <p className="game10-question-text">{currentQuestion.question_text}</p>
+          </div>
+
+          {currentQuestion.question_image && (
+            <div className="game10-question-image-wrap">
+              <GameQuestionImageZoom
+                src={questionImageUrl(currentQuestion.question_image) || undefined}
+                thumbStyle={{
+                  maxWidth: "100%",
+                  maxHeight: "min(22vh, 160px)",
+                  display: "block",
+                  margin: "0 auto",
+                  objectFit: "contain",
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {hasHintFeature && (
+        <div className="game10-hint-wrap">
           <GameHintButton
             hintsRemaining={hintsRemaining}
             disabled={
               mcq.isLocked(currentQuestion.id) ||
-              dartPhase !== "idle" ||
+              phase === "flying" ||
+              phase === "hit" ||
+              phase === "wrong" ||
               !canUseHint(currentQuestion.id, currentQuestion.answers)
             }
             onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
-            style={{ margin: 0 }}
           />
         </div>
       )}
 
-      <div style={styles.gameSquare} className="game3-square">
-        <div style={styles.questionInSquare}>
-          <div style={styles.questionTextCompact}>{currentQuestion.question_text}</div>
-          {currentQuestion.question_image && (
-            <GameQuestionImageZoom
-              src={questionImageUrl(currentQuestion.question_image) || undefined}
-              thumbStyle={styles.questionImageCompact}
-            />
+      {canAim && (
+        <div className="game10-aim-hint">Kéo dây cao su để ngắm &amp; bắn</div>
+      )}
+
+      {phase === "wrong" && (
+        <div className="game10-continue-wrap">
+          <button type="button" className="game10-continue-btn" onClick={continueAfterWrong}>
+            Tiếp tục
+          </button>
+        </div>
+      )}
+
+      <div
+        ref={arenaRef}
+        className="game10-arena"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        {visibleAnswers.length > 0 && (
+          <div className={balloonColumnClass}>
+            {visibleAnswers.map(({ a, i: ansIdx }, vi) => {
+              const showFx =
+                hitEffect &&
+                hitEffect.vi === vi &&
+                (hitEffect.kind === "pop" || hitEffect.kind === "explode");
+              const fxSrc = hitEffect?.kind === "explode" ? game10ExplodeFx : game10PopFx;
+
+              return (
+                <div
+                  key={`balloon-${ansIdx}`}
+                  data-balloon-vi={vi}
+                  className="game10-balloon"
+                >
+                  {!showFx && (
+                    <>
+                      <img className="bg" src={balloonImg(ansIdx)} alt="" draggable={false} />
+                      <span className="game10-balloon-label">
+                        {getAnswerLabel(ansIdx)}.{" "}
+                        {a.text ||
+                          (a.image ? (
+                            <img src={questionImageUrl(a.image) || undefined} alt="" />
+                          ) : (
+                            "—"
+                          ))}
+                      </span>
+                    </>
+                  )}
+                  {showFx && <img className="game10-hit-fx" src={fxSrc} alt="" draggable={false} />}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="game10-trajectory">
+          {phase === "aiming" && drag && (
+            <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+              <line
+                className="game10-aim-preview"
+                x1={slingshot.rest.x}
+                y1={slingshot.rest.y}
+                x2={slingshot.rest.x + (slingshot.rest.x - drag.x) * 1.6}
+                y2={slingshot.rest.y + (slingshot.rest.y - drag.y) * 1.6}
+              />
+            </svg>
           )}
         </div>
 
-        <div className="game3-play-column">
-          <div ref={viewportRef} className="game3-viewport">
-            <div className={`game3-track${trackPaused || dartPhase !== "idle" ? " paused" : ""}`}>
-              {[0, 1].map((seg) => (
-                <div key={seg} className="game3-track-seg" aria-hidden={seg === 1 ? true : undefined}>
-                  {segmentItems.map((item, j) => {
-                    const { answer, origIdx } = item;
-                    const loopIndex = seg * segmentItems.length + j;
-                    const showFx =
-                      hitEffect &&
-                      hitEffect.loopIndex === loopIndex &&
-                      (hitEffect.kind === "explode" || hitEffect.kind === "pop");
-                    const fxSrc =
-                      hitEffect?.kind === "explode"
-                        ? `${publicUrl}/game-images/game3-explode.png`
-                        : `${publicUrl}/game-images/game3-pop.png`;
+        <div className="game10-slingshot-layer">
+          <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+            <path
+              className="game10-slingshot-body"
+              d={slingshotBodyPath(slingshot, Math.min(arenaSize.w, arenaSize.h))}
+            />
+            <path
+              className="game10-slingshot-body-shine"
+              d={`M ${slingshot.foot.x} ${slingshot.foot.y - 4} L ${slingshot.neck.x} ${slingshot.neck.y - 6}`}
+            />
+            <line
+              className="game10-rubber-band game10-rubber-band--left"
+              x1={slingshot.leftTip.x}
+              y1={slingshot.leftTip.y}
+              x2={pouchPos.x}
+              y2={pouchPos.y}
+              strokeWidth={3.5 + bandTension * 2.5}
+            />
+            <line
+              className="game10-rubber-band game10-rubber-band--right"
+              x1={slingshot.rightTip.x}
+              y1={slingshot.rightTip.y}
+              x2={pouchPos.x}
+              y2={pouchPos.y}
+              strokeWidth={3.5 + bandTension * 2.5}
+            />
+          </svg>
 
-                    return (
-                      <div
-                        key={`${seg}-${j}`}
-                        className="game3-answer-block"
-                        data-idx={origIdx}
-                        data-loop-index={loopIndex}
-                      >
-                        {!showFx && (
-                          <>
-                            <img
-                              className="game3-balloon-bg"
-                              src={balloonUrl(origIdx)}
-                              alt=""
-                              draggable={false}
-                            />
-                            <span className="game3-answer-label">
-                              {answer.text ? (
-                                answer.text
-                              ) : answer.image ? (
-                                <img
-                                  src={questionImageUrl(answer.image) || undefined}
-                                  alt=""
-                                />
-                              ) : (
-                                "—"
-                              )}
-                            </span>
-                          </>
-                        )}
-                        {showFx && <img className="game3-hit-fx" src={fxSrc} alt="" draggable={false} />}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="game3-dart-wrap">
+          {showPouchDart && (
             <div
-              key={`dart-${currentQuestion.id}-${currentQuestionIndex}`}
-              className={`game3-dart-launcher${dartPhase === "flying" ? " shooting" : ""}${
-                dartPhase === "hit" ? " dart-hit" : ""
-              }`}
+              className="game10-pouch"
+              style={{ left: pouchPos.x, top: pouchPos.y }}
             >
-              <img src={`${publicUrl}/game-images/game3-dart.png`} alt="" />
+              <div className="game10-pouch-leather" />
+              <img src={game10Dart} alt="" draggable={false} />
             </div>
-          </div>
-
-          <div style={styles.fireWrap} className="game3-fire-wrap">
-            <button
-              type="button"
-              disabled={!canFire}
-              onClick={handleFireClick}
-              style={{
-                ...styles.fireBtn,
-                opacity: canFire ? 1 : 0.55,
-                cursor: canFire ? "pointer" : "not-allowed",
-              }}
-            >
-              {dartPhase === "flying" ? "Đang bắn…" : "Bắn"}
-            </button>
-          </div>
+          )}
         </div>
+
+        {projectile && (
+          <div
+            className="game10-projectile"
+            style={{ left: projectile.x, top: projectile.y }}
+          >
+            <img src={game10Dart} alt="" draggable={false} />
+          </div>
+        )}
       </div>
-    </div>
     </div>
   );
 }
-
-const styles = {
-  dartGame: {
-    position: "relative",
-    textAlign: "center",
-    padding: "clamp(12px, 2vw, 20px) clamp(10px, 2.5vw, 24px)",
-    width: "100%",
-    maxWidth: "100%",
-    height: "100%",
-    margin: "0 auto",
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
-  },
-  heading: {
-    margin: "0 0 4px",
-    fontSize: "clamp(1.05rem, 3.2vw, 1.3rem)",
-    fontWeight: 700,
-  },
-  hint: {
-    fontSize: "clamp(0.78rem, 2.1vw, 0.88rem)",
-    color: "#555",
-    margin: "0 0 8px",
-    padding: "0 4px",
-    lineHeight: 1.35,
-  },
-  gameInfo: {
-    display: "flex",
-    justifyContent: "center",
-    marginBottom: "10px",
-    padding: "2px 6px",
-    fontSize: "clamp(0.8rem, 2.2vw, 0.92rem)",
-    fontWeight: 600,
-  },
-  gameSquare: {
-    background: "transparent",
-    border: "none",
-    boxShadow: "none",
-    padding: 0,
-  },
-  questionInSquare: {
-    flex: "0 0 auto",
-    flexShrink: 0,
-    paddingBottom: "clamp(14px, 3.5vmin, 24px)",
-  },
-  questionTextCompact: {
-    fontSize: "clamp(0.95rem, 3.8vmin, 1.35rem)",
-    fontWeight: "bold",
-    lineHeight: 1.2,
-    marginBottom: "6px",
-  },
-  questionImageCompact: {
-    display: "block",
-    maxWidth: "100%",
-    maxHeight: "min(48vw, 220px)",
-    height: "auto",
-    marginTop: "6px",
-    marginLeft: "auto",
-    marginRight: "auto",
-    borderRadius: "8px",
-    objectFit: "contain",
-  },
-  fireWrap: {
-    flex: "0 0 auto",
-    textAlign: "center",
-    marginTop: 0,
-    paddingTop: 0,
-  },
-  fireBtn: {
-    background: "linear-gradient(180deg, #e67e22, #d35400)",
-    color: "#fff",
-    border: "none",
-    padding: "12px 40px",
-    borderRadius: "999px",
-    fontSize: "clamp(1rem, 3vw, 1.2rem)",
-    fontWeight: "800",
-    boxShadow: "0 4px 14px rgba(211, 84, 0, 0.45)",
-  },
-  gameOver: {
-    textAlign: "center",
-    padding: "40px 20px",
-  },
-  gameWon: {
-    textAlign: "center",
-    padding: "40px 20px",
-  },
-  finalScores: {
-    fontSize: "1rem",
-    marginTop: "12px",
-    marginBottom: "8px",
-  },
-  playAgainBtn: {
-    background: "#3498db",
-    color: "white",
-    border: "none",
-    padding: "12px 24px",
-    borderRadius: "6px",
-    fontSize: "16px",
-    cursor: "pointer",
-    marginTop: "20px",
-    transition: "background 0.3s ease",
-  },
-};

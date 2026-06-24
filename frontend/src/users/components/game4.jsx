@@ -12,16 +12,17 @@ import game4MusicOffIcon from "../../assets/game-images/music-off.png";
 import game4SoundOnIcon from "../../assets/game-images/sound_on.png";
 import game4SoundOffIcon from "../../assets/game-images/sound-off.png";
 import game4RestartIcon from "../../assets/game-images/restart.png";
-import game4Run1 from "../../assets/game-images/game-3/run1.png";
-import game4Run2 from "../../assets/game-images/game-3/run2.png";
-import game4Run3 from "../../assets/game-images/game-3/run3.png";
-import game4Run4 from "../../assets/game-images/game-3/run4.png";
-import game4Run5 from "../../assets/game-images/game-3/run5.png";
-import game4Run6 from "../../assets/game-images/game-3/run6.png";
-import game4Run7 from "../../assets/game-images/game-3/run7.png";
-import game4Run8 from "../../assets/game-images/game-3/run8.png";
-import game4Jump from "../../assets/game-images/game-3/jump.png";
-import game4Fall from "../../assets/game-images/game-3/fall.png";
+import game4Run1 from "../../assets/game-images/game4/run1.png";
+import game4Run2 from "../../assets/game-images/game4/run2.png";
+import game4Run3 from "../../assets/game-images/game4/run3.png";
+import game4Run4 from "../../assets/game-images/game4/run4.png";
+import game4Run5 from "../../assets/game-images/game4/run5.png";
+import game4Run6 from "../../assets/game-images/game4/run6.png";
+import game4Run7 from "../../assets/game-images/game4/run7.png";
+import game4Run8 from "../../assets/game-images/game4/run8.png";
+import game4Jump from "../../assets/game-images/game4/jump.png";
+import game4Fall from "../../assets/game-images/game4/fall.png";
+import game4Barrier from "../../assets/game-images/game4/barrier.png";
 
 const RUN_FRAMES = [
   game4Run1,
@@ -36,8 +37,11 @@ const RUN_FRAMES = [
 
 const speedSettings = { 1: 0.5, 2: 1.4, 3: 1.95 };
 const RUN_FRAME_MS = { 1: 110, 2: 80, 3: 55 };
-const JUMP_MS = { 1: 2000, 2: 1200, 3: 800 };
-const CORRECT_ADVANCE_MS = 1200;
+const JUMP_MS = { 1: 1500, 2: 800, 3: 500 };
+
+function barrierWidthPx(roadWidth) {
+  return Math.min(100, roadWidth * 0.12);
+}
 
 function laneAnswerTextStyle(text) {
   const content = text || "";
@@ -81,6 +85,8 @@ export default function Game4({ payload, onLessonComplete }) {
   const roadRef = useRef(null);
   const jumpTimerRef = useRef(null);
   const advanceTimerRef = useRef(null);
+  const correctAdvancePendingRef = useRef(false);
+  const correctCountRef = useRef(0);
 
   const currentSpeed = speedSettings[gameSpeed];
   const isJumping = gameState === "jumping";
@@ -115,6 +121,7 @@ export default function Game4({ payload, onLessonComplete }) {
 
   function goToNextQuestion(scoreCount) {
     clearResultTimers();
+    correctAdvancePendingRef.current = false;
     hasScoredRef.current = false;
     setGameState("running");
     if (currentQuestion < qs.length - 1) {
@@ -145,14 +152,12 @@ export default function Game4({ payload, onLessonComplete }) {
       jumpTimerRef.current = window.setTimeout(() => {
         setGameState("running");
         jumpTimerRef.current = null;
-      }, JUMP_MS[gameSpeed] ?? 1200);
+      }, JUMP_MS[gameSpeed] ?? 800);
 
       setCorrectCount((prev) => {
         const newCount = prev + 1;
-        advanceTimerRef.current = window.setTimeout(() => {
-          advanceTimerRef.current = null;
-          goToNextQuestion(newCount);
-        }, CORRECT_ADVANCE_MS);
+        correctCountRef.current = newCount;
+        correctAdvancePendingRef.current = true;
         return newCount;
       });
       return;
@@ -196,6 +201,7 @@ export default function Game4({ payload, onLessonComplete }) {
 
   useEffect(() => {
     hasScoredRef.current = false;
+    correctAdvancePendingRef.current = false;
     clearResultTimers();
     const q = qs[currentQuestion];
     setGameState("running");
@@ -283,7 +289,9 @@ export default function Game4({ payload, onLessonComplete }) {
     setRunFrame(0);
     setGameState("running");
     hasScoredRef.current = false;
+    correctAdvancePendingRef.current = false;
     setCorrectCount(0);
+    correctCountRef.current = 0;
     setUserScore(payload?.user?.score ?? 0);
     setWeekScore(payload?.user?.week_score ?? 0);
     setGameSpeed(2);
@@ -314,6 +322,7 @@ export default function Game4({ payload, onLessonComplete }) {
     const animate = () => {
       const hitNear = roadWidth * 0.15;
       const hitFar = roadWidth * 0.075;
+      const barrierW = barrierWidthPx(roadWidth);
 
       setObstaclePosition((prev) => {
         const newPos = prev - currentSpeed;
@@ -328,7 +337,14 @@ export default function Game4({ payload, onLessonComplete }) {
           return newPos;
         }
 
-        if (newPos < -120) {
+        if (correctAdvancePendingRef.current && newPos + barrierW < 0) {
+          correctAdvancePendingRef.current = false;
+          const score = correctCountRef.current;
+          window.requestAnimationFrame(() => goToNextQuestion(score));
+          return newPos;
+        }
+
+        if (newPos < -barrierW) {
           if (hasScoredRef.current) return newPos;
           return roadWidth + 100;
         }
@@ -616,7 +632,7 @@ export default function Game4({ payload, onLessonComplete }) {
         .game4-runner-wrap {
           position: absolute;
           left: 16%;
-          width: 72px;
+          width: clamp(88px, 11vw, 108px);
           transition: top 0.25s cubic-bezier(0.4, 0, 0.2, 1);
           z-index: 5;
           display: flex;
@@ -625,7 +641,7 @@ export default function Game4({ payload, onLessonComplete }) {
         }
         .game4-runner-wrap--jump {
           z-index: 60;
-          transform: translateY(-28px);
+          transform: translateY(-38px);
         }
         .game4-runner-wrap--fall {
           z-index: 60;
@@ -636,7 +652,7 @@ export default function Game4({ payload, onLessonComplete }) {
           right: 0;
           display: flex;
           align-items: center;
-          padding: 0 16px 0 clamp(88px, 20%, 130px);
+          padding: 0 16px 0 clamp(108px, 22%, 155px);
           background: transparent;
           border: none;
           color: #f3f4f6;
@@ -863,8 +879,8 @@ export default function Game4({ payload, onLessonComplete }) {
               alt="Runner"
               style={{
                 width: "auto",
-                height: isWrong ? "75%" : "85%",
-                maxHeight: isWrong ? 64 : 72,
+                height: isWrong ? "88%" : "98%",
+                maxHeight: isWrong ? 88 : 104,
                 objectFit: "contain",
                 objectPosition: "bottom center",
               }}
@@ -879,7 +895,7 @@ export default function Game4({ payload, onLessonComplete }) {
                   position: "absolute",
                   left: obstaclePosition,
                   top: `${laneIdx * laneStepPct}%`,
-                  width: Math.min(100, roadWidth * 0.12),
+                  width: barrierWidthPx(roadWidth),
                   height: `${laneStepPct}%`,
                   display: "flex",
                   alignItems: "center",
@@ -888,7 +904,7 @@ export default function Game4({ payload, onLessonComplete }) {
                 }}
               >
                 <img
-                  src={`${publicUrl}/game-images/game4-barrier.png`}
+                  src={game4Barrier}
                   alt=""
                   style={{ width: "100%", height: "100%", objectFit: "contain" }}
                 />

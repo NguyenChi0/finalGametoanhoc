@@ -1,5 +1,4 @@
-// src/components/games/Game1.jsx
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { questionImageUrl } from "../../api";
 import { publicUrl } from "../../lib/publicUrl";
 import GameQuestionImageZoom from "./GameQuestionImageZoom";
@@ -14,22 +13,52 @@ import {
   useGameMcqSelection,
 } from "../lib/useGameMcqSelection";
 
-export default function Game1({ payload, onLessonComplete }) {
+/** Bậc thang trong scene — tọa độ % theo canvas 800×600 gốc. */
+const PLATFORMS = [
+  { x: 0, y: 91.7, w: 100, h: 8.3, type: 1 },
+  { x: 12.5, y: 75, w: 25, h: 3.3, type: 2 },
+  { x: 56.3, y: 58.3, w: 25, h: 3.3, type: 1 },
+  { x: 18.8, y: 41.7, w: 25, h: 3.3, type: 2 },
+  { x: 62.5, y: 25, w: 25, h: 3.3, type: 1 },
+  { x: 37.5, y: 8.3, w: 18.8, h: 3.3, type: 2 },
+];
+
+const STARS = Array.from({ length: 48 }, (_, i) => ({
+  id: i,
+  left: `${(i * 17 + 7) % 100}%`,
+  top: `${(i * 23 + 11) % 88}%`,
+  size: 1 + (i % 3),
+  delay: `${(i % 10) * 0.35}s`,
+}));
+
+function Platform({ x, y, w, h, type }) {
+  return (
+    <div
+      className={`game3-platform game3-platform--type${type}`}
+      style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
+      aria-hidden
+    />
+  );
+}
+
+export default function Game3({ payload, onLessonComplete }) {
   const questions = payload?.questions || [];
   const user = payload?.user;
   const [current, setCurrent] = useState(0);
   const [showResult, setShowResult] = useState(false);
-  const [userScore, setUserScore] = useState(user?.score ?? 0);
-  const [weekScore, setWeekScore] = useState(user?.week_score ?? 0);
   const [locked, setLocked] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [levelTransition, setLevelTransition] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const mcq = useGameMcqSelection();
-  const [background, setBackground] = useState("game1-asker.png");
   const [correctCount, setCorrectCount] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
+  const [portalActive, setPortalActive] = useState(false);
 
-  // Refs cho âm thanh
   const correctSoundRef = useRef(null);
   const wrongSoundRef = useRef(null);
+  const timerRef = useRef(null);
+
   const {
     hintsRemaining,
     hasHintFeature,
@@ -44,48 +73,64 @@ export default function Game1({ payload, onLessonComplete }) {
     [questions, shuffleSeed]
   );
   const currentQuestion = gameQuestions[current];
+  const totalQuestions = gameQuestions.length;
 
-  // Hàm phát âm thanh
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      if (!showResult && !locked) setElapsedSec((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [showResult, locked]);
+
   const playSound = (isCorrect) => {
-    if (isCorrect) {
-      if (correctSoundRef.current) {
-        correctSoundRef.current.currentTime = 0;
-        correctSoundRef.current.play().catch(e => console.log("Lỗi phát âm thanh:", e));
-      }
-    } else {
-      if (wrongSoundRef.current) {
-        wrongSoundRef.current.currentTime = 0;
-        wrongSoundRef.current.play().catch(e => console.log("Lỗi phát âm thanh:", e));
-      }
+    const ref = isCorrect ? correctSoundRef : wrongSoundRef;
+    if (ref.current) {
+      ref.current.currentTime = 0;
+      ref.current.play().catch(() => {});
     }
   };
+
+  function finishLesson(newCorrectCount) {
+    setShowResult(true);
+    if (user?.id && newCorrectCount > 0) {
+      incrementLessonScore(user.id, newCorrectCount, payload).catch(() => {});
+    }
+    onLessonComplete?.(newCorrectCount);
+  }
 
   function finishAnswer(isCorrect) {
     if (locked) return;
     setLocked(true);
-    const isLast = current + 1 >= gameQuestions.length;
-    const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
     playSound(isCorrect);
-    setBackground(isCorrect ? "game1-winner.png" : "game1-loser.png");
-    setCorrectCount(newCorrectCount);
+    setFeedback(isCorrect ? "correct" : "wrong");
+
+    const isLast = current + 1 >= totalQuestions;
+    const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
+
+    if (isCorrect) setPortalActive(true);
+
     setTimeout(() => {
-      if (!isLast) {
-        setCurrent((c) => c + 1);
-        setLocked(false);
-        setBackground("game1-asker.png");
-      } else {
-        setShowResult(true);
-        if (user?.id && newCorrectCount > 0) {
-          incrementLessonScore(user.id, newCorrectCount, payload).then((data) => {
-            if (data?.success) {
-              setUserScore(data.score);
-              setWeekScore(data.week_score);
-            }
-          });
-        }
-        onLessonComplete?.(newCorrectCount);
+      if (isCorrect && !isLast) {
+        setLevelTransition(true);
+        setTimeout(() => {
+          setCorrectCount(newCorrectCount);
+          setCurrent((c) => c + 1);
+          setLocked(false);
+          setFeedback(null);
+          setPortalActive(false);
+          setLevelTransition(false);
+        }, 1600);
+        return;
       }
-    }, 2000);
+
+      if (isCorrect && isLast) {
+        setCorrectCount(newCorrectCount);
+        finishLesson(newCorrectCount);
+        return;
+      }
+
+      finishLesson(newCorrectCount);
+    }, isCorrect && !isLast ? 1200 : 2000);
   }
 
   function handleAnswer(answer, idx) {
@@ -107,11 +152,22 @@ export default function Game1({ payload, onLessonComplete }) {
     setCurrent(0);
     setShowResult(false);
     setLocked(false);
-    setBackground("game1-asker.png");
+    setFeedback(null);
+    setLevelTransition(false);
+    setPortalActive(false);
     setCorrectCount(0);
+    setElapsedSec(0);
     mcq.resetAll();
     resetHints();
   }
+
+  const gameShellStyle = {
+    width: "100%",
+    maxWidth: "100%",
+    minHeight: "clamp(480px, 78vh, 720px)",
+    position: "relative",
+    boxSizing: "border-box",
+  };
 
   if (!gameQuestions.length) {
     return (
@@ -121,37 +177,12 @@ export default function Game1({ payload, onLessonComplete }) {
     );
   }
 
-  const getImageSrc = (imgPath) => {
-    if (!imgPath) return null;
-    if (/^https?:\/\//i.test(imgPath)) return imgPath;
-    if (imgPath.startsWith("/")) return imgPath;
-    if (imgPath.startsWith("game-images/")) return `/${imgPath}`;
-    return `${publicUrl}/game-images/${imgPath}`;
-  };
-
-
-
-  /** Vỏ khu chơi: đủ cao theo nội dung (không cắt đáp án); min-height giữ tỷ lệ đẹp */
-  const GAME1_SHELL_MIN_H = "clamp(480px, 78vh, 920px)";
-  const gameShellStyle = {
-    width: "100%",
-    maxWidth: "100%",
-    minHeight: GAME1_SHELL_MIN_H,
-    height: "auto",
-    position: "relative",
-    boxSizing: "border-box",
-    overflow: "visible",
-  };
-  /** @deprecated dùng `gameShellStyle`; giữ alias để tương thích nếu chunk HMR còn tham chiếu tên cũ */
-  // eslint-disable-next-line no-unused-vars -- alias chỉ để tránh ReferenceError từ hot-reload cũ
-  const gameContainerStyle = gameShellStyle;
-
   if (showResult) {
     return (
       <LessonCompleteScreen
         payload={payload}
         correctCount={correctCount}
-        totalQuestions={gameQuestions.length}
+        totalQuestions={totalQuestions}
         onReplay={resetGame}
         shellStyle={gameShellStyle}
       />
@@ -162,291 +193,470 @@ export default function Game1({ payload, onLessonComplete }) {
     ? questionImageUrl(currentQuestion.question_image) || null
     : null;
 
+  const isMulti = mcq.isMultiCorrectQuestion(currentQuestion.answers);
+  const astronautLift = portalActive || feedback === "correct";
+
   return (
-    <div style={{ ...gameShellStyle, display: "flex", flexDirection: "column" }}>
-        <style>{`
-          .game1-question-col {
-            overflow-wrap: anywhere;
-            word-break: break-word;
-          }
-          .game1-question-text {
-            overflow-wrap: anywhere;
-            word-break: break-word;
-            hyphens: auto;
-          }
-          .game1-answers-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            margin-bottom: 15px;
-            flex-shrink: 0;
-          }
-          @media (max-width: 600px) {
-            .game1-answers-grid {
-              grid-template-columns: 1fr;
-            }
-          }
-          @media (max-width: 767px) {
-            .game1-question-wrap {
-              flex: 0 0 auto !important;
-              min-height: auto !important;
-              overflow-x: hidden !important;
-              overflow-y: visible !important;
-            }
-            /* Phản hồi đúng/sai: không còn text trong flow — cần chiều cao lớn để ảnh thắng/thua rõ */
-            .game1-question-wrap.game1-question-wrap--feedback {
-              min-height: min(58vh, 520px) !important;
-            }
-            .game1-question-text {
-              font-size: clamp(0.95rem, 4.2vw, 1.15rem) !important;
-              line-height: 1.45 !important;
-            }
-          }
-          @media (min-width: 768px) {
-            .game1-question-wrap {
-              flex: 1 1 auto !important;
-              min-height: 38vh !important;
-            }
-            .game1-shell-inner {
-              padding-left: clamp(12px, 1.2vw, 20px) !important;
-              padding-right: clamp(12px, 1.2vw, 20px) !important;
-            }
-            .game1-question-wrap {
-              padding-left: clamp(10px, 1.2vw, 18px) !important;
-              padding-right: clamp(10px, 1.2vw, 18px) !important;
-              padding-top: 20px !important;
-              padding-bottom: 20px !important;
-            }
-            .game1-question-img {
-              max-width: 100% !important;
-            }
-          }
-        `}</style>
-        {/* Audio */}
-        <audio
-          ref={correctSoundRef}
-          src={`${publicUrl}/game-noises/dung.mp3`}
-          preload="auto"
-        />
-        <audio
-          ref={wrongSoundRef}
-          src={`${publicUrl}/game-noises/wrong.mp3`}
-          preload="auto"
+    <div className="game3-root" style={gameShellStyle}>
+      <style>{`
+        .game3-root {
+          --g3-blue-deep: #1e3c72;
+          --g3-blue-mid: #2a5298;
+          --g3-accent: #4a90e2;
+          --g3-text: #fff;
+          font-family: Arial, sans-serif;
+        }
+
+        .game3-arena {
+          position: relative;
+          width: 100%;
+          aspect-ratio: 4 / 3;
+          max-height: min(78vh, 680px);
+          margin: 0 auto;
+          border: 3px solid var(--g3-accent);
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+          background: linear-gradient(135deg, var(--g3-blue-deep) 0%, var(--g3-blue-mid) 100%);
+        }
+
+        /* PLACEHOLDER: thay bằng flowerbackground.png */
+        .game3-bg-placeholder {
+          position: absolute;
+          inset: 0;
+          background: #d48cb8;
+          opacity: 0.45;
+          z-index: 0;
+        }
+
+        .game3-stars {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+        }
+        .game3-star {
+          position: absolute;
+          border-radius: 50%;
+          background: #fff;
+          animation: game3-twinkle 2.4s ease-in-out infinite;
+          animation-delay: var(--delay, 0s);
+        }
+        @keyframes game3-twinkle {
+          0%, 100% { opacity: 0.35; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.35); }
+        }
+
+        .game3-platform {
+          position: absolute;
+          z-index: 2;
+          border-radius: 4px;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
+        }
+        /* PLACEHOLDER: platform1.png */
+        .game3-platform--type1 {
+          background: linear-gradient(180deg, #a07850 0%, #6b4c30 100%);
+          border: 2px solid #c49a6c;
+        }
+        /* PLACEHOLDER: platform2.png */
+        .game3-platform--type2 {
+          background: linear-gradient(180deg, #7cb87c 0%, #4a8a4a 100%);
+          border: 2px solid #9ed49e;
+        }
+
+        /* PLACEHOLDER: phihanhgia3.png — phi hành gia */
+        .game3-astronaut {
+          position: absolute;
+          left: 4%;
+          bottom: 14%;
+          width: clamp(36px, 7vw, 52px);
+          height: clamp(36px, 7vw, 52px);
+          z-index: 4;
+          background: #ff6b9d;
+          border: 2px solid #fff;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+          transition: transform 1s ease, bottom 1s ease;
+        }
+        .game3-astronaut::after {
+          content: "🧑‍🚀";
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: clamp(18px, 3.5vw, 26px);
+        }
+        .game3-astronaut--lift {
+          bottom: 78%;
+          transform: translateX(280%) scale(0.9);
+        }
+
+        /* PLACEHOLDER: door.png — cổng thoát */
+        .game3-portal {
+          position: absolute;
+          left: 50%;
+          top: 3.5%;
+          transform: translateX(-50%);
+          width: clamp(40px, 8vw, 56px);
+          height: clamp(40px, 8vw, 56px);
+          z-index: 3;
+          border-radius: 50%;
+          background: rgba(100, 100, 100, 0.65);
+          border: 3px solid #888;
+          transition: background 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
+        }
+        .game3-portal--active {
+          background: rgba(0, 200, 255, 0.55);
+          border-color: #00ffff;
+          box-shadow: 0 0 24px rgba(0, 255, 255, 0.65);
+          animation: game3-portal-pulse 1.2s ease-in-out infinite;
+        }
+        @keyframes game3-portal-pulse {
+          0%, 100% { box-shadow: 0 0 16px rgba(0, 255, 255, 0.5); }
+          50% { box-shadow: 0 0 32px rgba(0, 255, 255, 0.9); }
+        }
+
+        .game3-hud {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          z-index: 20;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .game3-hud__item {
+          background: rgba(0, 0, 0, 0.6);
+          padding: 8px 12px;
+          border-radius: 8px;
+          border: 1px solid var(--g3-accent);
+          color: var(--g3-text);
+          font-size: clamp(11px, 2.2vw, 13px);
+          font-weight: bold;
+          text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+          white-space: nowrap;
+        }
+
+        .game3-question-box {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -58%);
+          z-index: 15;
+          width: min(92%, 520px);
+          max-height: 42%;
+          overflow-y: auto;
+          background: rgba(0, 0, 0, 0.85);
+          padding: clamp(12px, 2.5vw, 18px);
+          border-radius: 10px;
+          border: 2px solid var(--g3-accent);
+          color: var(--g3-text);
+          text-align: center;
+          box-sizing: border-box;
+        }
+        .game3-question-box__label {
+          font-size: clamp(10px, 2vw, 12px);
+          color: #ccc;
+          margin-bottom: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+        .game3-question-box__text {
+          font-size: clamp(0.92rem, 2.6vw, 1.15rem);
+          font-weight: bold;
+          line-height: 1.45;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .game3-answers {
+          position: absolute;
+          bottom: 12px;
+          left: 12px;
+          right: 12px;
+          z-index: 18;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+        @media (max-width: 520px) {
+          .game3-answers { grid-template-columns: 1fr; }
+        }
+
+        .game3-answer-btn {
+          background: rgba(0, 0, 0, 0.6);
+          border: 2px solid var(--g3-accent);
+          color: white;
+          font-size: clamp(12px, 2.4vw, 14px);
+          font-weight: bold;
+          padding: 10px 12px;
+          border-radius: 12px;
+          cursor: pointer;
+          text-align: left;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+          transition: transform 0.1s, background 0.2s;
+          min-height: 48px;
+          line-height: 1.3;
+        }
+        .game3-answer-btn:not(:disabled):active {
+          transform: scale(0.96);
+          background: rgba(74, 144, 226, 0.8);
+        }
+        .game3-answer-btn:disabled { cursor: default; }
+        .game3-answer-btn__badge {
+          flex-shrink: 0;
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          background: #ffd700;
+          color: #1a1a1a;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 13px;
+          font-weight: 900;
+          border: 2px solid #ffb300;
+        }
+        .game3-answer-btn--selected {
+          border-color: #ffd700;
+          background: rgba(74, 144, 226, 0.45);
+        }
+        .game3-answer-btn--correct {
+          border-color: #66bb6a;
+          background: rgba(46, 125, 50, 0.75);
+        }
+        .game3-answer-btn--wrong {
+          border-color: #ef5350;
+          background: rgba(198, 40, 40, 0.75);
+        }
+        .game3-answer-btn--dim { opacity: 0.45; }
+
+        .game3-hint-wrap {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          z-index: 20;
+        }
+        .game3-hint-wrap button {
+          background: rgba(0, 0, 0, 0.6) !important;
+          border: 2px solid var(--g3-accent) !important;
+          color: white !important;
+        }
+
+        .game3-confirm-wrap {
+          position: absolute;
+          bottom: 12px;
+          left: 12px;
+          right: 12px;
+          z-index: 19;
+          transform: translateY(calc(-100% - 52px));
+        }
+        .game3-confirm-wrap p { color: #ccc !important; }
+
+        .game3-overlay {
+          position: absolute;
+          inset: 0;
+          z-index: 50;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.82);
+          color: white;
+          text-align: center;
+          padding: 20px;
+        }
+        .game3-overlay__title {
+          font-size: clamp(1.4rem, 5vw, 2rem);
+          font-weight: 900;
+          margin: 0 0 12px;
+        }
+        .game3-overlay__title--win { color: #ffeb3b; }
+        .game3-overlay__title--lose { color: #ff6464; }
+        .game3-overlay__sub {
+          font-size: clamp(0.95rem, 3vw, 1.15rem);
+          margin: 0;
+          color: #eee;
+        }
+
+        .game3-instructions {
+          position: absolute;
+          bottom: 12px;
+          left: 12px;
+          z-index: 5;
+          color: #ccc;
+          font-size: 11px;
+          text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+          pointer-events: none;
+          opacity: 0.7;
+          display: none;
+        }
+        @media (min-width: 900px) {
+          .game3-instructions { display: block; }
+          .game3-answers { bottom: 48px; }
+        }
+      `}</style>
+
+      <audio ref={correctSoundRef} src={`${publicUrl}/game-noises/dung.mp3`} preload="auto" />
+      <audio ref={wrongSoundRef} src={`${publicUrl}/game-noises/wrong.mp3`} preload="auto" />
+
+      <div className="game3-arena">
+        {/* PLACEHOLDER nền */}
+        <div className="game3-bg-placeholder" aria-hidden />
+
+        <div className="game3-stars" aria-hidden>
+          {STARS.map((s) => (
+            <span
+              key={s.id}
+              className="game3-star"
+              style={{
+                left: s.left,
+                top: s.top,
+                width: s.size,
+                height: s.size,
+                "--delay": s.delay,
+              }}
+            />
+          ))}
+        </div>
+
+        {PLATFORMS.map((p, i) => (
+          <Platform key={i} {...p} />
+        ))}
+
+        <div
+          className={`game3-portal${portalActive ? " game3-portal--active" : ""}`}
+          aria-label="Cổng thoát"
+          title="Cổng thoát"
         />
 
         <div
-          className="game1-shell-inner"
-          style={{
-            width: "100%",
-            flex: "1 1 auto",
-            minHeight: 0,
-            backgroundColor: "#002f5eff",
-            color: "white",
-            padding: "clamp(16px, 2.5vw, 32px)",
-            paddingBottom: "clamp(18px, 2.8vw, 36px)",
-            borderRadius: "12px",
-            border: "3px solid #1e88e5",
-            display: "flex",
-            flexDirection: "column",
-            boxSizing: "border-box",
-          }}
-        >
-          <div
-            style={{
-              flexShrink: 0,
-              marginBottom: 12,
-              fontSize: "0.95em",
-              color: "white",
-              textAlign: "center",
-            }}
-          >
-            Câu : <b>{current + 1}/{gameQuestions.length}</b>
+          className={`game3-astronaut${astronautLift ? " game3-astronaut--lift" : ""}`}
+          aria-hidden
+        />
+
+        <div className="game3-hud">
+          <div className="game3-hud__item">🏆 Đúng: {correctCount}/{totalQuestions}</div>
+          <div className="game3-hud__item">🚀 Câu: {current + 1}/{totalQuestions}</div>
+          <div className="game3-hud__item">⏱️ {elapsedSec}s</div>
+        </div>
+
+        {hasHintFeature && (
+          <div className="game3-hint-wrap">
+            <GameHintButton
+              hintsRemaining={hintsRemaining}
+              disabled={
+                locked ||
+                !canUseHint(currentQuestion.id, currentQuestion.answers)
+              }
+              onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
+              style={{ margin: 0 }}
+            />
           </div>
+        )}
 
-          {/* Phần câu hỏi: nền scene + lớp tối bán trong (không blur) */}
-          <div
-            className={`game1-question-wrap${locked ? " game1-question-wrap--feedback" : ""}`}
-            style={{
-            flex: "0 1 auto",
-            flexShrink: 0,
-            minHeight: "38vh",
-            padding: "20px",
-            borderRadius: "10px",
-            marginBottom: "20px",
-            border: "3px solidrgb(0, 195, 255)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            position: "relative",
-            color: "black",
-            overflowX: "hidden",
-            overflowY: "visible",
-            isolation: "isolate",
-          }}>
-            <div
-              aria-hidden
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 0,
-                backgroundImage: `url(${publicUrl}/game-images/${background})`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "center center",
-                backgroundSize: "cover",
-              }}
-            />
-            <div
-              aria-hidden
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 1,
-                borderRadius: "10px",
-                background:
-                  "linear-gradient(180deg, rgba(2, 14, 34, 0.52) 0%, rgba(1, 10, 28, 0.68) 100%)",
-                pointerEvents: "none",
-              }}
-            />
-
-            {/* Chữ + ảnh trên lớp phủ (full chiều ngang ô) */}
-            {!locked && (
-            <div
-              className="game1-question-col"
-              style={{
-                position: "relative",
-                zIndex: 2,
-                width: "100%",
-                maxWidth: "100%",
-                marginLeft: "auto",
-                marginRight: "auto",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                minWidth: 0,
-                boxSizing: "border-box",
-              }}
-            >
-              <div
-                className="game1-question-text"
-                style={{
-                color: "white",
-                fontSize: "1.3em",
-                fontWeight: "bold",
-                marginBottom: questionImageSrc ? "10px" : "0",
-                textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
-                padding: "0 8px",
-                width: "100%",
-                maxWidth: "100%",
-                textAlign: "center",
-              }}
-              >
-                {currentQuestion.question_text}
-              </div>
-
-              {questionImageSrc && (
+        {!locked && !levelTransition && (
+          <div className="game3-question-box">
+            <div className="game3-question-box__label">Câu hỏi</div>
+            <div className="game3-question-box__text">
+              {currentQuestion.question_text}
+            </div>
+            {questionImageSrc && (
+              <div style={{ marginTop: 10 }}>
                 <GameQuestionImageZoom
                   src={questionImageSrc}
-                  thumbClassName="game1-question-img"
                   onThumbError={(e) => {
                     e.currentTarget.onerror = null;
                     e.currentTarget.style.display = "none";
                   }}
                   thumbStyle={{
-                    maxHeight: "min(50vh, 300px)",
+                    maxHeight: 120,
                     objectFit: "contain",
-                    backgroundColor: "white",
+                    backgroundColor: "#fff",
+                    borderRadius: 6,
                   }}
                 />
-              )}
-            </div>
+              </div>
             )}
           </div>
+        )}
 
-          {hasHintFeature && (
-            <div style={{ textAlign: "center", marginBottom: 8 }}>
-              <GameHintButton
-                hintsRemaining={hintsRemaining}
-                disabled={
-                  locked ||
-                  !canUseHint(currentQuestion.id, currentQuestion.answers)
-                }
-                onUse={() => applyHint(currentQuestion.id, currentQuestion.answers)}
-                style={{ margin: 0 }}
-              />
-            </div>
-          )}
-
-          {/* Đáp án: desktop 2 cột; mobile 1 đáp án / hàng */}
-          <div className="game1-answers-grid">
+        {!levelTransition && (
+          <div className="game3-answers">
             {currentQuestion.answers.map((ans, i) => {
               if (getHiddenIndices(currentQuestion.id).has(i)) return null;
+
               const pending = mcq.getPendingIndices(currentQuestion.id);
               const confirmed = mcq.getConfirmedIndices(currentQuestion.id);
               const vis = getMcqAnswerVisualState(pending, confirmed, i, ans);
-              let bg = "linear-gradient(135deg, rgba(54, 150, 230, 0.8), rgba(24, 122, 221, 0.8))";
-              let borderColor = "#1e88e5";
-              if (!vis.locked && vis.isSelected) {
-                bg = "linear-gradient(135deg, #1565c0, #0d47a1)";
-                borderColor = "#ffd54f";
-              } else if (vis.locked) {
+
+              let stateClass = "";
+              if (!vis.locked && vis.isSelected) stateClass = "game3-answer-btn--selected";
+              else if (vis.locked) {
                 if (vis.tone === "correct" || vis.tone === "missed") {
-                  bg = "linear-gradient(135deg, #4CAF50, #45a049)";
-                  borderColor = "#4CAF50";
+                  stateClass = "game3-answer-btn--correct";
                 } else if (vis.tone === "wrong") {
-                  bg = "linear-gradient(135deg, #dc3545, #c82333)";
-                  borderColor = "#dc3545";
+                  stateClass = "game3-answer-btn--wrong";
                 } else {
-                  bg = "linear-gradient(135deg, rgba(44, 62, 80, 0.8), rgba(52, 73, 94, 0.8))";
-                  borderColor = "#7aacdfff";
+                  stateClass = "game3-answer-btn--dim";
                 }
               }
 
               return (
                 <button
                   key={i}
+                  type="button"
+                  className={`game3-answer-btn ${stateClass}`}
                   onClick={() => handleAnswer(ans, i)}
                   disabled={locked}
-                  style={{
-                    background: bg,
-                    color: "white",
-                    border: `3px solid ${borderColor}`,
-                    borderRadius: "8px",
-                    padding: "12px 10px",
-                    fontSize: "14px",
-                    cursor: locked ? "default" : "pointer",
-                    fontWeight: "bold",
-                    minHeight: "60px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-start",
-                    transition: "all 0.3s ease"
-                  }}
                 >
-                  <span style={{
-                    marginRight: "10px",
-                    fontSize: "1.1em",
-                    minWidth: "25px",
-                    textAlign: "center"
-                  }}>
-                    {getAnswerLabel(i)}.
-                  </span>
-                  {ans.text}
+                  <span className="game3-answer-btn__badge">{getAnswerLabel(i)}</span>
+                  <span>{ans.text}</span>
                 </button>
               );
             })}
           </div>
+        )}
 
-          {mcq.isMultiCorrectQuestion(currentQuestion.answers) && !locked && (
+        {isMulti && !locked && !levelTransition && (
+          <div className="game3-confirm-wrap">
             <GameMcqConfirmBar
               answers={currentQuestion.answers}
               pendingIndices={mcq.getPendingIndices(currentQuestion.id)}
               disabled={locked}
               onConfirm={confirmMultiAnswer}
             />
-          )}
+          </div>
+        )}
+
+        <div className="game3-instructions" aria-hidden>
+          <div>Chọn đáp án đúng để mở cổng</div>
         </div>
+
+        {levelTransition && (
+          <div className="game3-overlay">
+            <h2 className="game3-overlay__title game3-overlay__title--win">
+              🎉 CÂU {current + 1} HOÀN THÀNH! 🎉
+            </h2>
+            <p className="game3-overlay__sub">
+              Chuẩn bị câu {current + 2}...
+            </p>
+          </div>
+        )}
+
+        {feedback === "wrong" && !levelTransition && (
+          <div className="game3-overlay">
+            <h2 className="game3-overlay__title game3-overlay__title--lose">
+              💥 GAME OVER 💥
+            </h2>
+            <p className="game3-overlay__sub">Bạn đã trả lời sai!</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

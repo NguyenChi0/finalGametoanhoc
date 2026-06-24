@@ -7,14 +7,14 @@ import GameHintButton from "./GameHintButton";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { useLessonHints } from "../lib/useLessonHints";
-import { prepareSessionQuestions } from "../lib/lessonQuestions";
+import { prepareSessionQuestions, getAnswerLabel } from "../lib/lessonQuestions";
 import GameMcqConfirmBar from "./GameMcqConfirmBar";
 import {
   getMcqAnswerVisualState,
   useGameMcqSelection,
 } from "../lib/useGameMcqSelection";
 import game1Background from "../../assets/game-images/game1/background.png";
-import game1Answer from "../../assets/game-images/game1/answer.png";
+import game1ChooseSfx from "../../assets/game-images/game1/choose.mp3";
 import game1BackIcon from "../../assets/game-images/back.png";
 import game1MusicOnIcon from "../../assets/game-images/music_on.png";
 import game1MusicOffIcon from "../../assets/game-images/music-off.png";
@@ -23,45 +23,60 @@ import game1SoundOffIcon from "../../assets/game-images/sound-off.png";
 import game1RestartIcon from "../../assets/game-images/restart.png";
 
 const ADVANCE_DELAY_MS = 1200;
+const GAME1_FONT = '"FTV School Book New", Georgia, "Times New Roman", serif';
+const GAME1_CHALK = "#f5f5f0";
 
-function answerButtonStyle(pending, confirmed, ai, answer) {
-  const base = {
-    padding: "12px 16px",
-    borderRadius: 0,
-    fontSize: "clamp(0.85rem, 2.2vw, 1rem)",
-    fontWeight: 700,
-    cursor: confirmed === undefined ? "pointer" : "default",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    minHeight: 52,
-    width: "100%",
-    boxSizing: "border-box",
-    backgroundColor: "transparent",
-    backgroundImage: `url(${game1Answer})`,
-    backgroundSize: "100% 100%",
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "center",
-    border: "none",
-    boxShadow: "none",
-    outline: "none",
-    color: "#0f4c75",
-  };
-
+function getChalkOvalTone(pending, confirmed, ai, answer) {
   const vis = getMcqAnswerVisualState(pending, confirmed, ai, answer);
   if (!vis.locked) {
-    return {
-      ...base,
-      color: vis.isSelected ? "#1565c0" : "#0f4c75",
-    };
+    return vis.isSelected ? "pending" : null;
   }
+  if (vis.tone === "correct" || vis.tone === "missed") return "correct";
+  if (vis.tone === "wrong") return "wrong";
+  return null;
+}
 
-  const chosen = vis.isSelected;
-  if (chosen && answer.correct) return { ...base, color: "#1b5e20" };
-  if (chosen && !answer.correct) return { ...base, color: "#b71c1c" };
-  if (!chosen && answer.correct) return { ...base, color: "#2e7d32" };
-  return { ...base, opacity: 0.65, color: "#546e7a" };
+function Game1ChalkOval({ tone, idSuffix, className = "" }) {
+  if (!tone) return null;
+  const stroke =
+    tone === "correct"
+      ? "#9dffaa"
+      : tone === "wrong"
+        ? "#ff8a8a"
+        : "rgba(255, 255, 255, 0.92)";
+  const filterId = `game1-chalk-${idSuffix}`;
+
+  return (
+    <svg
+      className={`game1-chalk-oval ${className}`.trim()}
+      viewBox="0 0 300 64"
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <defs>
+        <filter id={filterId} x="-8%" y="-12%" width="116%" height="124%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="2" result="noise" />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="noise"
+            scale="2.4"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+      </defs>
+      <path
+        d="M 22 34 C 16 17, 54 9, 102 8 C 162 7, 232 12, 274 23 C 294 29, 288 49, 246 55 C 168 63, 68 59, 30 48 C 14 42, 12 36, 22 34 Z"
+        fill="none"
+        stroke={stroke}
+        strokeWidth="6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        filter={`url(#${filterId})`}
+        opacity="0.96"
+      />
+    </svg>
+  );
 }
 
 export default function Game10({ payload, onLessonComplete }) {
@@ -79,7 +94,7 @@ export default function Game10({ payload, onLessonComplete }) {
 
   const advanceTimerRef = useRef(null);
   const backgroundMusicRef = useRef(null);
-  const tapSoundRef = useRef(null);
+  const chooseSoundRef = useRef(null);
 
   const {
     hintsRemaining,
@@ -99,7 +114,8 @@ export default function Game10({ payload, onLessonComplete }) {
   const sessionComplete = qs.length > 0 && currentIndex >= qs.length;
 
   useEffect(() => {
-    tapSoundRef.current = new Audio(`${publicUrl}/game-noises/dap.mp3`);
+    chooseSoundRef.current = new Audio(game1ChooseSfx);
+    chooseSoundRef.current.volume = 0.85;
     backgroundMusicRef.current = new Audio(`${publicUrl}/music/nhac1.mp3`);
     backgroundMusicRef.current.loop = true;
     backgroundMusicRef.current.volume = 0.5;
@@ -132,10 +148,10 @@ export default function Game10({ payload, onLessonComplete }) {
     };
   }, [gameScreen]);
 
-  function playTapSound() {
-    if (soundEnabled && tapSoundRef.current) {
-      tapSoundRef.current.currentTime = 0;
-      tapSoundRef.current.play().catch(() => {});
+  function playChooseSound() {
+    if (soundEnabled && chooseSoundRef.current) {
+      chooseSoundRef.current.currentTime = 0;
+      chooseSoundRef.current.play().catch(() => {});
     }
   }
 
@@ -228,17 +244,16 @@ export default function Game10({ payload, onLessonComplete }) {
   const choose = useCallback(
     (qId, answers, ansIdx) => {
       if (mcq.isLocked(qId)) return;
-      playTapSound();
+      playChooseSound();
       const ok = mcq.toggleIndex(qId, answers, ansIdx);
       if (ok !== null) afterAnswer(qId, answers, ok);
     },
-    [mcq, afterAnswer]
+    [mcq, afterAnswer, soundEnabled]
   );
 
   const confirmCurrent = useCallback(() => {
     const q = currentQuestion;
     if (!q || mcq.isLocked(q.id)) return;
-    playTapSound();
     const ok = mcq.confirmPending(q.id, q.answers);
     afterAnswer(q.id, q.answers, ok);
   }, [currentQuestion, mcq, afterAnswer]);
@@ -282,11 +297,18 @@ export default function Game10({ payload, onLessonComplete }) {
   return (
     <div className="game1-play">
       <style>{`
+        @font-face {
+          font-family: "FTV School Book New";
+          src: url(${publicUrl}/fonts/1FTV-School-Book-New.otf) format("opentype");
+          font-weight: normal;
+          font-style: normal;
+          font-display: swap;
+        }
         .game1-play {
           width: 100%;
           height: calc(100vh - var(--navbar-height, 76px));
           max-height: calc(100vh - var(--navbar-height, 76px));
-          background-color: #b5e08a;
+          background-color: #2d6a4f;
           background-image: url(${game1Background});
           background-size: cover;
           background-position: center center;
@@ -296,6 +318,26 @@ export default function Game10({ payload, onLessonComplete }) {
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
+          font-family: "FTV School Book New", Georgia, "Times New Roman", serif;
+          color: ${GAME1_CHALK};
+        }
+        .game1-play .game1-question-badge,
+        .game1-play .game1-question-text,
+        .game1-play .game1-answer-btn,
+        .game1-play .game1-answer-label,
+        .game1-play .game1-answer-content,
+        .game1-play .game1-continue-btn,
+        .game1-play .game1-action-footer button,
+        .game1-play .game1-action-footer p {
+          color: ${GAME1_CHALK};
+          font-family: "FTV School Book New", Georgia, "Times New Roman", serif;
+        }
+        .game1-chalk-text {
+          color: ${GAME1_CHALK};
+          text-shadow:
+            0 0 1px rgba(255, 255, 255, 0.55),
+            0 1px 2px rgba(0, 0, 0, 0.28),
+            1px 2px 0 rgba(0, 0, 0, 0.12);
         }
         .game1-controls {
           flex: 0 0 10%;
@@ -390,23 +432,17 @@ export default function Game10({ payload, onLessonComplete }) {
         }
         .game1-question-badge {
           margin: 0 0 clamp(6px, 1vh, 10px);
-          font-weight: 700;
-          font-size: clamp(1.05rem, 2.8vw, 1.35rem);
-          line-height: 1.2;
-          color: #fff;
+          font-size: clamp(1.15rem, 3vw, 1.5rem);
+          line-height: 1.25;
           text-transform: lowercase;
-          text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
           text-align: center;
         }
         .game1-question-text {
           margin: 0;
           width: 100%;
-          font-size: clamp(1.2rem, 3.6vw, 1.85rem);
-          font-weight: 700;
-          color: #fff;
+          font-size: clamp(1.35rem, 4vw, 2rem);
           line-height: 1.45;
           text-align: center;
-          text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
         }
         .game1-question-image-wrap {
           width: 100%;
@@ -469,27 +505,85 @@ export default function Game10({ payload, onLessonComplete }) {
           max-width: 50%;
           margin: 0 auto;
         }
-        .game1-answer-btn {
-          height: 100%;
+        .game1-answer-wrap {
+          position: relative;
+          width: 100%;
+          min-height: 44px;
           display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          min-height: 52px;
-          transition: transform 0.15s ease, opacity 0.15s ease;
-          text-align: center;
+          align-items: stretch;
         }
-        .game1-answer-btn.hidden-answer {
+        .game1-chalk-oval {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: calc(100% + 20px);
+          height: calc(100% + 12px);
+          transform: translate(-50%, -50%) scale(1.2);
+          pointer-events: none;
+          z-index: 0;
+        }
+        .game1-chalk-oval--hover {
+          opacity: 0;
+          transition: opacity 0.18s ease;
+        }
+        .game1-answer-wrap:hover:not(.game1-answer-wrap--locked) .game1-chalk-oval--hover {
+          opacity: 1;
+        }
+        .game1-answer-wrap--has-feedback .game1-chalk-oval--hover {
+          opacity: 0;
+        }
+        .game1-answer-btn {
+          position: relative;
+          z-index: 1;
+          height: 100%;
+          width: 100%;
+          display: flex;
+          flex-direction: row;
+          justify-content: flex-start;
+          align-items: center;
+          min-height: 44px;
+          padding: 8px 6px;
+          font-family: "FTV School Book New", Georgia, "Times New Roman", serif;
+          font-size: clamp(1.1rem, 3vw, 1.45rem);
+          line-height: 1.35;
+          text-align: left;
+          background: transparent;
+          border: none;
+          box-shadow: none;
+          outline: none;
+          cursor: pointer;
+          transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+        .game1-answer-btn:disabled {
+          cursor: default;
+        }
+        .game1-answer-btn--neutral-locked {
+          opacity: 0.55;
+        }
+        .game1-answer-label,
+        .game1-answer-content {
+          font-family: inherit;
+          font-size: inherit;
+          line-height: inherit;
+        }
+        .game1-answer-label {
+          flex-shrink: 0;
+        }
+        .game1-answer-content {
+          min-width: 0;
+          word-break: break-word;
+        }
+        .game1-answer-wrap.hidden-answer {
           visibility: hidden;
           opacity: 0;
           pointer-events: none;
         }
         .game1-answer-btn:not(:disabled):hover {
-          transform: scale(1.04);
+          transform: none;
         }
         .game1-answer-btn:focus-visible {
-          outline: 2px solid #ffd54f;
-          outline-offset: 2px;
+          outline: 2px solid rgba(255, 255, 255, 0.65);
+          outline-offset: 3px;
         }
         .game1-action-footer {
           flex-shrink: 0;
@@ -498,24 +592,38 @@ export default function Game10({ payload, onLessonComplete }) {
           justify-content: center;
           align-items: center;
         }
+        .game1-action-footer p {
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        }
+        .game1-action-footer button[type="button"] {
+          background: transparent !important;
+          border: 2.5px solid rgba(255, 255, 255, 0.82) !important;
+          color: ${GAME1_CHALK} !important;
+          border-radius: 999px !important;
+          box-shadow: none !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        }
+        .game1-action-footer button[type="button"]:disabled {
+          opacity: 0.45 !important;
+          border-color: rgba(255, 255, 255, 0.35) !important;
+        }
         .game1-continue-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
           padding: 12px 32px;
           min-width: 140px;
-          font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-          font-weight: 700;
-          color: #fff;
-          background: linear-gradient(135deg, #ff9800, #f57c00);
-          border: none;
-          border-radius: 24px;
+          font-size: clamp(1rem, 2.8vw, 1.15rem);
+          background: transparent;
+          border: 2.5px solid rgba(255, 255, 255, 0.82);
+          border-radius: 999px;
           cursor: pointer;
-          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
-          transition: transform 0.15s ease;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+          transition: transform 0.15s ease, background 0.15s ease;
         }
         .game1-continue-btn:hover {
           transform: scale(1.04);
+          background: rgba(255, 255, 255, 0.08);
         }
         @media (max-width: 768px) {
           .game1-content {
@@ -564,10 +672,10 @@ export default function Game10({ payload, onLessonComplete }) {
         <div className="game1-question-panel">
           <div className="game1-question-row">
             <div className="game1-top-text">
-              <p className="game1-question-badge">
+              <p className="game1-question-badge game1-chalk-text">
                 câu {currentIndex + 1}/{qs.length}
               </p>
-              <p className="game1-question-text">{currentQuestion.question_text}</p>
+              <p className="game1-question-text game1-chalk-text">{currentQuestion.question_text}</p>
             </div>
 
             {qImgSrc ? (
@@ -647,33 +755,53 @@ export default function Game10({ payload, onLessonComplete }) {
           <div className="game1-answer-grid">
             {currentQuestion.answers.map((a, ai) => {
               const hidden = hiddenIndices.has(ai);
+              const ovalTone = hidden ? null : getChalkOvalTone(pending, confirmed, ai, a);
+              const vis = getMcqAnswerVisualState(pending, confirmed, ai, a);
+              const neutralLocked = vis.locked && vis.tone === "neutral";
+
               return (
-                <button
+                <div
                   key={a.id ?? ai}
-                  type="button"
-                  className={`game1-answer-btn${hidden ? " hidden-answer" : ""}`}
-                  disabled={qLocked || hidden}
-                  onClick={() => choose(qId, currentQuestion.answers, ai)}
-                  style={answerButtonStyle(pending, confirmed, ai, a)}
+                  className={`game1-answer-wrap${hidden ? " hidden-answer" : ""}${qLocked || hidden ? " game1-answer-wrap--locked" : ""}${ovalTone ? " game1-answer-wrap--has-feedback" : ""}`}
                 >
-                  {!hidden && (
-                    <>
-                      {a.text && <span>{a.text}</span>}
-                      {a.image && (
-                        <img
-                          src={questionImageUrl(a.image) || a.image}
-                          alt=""
-                          style={{
-                            maxHeight: 40,
-                            maxWidth: "100%",
-                            objectFit: "contain",
-                          }}
-                        />
-                      )}
-                      {!a.text && !a.image && <span>—</span>}
-                    </>
+                  {!hidden && !qLocked && (
+                    <Game1ChalkOval
+                      tone="hover"
+                      idSuffix={`hover-${qId}-${ai}`}
+                      className="game1-chalk-oval--hover"
+                    />
                   )}
-                </button>
+                  <Game1ChalkOval tone={ovalTone} idSuffix={`${qId}-${ai}`} />
+                  <button
+                    type="button"
+                    className={`game1-answer-btn game1-chalk-text${neutralLocked ? " game1-answer-btn--neutral-locked" : ""}`}
+                    disabled={qLocked || hidden}
+                    onClick={() => choose(qId, currentQuestion.answers, ai)}
+                  >
+                    {!hidden && (
+                      <>
+                        <span className="game1-answer-label">{getAnswerLabel(ai)}.</span>
+                        <span className="game1-answer-content">
+                          {a.text ||
+                            (a.image ? (
+                              <img
+                                src={questionImageUrl(a.image) || a.image}
+                                alt=""
+                                style={{
+                                  maxHeight: 40,
+                                  maxWidth: "100%",
+                                  objectFit: "contain",
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            ) : (
+                              "—"
+                            ))}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -690,7 +818,7 @@ export default function Game10({ payload, onLessonComplete }) {
             )}
 
             {qLocked && awaitingContinue && (
-              <button type="button" className="game1-continue-btn" onClick={goToNextQuestion}>
+              <button type="button" className="game1-continue-btn game1-chalk-text" onClick={goToNextQuestion}>
                 Tiếp tục
               </button>
             )}

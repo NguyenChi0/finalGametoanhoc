@@ -75,6 +75,130 @@ const resultBtnBase = {
 
 const lessonCompleteBg = `${publicUrl}/component-images/lessonCompleteBackground.png`;
 
+const CONFETTI_COLORS = [
+  "#fba2d0",
+  "#c688eb",
+  "#ffc4a4",
+  "#6c7ee1",
+  "#c9a227",
+  "#7ec8a8",
+  "#ff9a76",
+  "#ffd166",
+];
+
+function createConfettiPiece(width, height) {
+  return {
+    x: Math.random() * width,
+    y: -Math.random() * height * 0.4 - 12,
+    w: 6 + Math.random() * 8,
+    h: 10 + Math.random() * 14,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    rotation: Math.random() * Math.PI * 2,
+    spin: (Math.random() - 0.5) * 0.12,
+    vy: 1.2 + Math.random() * 2.2,
+    vx: (Math.random() - 0.5) * 1.4,
+    sway: Math.random() * Math.PI * 2,
+    swaySpeed: 0.02 + Math.random() * 0.03,
+  };
+}
+
+function LessonCompleteConfetti() {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined;
+
+    let cancelled = false;
+    let spawnTimer = 0;
+    const spawnDuration = 2200;
+    const maxPieces = 48;
+    const pieces = [];
+
+    const resize = () => {
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    resize();
+    const ro = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(resize)
+      : null;
+    ro?.observe(canvas.parentElement);
+    window.addEventListener("resize", resize);
+
+    let lastTime = performance.now();
+
+    const tick = (now) => {
+      if (cancelled) return;
+      const dt = Math.min((now - lastTime) / 16.67, 2);
+      lastTime = now;
+
+      spawnTimer += dt * 16.67;
+      if (spawnTimer < spawnDuration && pieces.length < maxPieces) {
+        if (Math.random() < 0.35) {
+          pieces.push(createConfettiPiece(canvas.clientWidth, canvas.clientHeight));
+        }
+      }
+
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+      for (let i = pieces.length - 1; i >= 0; i -= 1) {
+        const p = pieces[i];
+        p.sway += p.swaySpeed * dt;
+        p.x += (p.vx + Math.sin(p.sway) * 0.6) * dt;
+        p.y += p.vy * dt;
+        p.rotation += p.spin * dt;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = 0.88;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+
+        if (p.y > canvas.clientHeight + 24) {
+          pieces.splice(i, 1);
+        }
+      }
+
+      if (pieces.length > 0 || spawnTimer < spawnDuration) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafRef.current);
+      ro?.disconnect();
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="lesson-complete-confetti"
+      aria-hidden
+    />
+  );
+}
+
 /**
  * Màn kết thúc bài học dùng chung (nền lessonCompleteBackground, 3 nút + Bài tiếp).
  */
@@ -270,9 +394,15 @@ export default function LessonCompleteScreen({
           background-position: center;
           background-repeat: no-repeat;
         }
+        .lesson-complete-shell .lesson-complete-confetti {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+        }
         .lesson-complete-shell .lesson-complete-content {
           position: relative;
-          z-index: 1;
+          z-index: 2;
           width: 100%;
           max-width: min(1120px, 98%);
           padding: clamp(16px, 3vw, 32px) clamp(24px, 4vw, 48px);
@@ -384,6 +514,7 @@ export default function LessonCompleteScreen({
           aria-hidden
           style={{ backgroundImage: `url(${lessonCompleteBg})` }}
         />
+        <LessonCompleteConfetti />
         <div className="lesson-complete-content">
           <h2
             className="lesson-complete-title"

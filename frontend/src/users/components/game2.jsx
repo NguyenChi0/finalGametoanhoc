@@ -64,13 +64,21 @@ function flyLabelStyle(vis, answered) {
   };
 }
 
+function triggerFlyFall(fly) {
+  if (!fly) return;
+  fly.falling = true;
+  if (fly.fallVelocity < 2.5) {
+    fly.fallVelocity = 2.5;
+  }
+}
+
 function flyAnswerLabelStyle(text, labelStyle) {
   const content = text || "";
   const isLong = content.length > 10;
   return {
     position: "absolute",
-    top: "100%",
-    marginTop: 6,
+    top: "80%",
+    marginTop: 0,
     left: "50%",
     transform: "translateX(-50%)",
     padding: "4px 8px",
@@ -220,7 +228,7 @@ const [, forceRender] = useState(0); // chỉ để render
     }
     const halfW = ((fly.size / 2) / rect.width) * 100;
     const halfH = ((fly.size / 2) / rect.height) * 100;
-    const labelPad = (36 / rect.height) * 100;
+    const labelPad = (22 / rect.height) * 100;
     return {
       marginX: halfW + 1.5,
       marginY: halfH + labelPad + 1.5,
@@ -255,9 +263,9 @@ const [, forceRender] = useState(0); // chỉ để render
 }, [showQuestionBox, currentQuestionIndex]);
 
 
-  // Di chuyển các con ruồi
+  // Di chuyển các con ruồi (vẫn chạy animation rơi sau khi đã trả lời)
   useEffect(() => {
-  if (!showQuestionBox || !currentQuestion || questionLocked) return;
+  if (!showQuestionBox || !currentQuestion) return;
 
   let rafId;
 
@@ -272,12 +280,14 @@ const [, forceRender] = useState(0); // chỉ để render
           if (fly.fallY >= FLY_FALL_MAX_PX) {
             fly.fallVelocity = 0;
           }
-        } else {
+        } else if (!questionLocked) {
           fly.fallY = Math.max(0, fly.fallY - FLY_RISE_SPEED);
           fly.fallVelocity = 0;
         }
         return;
       }
+
+      if (questionLocked) return;
 
       const { marginX, marginY } = getFlyMargins(rect, fly);
 
@@ -369,19 +379,11 @@ const [, forceRender] = useState(0); // chỉ để render
     if (mcq.isLocked(qId)) return;
 
     const isMulti = mcq.isMultiCorrectQuestion(currentQuestion.answers);
-    const wasSelected = mcq.getPendingIndices(qId).includes(fly.answerIndex);
     const ok = mcq.toggleIndex(qId, currentQuestion.answers, fly.answerIndex);
+    const target = fliesRef.current.find((f) => f.answerIndex === fly.answerIndex);
+    triggerFlyFall(target);
 
     if (isMulti) {
-      const target = fliesRef.current.find((f) => f.answerIndex === fly.answerIndex);
-      if (target) {
-        if (wasSelected) {
-          target.falling = false;
-        } else {
-          target.falling = true;
-          target.fallVelocity = 2.5;
-        }
-      }
       forceRender((n) => n + 1);
       return;
     }
@@ -391,6 +393,8 @@ const [, forceRender] = useState(0); // chỉ để render
       if (ok) setCorrectCount(newCorrectCount);
       afterAnswer(ok, newCorrectCount);
     }
+
+    forceRender((n) => n + 1);
   }
   hitFlyRef.current = hitFly;
 
@@ -451,10 +455,16 @@ const [, forceRender] = useState(0); // chỉ để render
   function confirmFlyAnswer() {
     const qId = currentQuestion.id;
     if (mcq.isLocked(qId)) return;
+    const pendingIndices = mcq.getPendingIndices(qId);
     const ok = mcq.confirmPending(qId, currentQuestion.answers);
+    pendingIndices.forEach((idx) => {
+      const target = fliesRef.current.find((f) => f.answerIndex === idx);
+      triggerFlyFall(target);
+    });
     const newCorrectCount = ok ? correctCount + 1 : correctCount;
     if (ok) setCorrectCount(newCorrectCount);
     afterAnswer(ok, newCorrectCount);
+    forceRender((n) => n + 1);
   }
 
   function startGame() {
