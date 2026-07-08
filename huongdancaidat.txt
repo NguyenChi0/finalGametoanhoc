@@ -1,0 +1,38 @@
+b1: clone dự án từ : https://github.com/NguyenChi0/finalGametoanhoc
+     git clone https://github.com/NguyenChi0/finalGametoanhoc.git
+     cd finalGametoanhoc
+
+b2: import file sql : SQL.sql , đổi mật khẩu MySQL
+     - Tạo DB: CREATE DATABASE gametoanhoc;
+     - Import: mysql -u root -p gametoanhoc < SQL.sql
+     - Sửa mật khẩu trong backend/db.js (dòng password) HOẶC tạo backend/.env:
+         DB_HOST=localhost
+         DB_USER=root
+         DB_PASSWORD=
+         DB_NAME=gametoanhoc
+
+b3: BACKEND — cài package và chạy API
+     cd backend
+     npm install          ← dự án dùng npm, KHÔNG dùng pnpm
+     node server.js
+     → thấy "Server đang chạy tại http://0.0.0.0:5050" là OK, giữ terminal này mở
+
+b4: FRONTEND — cài package và chạy giao diện
+     Mở terminal MỚI:
+     cd frontend
+     npm install          ← tương đương "pnpm i" nhưng dùng npm cho repo này
+     npm run dev
+     → mở trình duyệt: http://localhost:5173
+
+     (Tùy chọn) Nếu API không tự kết nối, tạo file frontend/.env.local:
+         VITE_API_BASE=http://localhost:5050/api
+
+b5: Kiểm tra
+     - Backend terminal: không lỗi đỏ
+     - Frontend: http://localhost:5173 load được trang
+     - Đăng nhập thử tài khoản có trong SQL.sql
+
+GHI CHÚ:
+  • Repo này có package-lock.json → dùng npm install / npm run dev
+  • KHÔNG cần pnpm. Nếu muốn dùng pnpm: pnpm install && pnpm dev (cũng chạy được nhưng không khuyến nghị)
+  • Cần cài Node.js trước: node -v  (nên >= 18)
