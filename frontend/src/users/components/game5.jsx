@@ -7,10 +7,7 @@ import GameQuestionImageZoom from "./GameQuestionImageZoom";
 import LessonCompleteScreen from "./LessonCompleteScreen";
 import { incrementLessonScore } from "../lib/lessonScore";
 import { prepareSessionQuestions } from "../lib/lessonQuestions";
-import {
-  getMcqAnswerVisualState,
-  useGameMcqSelection,
-} from "../lib/useGameMcqSelection";
+import { useGameMcqSelection } from "../lib/useGameMcqSelection";
 import game5BackIcon from "../../assets/game-images/back.png";
 import game5RestartIcon from "../../assets/game-images/restart.png";
 import game5MusicOnIcon from "../../assets/game-images/music_on.png";
@@ -20,41 +17,52 @@ import game5SoundOffIcon from "../../assets/game-images/sound-off.png";
 import game5CoinIcon from "../../assets/game-images/coin.png";
 import game5GoldImg from "../../assets/game-images/game5/gold.png";
 
-/** Sprite vàng — preload + cờ sẵn sàng cho canvas */
-const GOLD_SPRITE = new Image();
-let goldSpriteReadyFlag = GOLD_SPRITE.complete && GOLD_SPRITE.naturalWidth > 0;
-const goldSpriteWaiters = [];
+/** Preload sprite vàng cho canvas */
+function createSpriteLoader(imageSrc) {
+  const img = new Image();
+  let ready = img.complete && img.naturalWidth > 0;
+  const waiters = [];
 
-function notifyGoldSpriteReady() {
-  if (!GOLD_SPRITE.naturalWidth) return;
-  goldSpriteReadyFlag = true;
-  goldSpriteWaiters.splice(0).forEach((fn) => fn());
+  function notify() {
+    if (!img.naturalWidth) return;
+    ready = true;
+    waiters.splice(0).forEach((fn) => fn());
+  }
+
+  img.addEventListener("load", notify);
+  img.addEventListener("error", notify);
+  img.src = imageSrc;
+  if (img.decode) {
+    img.decode().then(notify).catch(notify);
+  } else if (ready) {
+    notify();
+  }
+
+  return {
+    img,
+    isReady: () => ready && img.naturalWidth > 0,
+    whenReady(cb) {
+      if (ready && img.naturalWidth > 0) {
+        cb();
+        return () => {};
+      }
+      waiters.push(cb);
+      return () => {
+        const i = waiters.indexOf(cb);
+        if (i >= 0) waiters.splice(i, 1);
+      };
+    },
+  };
 }
 
-GOLD_SPRITE.addEventListener("load", notifyGoldSpriteReady);
-GOLD_SPRITE.addEventListener("error", () => notifyGoldSpriteReady());
-GOLD_SPRITE.src = game5GoldImg;
-if (GOLD_SPRITE.decode) {
-  GOLD_SPRITE.decode().then(notifyGoldSpriteReady).catch(notifyGoldSpriteReady);
-} else if (goldSpriteReadyFlag) {
-  notifyGoldSpriteReady();
-}
+const goldLoader = createSpriteLoader(game5GoldImg);
 
 function getGoldSprite() {
-  if (goldSpriteReadyFlag && GOLD_SPRITE.naturalWidth > 0) return GOLD_SPRITE;
-  return null;
+  return goldLoader.isReady() ? goldLoader.img : null;
 }
 
 function whenGoldSpriteReady(cb) {
-  if (goldSpriteReadyFlag && GOLD_SPRITE.naturalWidth > 0) {
-    cb();
-    return () => {};
-  }
-  goldSpriteWaiters.push(cb);
-  return () => {
-    const i = goldSpriteWaiters.indexOf(cb);
-    if (i >= 0) goldSpriteWaiters.splice(i, 1);
-  };
+  return goldLoader.whenReady(cb);
 }
 
 const SWING_SPEED = 0.028;
@@ -151,6 +159,8 @@ function layoutMineItems(w, h, barH, visibleAnswers) {
       textLines,
       x,
       y,
+      originX: x,
+      originY: y,
       halfW,
       halfH,
       r,
@@ -162,11 +172,60 @@ function layoutMineItems(w, h, barH, visibleAnswers) {
   });
 }
 
-function hookPoint(originX, originY, angle, ropeLen) {
+/** Hình học dây — va chạm tại đầu dây */
+function getRopeGeometry(pivotX, pivotY, angle, ropeLen) {
+  const dirX = Math.sin(angle);
+  const dirY = Math.cos(angle);
+  const tipX = pivotX + dirX * ropeLen;
+  const tipY = pivotY + dirY * ropeLen;
   return {
-    x: originX + Math.sin(angle) * ropeLen,
-    y: originY + Math.cos(angle) * ropeLen,
+    dirX,
+    dirY,
+    angle,
+    tipX,
+    tipY,
   };
+}
+
+function findHookHitItem(items, tipX, tipY) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const item of items) {
+    if (item.grabbed) continue;
+    const dist = Math.hypot(item.x - tipX, item.y - tipY);
+    const hitRadius = Math.max(item.halfW, item.halfH) * 0.85 + 8;
+    if (dist > hitRadius || dist >= bestDist) continue;
+    best = item;
+    bestDist = dist;
+  }
+  return best;
+}
+
+function drawRopeSegment(ctx, x0, y0, x1, y1, scale) {
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#2c1810";
+  ctx.lineWidth = 4 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+
+  const nx = -(y1 - y0);
+  const ny = x1 - x0;
+  const len = Math.hypot(nx, ny) || 1;
+  const ox = (nx / len) * 0.8 * scale;
+  const oy = (ny / len) * 0.8 * scale;
+  ctx.strokeStyle = "#6d4c41";
+  ctx.lineWidth = 1.6 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x0 + ox, y0 + oy);
+  ctx.lineTo(x1 + ox, y1 + oy);
+  ctx.stroke();
+}
+
+function drawRope(ctx, pivotX, pivotY, angle, ropeLen, scale) {
+  const geo = getRopeGeometry(pivotX, pivotY, angle, ropeLen);
+  drawRopeSegment(ctx, pivotX, pivotY, geo.tipX, geo.tipY, scale);
 }
 
 function drawUnderground(ctx, w, h, barH) {
@@ -233,16 +292,56 @@ function drawMiner(ctx, cx, cy, scale) {
 function drawWinch(ctx, cx, cy, scale) {
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.fillStyle = "#616161";
-  ctx.fillRect(-14 * scale, -6 * scale, 28 * scale, 12 * scale);
-  ctx.fillStyle = "#424242";
+
+  ctx.fillStyle = "#546e7a";
+  ctx.fillRect(-16 * scale, -8 * scale, 32 * scale, 14 * scale);
+  ctx.strokeStyle = "#37474f";
+  ctx.lineWidth = 1.5 * scale;
+  ctx.strokeRect(-16 * scale, -8 * scale, 32 * scale, 14 * scale);
+
+  const wheelGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 10 * scale);
+  wheelGrad.addColorStop(0, "#90a4ae");
+  wheelGrad.addColorStop(0.7, "#607d8b");
+  wheelGrad.addColorStop(1, "#455a64");
+  ctx.fillStyle = wheelGrad;
   ctx.beginPath();
-  ctx.arc(0, 0, 8 * scale, 0, Math.PI * 2);
+  ctx.arc(0, 0, 10 * scale, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = "#263238";
+  ctx.lineWidth = 1.5 * scale;
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(38, 50, 56, 0.55)";
+  ctx.lineWidth = 1 * scale;
+  for (let i = 0; i < 6; i += 1) {
+    const a = (Math.PI * 2 * i) / 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * 8 * scale, Math.sin(a) * 8 * scale);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "#37474f";
+  ctx.beginPath();
+  ctx.arc(0, 0, 3 * scale, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.restore();
 }
 
-function drawGold(ctx, item, revealTone) {
+function buildAnswerRevealMap(answers, answerIndex, isCorrect) {
+  const revealMap = {};
+  if (isCorrect) {
+    revealMap[answerIndex] = "correct";
+    return revealMap;
+  }
+  answers.forEach((a, i) => {
+    revealMap[i] = a.correct ? "correct" : "wrong";
+  });
+  return revealMap;
+}
+
+function drawGold(ctx, item, revealTone, pulse = 0) {
   const { x, y, halfW, halfH, textLines, fontSize: itemFontSize } = item;
   const sprite = getGoldSprite();
   const spriteScale = 1.38;
@@ -252,28 +351,42 @@ function drawGold(ctx, item, revealTone) {
   ctx.shadowBlur = 0;
   ctx.shadowColor = "transparent";
 
+  let drawW = halfW * 2 * spriteScale;
+  let drawH = halfH * 2 * spriteScale;
+
   if (sprite) {
     const aspect = sprite.naturalWidth / sprite.naturalHeight || 1;
-    let drawW = halfW * 2 * spriteScale;
-    let drawH = halfH * 2 * spriteScale;
     if (drawW / drawH > aspect) drawW = drawH * aspect;
     else drawH = drawW / aspect;
+
     ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
+
+    if (revealTone) {
+      const pulseBoost = 0.08 * Math.sin(pulse * 6);
+      ctx.save();
+      ctx.globalCompositeOperation = "source-atop";
+      ctx.fillStyle = revealTone === "wrong" ? "#e53935" : "#2e7d32";
+      ctx.globalAlpha = Math.min(0.88, 0.72 + pulseBoost);
+      ctx.fillRect(-drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = revealTone === "wrong" ? "#ff8a80" : "#a5d6a7";
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor =
+        revealTone === "wrong" ? "rgba(229, 57, 53, 0.85)" : "rgba(46, 125, 50, 0.85)";
+      ctx.shadowBlur = 12 + pulseBoost * 20;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, drawW / 2 + 2, drawH / 2 + 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   } else {
-    ctx.fillStyle = "#ffd54f";
+    ctx.fillStyle = revealTone === "wrong" ? "#ef5350" : revealTone === "correct" ? "#66bb6a" : "#ffd54f";
     ctx.beginPath();
     ctx.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  const overlayW = halfW * 2 * spriteScale;
-  const overlayH = halfH * 2 * spriteScale;
-  if (revealTone === "wrong") {
-    ctx.fillStyle = "rgba(244, 67, 54, 0.38)";
-    ctx.fillRect(-overlayW / 2, -overlayH / 2, overlayW, overlayH);
-  } else if (revealTone === "correct") {
-    ctx.fillStyle = "rgba(76, 175, 80, 0.28)";
-    ctx.fillRect(-overlayW / 2, -overlayH / 2, overlayW, overlayH);
   }
 
   const fontSize = itemFontSize || Math.max(14, Math.min(20, halfH * 0.38));
@@ -288,31 +401,11 @@ function drawGold(ctx, item, revealTone) {
   textLines.forEach((line) => {
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
     ctx.strokeText(line, 0, ty);
-    ctx.fillStyle = "#3e2723";
+    ctx.fillStyle = revealTone ? "#1b1b1b" : "#3e2723";
     ctx.fillText(line, 0, ty);
     ty += lineHeight;
   });
 
-  ctx.restore();
-}
-
-function drawHookHead(ctx, x, y, scale, open) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.strokeStyle = "#424242";
-  ctx.lineWidth = 3 * scale;
-  ctx.fillStyle = "#757575";
-  const gap = open ? 0.55 : 0.15;
-  ctx.beginPath();
-  ctx.arc(-4 * scale, 4 * scale, 7 * scale, Math.PI * 0.2, Math.PI * 1.2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(4 * scale, 4 * scale, 7 * scale, Math.PI * 1.8, Math.PI * 0.8, true);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(0, -2 * scale);
-  ctx.lineTo(0, 10 * scale);
-  ctx.stroke();
   ctx.restore();
 }
 
@@ -331,7 +424,8 @@ export default function Game5({ payload, onLessonComplete }) {
   const [scorePops, setScorePops] = useState([]);
   const [musicEnabled, setMusicEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [forceRevealWrong, setForceRevealWrong] = useState(false);
+  const [caughtReveal, setCaughtReveal] = useState(null);
+  const [feedbackLabel, setFeedbackLabel] = useState("");
   const [arenaSize, setArenaSize] = useState({ w: 800, h: 500 });
 
   const canvasRef = useRef(null);
@@ -340,7 +434,6 @@ export default function Game5({ payload, onLessonComplete }) {
   const rafRef = useRef(null);
   const correctSoundRef = useRef(null);
   const wrongSoundRef = useRef(null);
-  const grabSoundRef = useRef(null);
   const backgroundMusicRef = useRef(null);
   const scorePopIdRef = useRef(0);
   const finishedRef = useRef(false);
@@ -348,7 +441,7 @@ export default function Game5({ payload, onLessonComplete }) {
   const awaitingContinueRef = useRef(false);
   const revealStateRef = useRef({});
   const onCatchRef = useRef(null);
-  const [goldSpriteReady, setGoldSpriteReady] = useState(goldSpriteReadyFlag);
+  const [goldSpriteReady, setGoldSpriteReady] = useState(() => goldLoader.isReady());
 
   const gameQuestions = useMemo(
     () => prepareSessionQuestions(questions),
@@ -376,7 +469,6 @@ export default function Game5({ payload, onLessonComplete }) {
     backgroundMusicRef.current.play().catch(() => {});
     correctSoundRef.current = new Audio(`${publicUrl}/game-noises/dung.mp3`);
     wrongSoundRef.current = new Audio(`${publicUrl}/game-noises/wrong.mp3`);
-    grabSoundRef.current = new Audio(`${publicUrl}/game-noises/dap.mp3`);
     return () => {
       if (backgroundMusicRef.current) {
         backgroundMusicRef.current.pause();
@@ -441,12 +533,7 @@ export default function Game5({ payload, onLessonComplete }) {
 
   const playSound = (type) => {
     if (!soundEnabled) return;
-    const map = {
-      correct: correctSoundRef,
-      wrong: wrongSoundRef,
-      grab: grabSoundRef,
-    };
-    const ref = map[type];
+    const ref = type === "correct" ? correctSoundRef : wrongSoundRef;
     if (ref?.current) {
       ref.current.currentTime = 0;
       ref.current.play().catch(() => {});
@@ -468,7 +555,8 @@ export default function Game5({ payload, onLessonComplete }) {
   const proceedToNext = useCallback(
     (finalCorrectCount) => {
       setAwaitingContinue(false);
-      setForceRevealWrong(false);
+      setCaughtReveal(null);
+      setFeedbackLabel("");
       if (current + 1 >= gameQuestions.length) {
         finishGame(finalCorrectCount);
       } else {
@@ -480,11 +568,34 @@ export default function Game5({ payload, onLessonComplete }) {
   );
 
   const finishAnswer = useCallback(
-    (isCorrect) => {
+    (isCorrect, answerIndex) => {
       if (lockedRef.current || gameScreen !== "playing" || !currentQuestion) return;
       setLocked(true);
+
+      const revealMap = buildAnswerRevealMap(
+        currentQuestion.answers,
+        answerIndex,
+        isCorrect
+      );
+      revealStateRef.current = { revealMap, qLocked: true };
+      setCaughtReveal({ index: answerIndex, tone: isCorrect ? "correct" : "wrong", revealMap });
+      setFeedbackLabel(isCorrect ? "Đúng rồi!" : "Sai rồi!");
+
+      const mine = mineRef.current;
+      if (mine?.items) {
+        mine.items.forEach((item) => {
+          item.grabbed = false;
+          if (item.originX != null) {
+            item.x = item.originX;
+            item.y = item.originY;
+          }
+        });
+        mine.caught = null;
+        mine.phase = "swing";
+        mine.ropeLen = ROPE_BASE;
+      }
+
       playSound(isCorrect ? "correct" : "wrong");
-      if (!isCorrect) setForceRevealWrong(true);
       const newCount = isCorrect ? correctCount + 1 : correctCount;
       if (isCorrect) {
         setCorrectCount(newCount);
@@ -507,10 +618,9 @@ export default function Game5({ payload, onLessonComplete }) {
       if (lockedRef.current || awaitingContinueRef.current || !currentQuestion || !item) {
         return;
       }
-      playSound("grab");
 
       if (isMulti) {
-        finishAnswer(!!item.answer.correct);
+        finishAnswer(!!item.answer.correct, item.answerIndex);
         return;
       }
 
@@ -519,9 +629,9 @@ export default function Game5({ payload, onLessonComplete }) {
         currentQuestion.answers,
         item.answerIndex
       );
-      if (ok !== null) finishAnswer(ok);
+      if (ok !== null) finishAnswer(ok, item.answerIndex);
     },
-    [currentQuestion, isMulti, mcq, finishAnswer, soundEnabled]
+    [currentQuestion, isMulti, mcq, finishAnswer]
   );
 
   useEffect(() => {
@@ -551,7 +661,8 @@ export default function Game5({ payload, onLessonComplete }) {
     setCorrectCount(0);
     setUserScore(payload?.user?.score ?? 0);
     setScorePops([]);
-    setForceRevealWrong(false);
+    setCaughtReveal(null);
+    setFeedbackLabel("");
     if (musicEnabled && backgroundMusicRef.current) {
       backgroundMusicRef.current.play().catch(() => {});
     }
@@ -599,26 +710,12 @@ export default function Game5({ payload, onLessonComplete }) {
   useEffect(() => {
     if (gameScreen !== "playing" || !currentQuestion) return;
 
-    const qId = currentQuestion.id;
-    const pending = mcq.getPendingIndices(qId);
-    const confirmed = mcq.getConfirmedIndices(qId);
-    const qLocked = mcq.isLocked(qId) || locked;
-
-    const revealMap = {};
-    currentQuestion.answers.forEach((a, i) => {
-      if (forceRevealWrong) {
-        if (a.correct) revealMap[i] = "correct";
-        else revealMap[i] = "wrong";
-        return;
-      }
-      if (!qLocked) return;
-      const vis = getMcqAnswerVisualState(pending, confirmed, i, a);
-      if (vis.tone === "correct" || vis.tone === "missed") revealMap[i] = "correct";
-      else if (vis.tone === "wrong") revealMap[i] = "wrong";
-    });
-
-    revealStateRef.current = { revealMap, qLocked };
-  }, [gameScreen, currentQuestion, locked, forceRevealWrong, mcq]);
+    if (caughtReveal?.revealMap) {
+      revealStateRef.current = { revealMap: caughtReveal.revealMap, qLocked: locked };
+    } else {
+      revealStateRef.current = { revealMap: {}, qLocked: locked };
+    }
+  }, [gameScreen, currentQuestion, locked, caughtReveal]);
 
   useEffect(() => {
     if (gameScreen !== "playing") return undefined;
@@ -643,6 +740,8 @@ export default function Game5({ payload, onLessonComplete }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const scale = Math.min(w, h) / 500;
+      const pivotX = originX;
+      const pivotY = originY - 8 * scale;
       const { revealMap } = revealStateRef.current;
       const canPlay = !lockedRef.current && !awaitingContinueRef.current;
 
@@ -659,18 +758,8 @@ export default function Game5({ payload, onLessonComplete }) {
 
       if (m.phase === "extend") {
         m.ropeLen += ROPE_EXTEND_SPEED;
-        const tip = hookPoint(originX, originY, m.angle, m.ropeLen);
-        let hit = null;
-        for (const item of m.items) {
-          if (item.grabbed) continue;
-          if (
-            Math.abs(tip.x - item.x) < item.halfW + 10 &&
-            Math.abs(tip.y - item.y) < item.halfH + 10
-          ) {
-            hit = item;
-            break;
-          }
-        }
+        const geo = getRopeGeometry(pivotX, pivotY, m.angle, m.ropeLen);
+        const hit = findHookHitItem(m.items, geo.tipX, geo.tipY);
         if (hit) {
           hit.grabbed = true;
           m.caught = hit;
@@ -684,9 +773,9 @@ export default function Game5({ payload, onLessonComplete }) {
         const speed = m.caught ? ROPE_EXTEND_SPEED / m.caught.weight : ROPE_EXTEND_SPEED * 1.4;
         m.ropeLen -= speed;
         if (m.caught) {
-          const tip = hookPoint(originX, originY, m.angle, m.ropeLen);
-          m.caught.x = tip.x;
-          m.caught.y = tip.y + 8;
+          const geo = getRopeGeometry(pivotX, pivotY, m.angle, m.ropeLen);
+          m.caught.x = geo.tipX;
+          m.caught.y = geo.tipY;
         }
         if (m.ropeLen <= ROPE_BASE) {
           m.ropeLen = ROPE_BASE;
@@ -703,22 +792,15 @@ export default function Game5({ payload, onLessonComplete }) {
       drawTopBar(ctx, w, barH);
 
       for (const item of m.items) {
-        if (item.grabbed && item !== m.caught) continue;
         const tone = revealMap?.[item.answerIndex] || null;
-        drawGold(ctx, item, tone);
+        if (item.grabbed && item !== m.caught && !tone) continue;
+        drawGold(ctx, item, tone, performance.now() / 1000);
       }
 
       drawWinch(ctx, originX, originY - 8 * scale, scale);
       drawMiner(ctx, originX, originY - 22 * scale, scale);
 
-      const tip = hookPoint(originX, originY, m.angle, m.ropeLen);
-      ctx.strokeStyle = "#212121";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(originX, originY);
-      ctx.lineTo(tip.x, tip.y);
-      ctx.stroke();
-      drawHookHead(ctx, tip.x, tip.y, scale, m.phase === "extend" && !m.caught);
+      drawRope(ctx, pivotX, pivotY, m.angle, m.ropeLen, scale);
 
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -727,7 +809,7 @@ export default function Game5({ payload, onLessonComplete }) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [gameScreen, current, gameQuestions.length, goldSpriteReady]);
+  }, [gameScreen, current, gameQuestions.length, goldSpriteReady, caughtReveal, locked]);
 
   if (!gameQuestions.length) {
     return <div style={{ padding: 20, textAlign: "center" }}>Không có câu hỏi nào!</div>;
@@ -934,11 +1016,34 @@ export default function Game5({ payload, onLessonComplete }) {
           margin: 0 auto;
           object-fit: contain;
         }
-        .game5-actions {
-          flex-shrink: 0;
+        .game5-mine-feedback {
+          position: absolute;
+          left: 50%;
+          bottom: clamp(72px, 14vh, 96px);
+          transform: translateX(-50%);
+          z-index: 25;
           display: flex;
-          justify-content: center;
-          padding: clamp(8px, 1.5vh, 12px) clamp(12px, 2vw, 16px) clamp(10px, 2vh, 14px);
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          pointer-events: none;
+        }
+        .game5-mine-feedback-label {
+          padding: 8px 20px;
+          border-radius: 999px;
+          font-weight: 800;
+          font-size: clamp(0.95rem, 2.4vw, 1.15rem);
+          color: #fff;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+        }
+        .game5-mine-feedback-label--correct {
+          background: linear-gradient(135deg, #43a047, #2e7d32);
+        }
+        .game5-mine-feedback-label--wrong {
+          background: linear-gradient(135deg, #ef5350, #c62828);
+        }
+        .game5-mine-actions {
+          pointer-events: auto;
         }
         .game5-continue-btn {
           padding: 12px 32px;
@@ -949,7 +1054,7 @@ export default function Game5({ payload, onLessonComplete }) {
           font-weight: 700;
           cursor: pointer;
           background: linear-gradient(135deg, #ffb300, #f57c00);
-          box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+          box-shadow: 0 4px 14px rgba(0,0,0,0.35);
         }
         .game5-canvas-wrap {
           width: 100%;
@@ -1000,14 +1105,6 @@ export default function Game5({ payload, onLessonComplete }) {
             )}
           </div>
         </div>
-
-        {awaitingContinue && (
-          <div className="game5-actions">
-            <button type="button" className="game5-continue-btn" onClick={continueAfterWrong}>
-              Tiếp tục
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="game5-mine" ref={arenaRef}>
@@ -1049,6 +1146,29 @@ export default function Game5({ payload, onLessonComplete }) {
         >
           <canvas ref={canvasRef} />
         </div>
+
+        {(feedbackLabel || awaitingContinue) && (
+          <div className="game5-mine-feedback">
+            {feedbackLabel && (
+              <div
+                className={`game5-mine-feedback-label${
+                  caughtReveal?.tone === "wrong"
+                    ? " game5-mine-feedback-label--wrong"
+                    : " game5-mine-feedback-label--correct"
+                }`}
+              >
+                {feedbackLabel}
+              </div>
+            )}
+            {awaitingContinue && (
+              <div className="game5-mine-actions">
+                <button type="button" className="game5-continue-btn" onClick={continueAfterWrong}>
+                  Tiếp tục
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

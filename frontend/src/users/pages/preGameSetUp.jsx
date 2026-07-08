@@ -289,25 +289,6 @@ export default function PreGameSetUp() {
           font-size: 0.85rem;
           font-weight: 700;
         }
-        .pregame-btn-loadout {
-          flex: 1;
-          width: 100%;
-          padding: 14px 20px;
-          border: 1px solid #b8c4f0;
-          background: #eef1fc;
-          color: #4a5080;
-          font-weight: 700;
-          font-size: 0.95rem;
-          cursor: pointer;
-          font-family: inherit;
-        }
-        .pregame-btn-loadout:hover:not(:disabled) {
-          background: #e3e8fa;
-        }
-        .pregame-btn-loadout:disabled {
-          opacity: 0.55;
-          cursor: not-allowed;
-        }
         .pregame-page {
           position: relative;
           min-height: 100vh;
@@ -330,7 +311,7 @@ export default function PreGameSetUp() {
         .pregame-inner {
           position: relative;
           z-index: 1;
-          max-width: 960px;
+          max-width: min(1360px, 96vw);
           margin: 0 auto;
         }
         .pregame-card {
@@ -339,7 +320,7 @@ export default function PreGameSetUp() {
           gap: clamp(20px, 3vw, 28px);
           background: #fff;
           border-radius: 16px;
-          padding: clamp(20px, 3vw, 28px);
+          padding: clamp(20px, 3vw, 32px);
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
           border: 1px solid #e8eaed;
         }
@@ -349,8 +330,12 @@ export default function PreGameSetUp() {
           align-items: stretch;
         }
         .pregame-setup {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
           padding-top: clamp(16px, 2.5vw, 24px);
           border-top: 1px solid #eef0f4;
+          box-sizing: border-box;
         }
         .pregame-thumb {
           flex: 0 0 clamp(140px, 32vw, 220px);
@@ -426,20 +411,39 @@ export default function PreGameSetUp() {
           color: #1a1d26;
         }
         .pregame-carousel-wrap {
-          margin-bottom: 20px;
+          overflow: visible;
+          padding-bottom: 6px;
         }
         .pregame-btns {
           display: flex;
+          flex-direction: row;
           gap: 12px;
           align-items: stretch;
           font-family: inherit;
         }
-        .pregame-btns-side {
+        .pregame-btns > .pregame-btn-loadout,
+        .pregame-btns > .pregame-btn-secondary,
+        .pregame-btns > .pregame-btn-play {
           flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
           min-width: 0;
+          border-radius: 9999px;
+        }
+        .pregame-btn-loadout {
+          padding: 14px 16px;
+          border: 1px solid #b8c4f0;
+          background: #eef1fc;
+          color: #4a5080;
+          font-weight: 700;
+          font-size: 0.95rem;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .pregame-btn-loadout:hover:not(:disabled) {
+          background: #e3e8fa;
+        }
+        .pregame-btn-loadout:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
         }
         .pregame-btn-primary {
           padding: 14px 20px;
@@ -452,27 +456,16 @@ export default function PreGameSetUp() {
           font-family: inherit;
         }
         .pregame-btn-play {
-          flex: 1.55;
-          min-width: 0;
+          flex: 1.15;
           display: flex;
           align-items: center;
           justify-content: center;
-          border-radius: 9999px 0 0 9999px;
-        }
-        .pregame-btns-side .pregame-btn-loadout {
-          border-radius: 0 9999px 0 0;
-        }
-        .pregame-btns-side .pregame-btn-secondary {
-          border-radius: 0 0 9999px 0;
         }
         .pregame-btn-primary:hover {
           background: #5a6ed4;
         }
         .pregame-btn-secondary {
-          flex: 1;
-          width: 100%;
-          padding: 14px 20px;
-          border-radius: 12px;
+          padding: 14px 16px;
           border: 1px solid #d8dce3;
           background: #fff;
           color: #4a5080;
@@ -498,14 +491,14 @@ export default function PreGameSetUp() {
           .pregame-btns {
             flex-direction: column;
           }
-          .pregame-btn-play {
+          .pregame-btns > .pregame-btn-loadout,
+          .pregame-btns > .pregame-btn-secondary,
+          .pregame-btns > .pregame-btn-play {
             flex: none;
-            min-height: 52px;
-            border-radius: 9999px;
+            width: 100%;
           }
-          .pregame-btns-side .pregame-btn-loadout,
-          .pregame-btns-side .pregame-btn-secondary {
-            border-radius: 9999px;
+          .pregame-btn-play {
+            min-height: 52px;
           }
         }
       `}</style>
@@ -593,29 +586,27 @@ export default function PreGameSetUp() {
                   <div className="pregame-btns">
                     <button
                       type="button"
+                      className="pregame-btn-loadout"
+                      onClick={() => setLoadoutOpen(true)}
+                      disabled={!canUseLoadout}
+                      aria-disabled={!canUseLoadout}
+                    >
+                      {loadoutButtonLabel}
+                    </button>
+                    <button
+                      type="button"
+                      className="pregame-btn-secondary"
+                      onClick={() => navigate("/lessons")}
+                    >
+                      Quay lại
+                    </button>
+                    <button
+                      type="button"
                       className="pregame-btn-primary pregame-btn-play"
                       onClick={handlePlay}
                     >
                       Chơi
                     </button>
-                    <div className="pregame-btns-side">
-                      <button
-                        type="button"
-                        className="pregame-btn-loadout"
-                        onClick={() => setLoadoutOpen(true)}
-                        disabled={!canUseLoadout}
-                        aria-disabled={!canUseLoadout}
-                      >
-                        {loadoutButtonLabel}
-                      </button>
-                      <button
-                        type="button"
-                        className="pregame-btn-secondary"
-                        onClick={() => navigate("/lessons")}
-                      >
-                        Quay lại
-                      </button>
-                    </div>
                   </div>
                 </div>
               </article>

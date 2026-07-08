@@ -18,6 +18,7 @@ import game6SoundOffIcon from "../../assets/game-images/sound-off.png";
 import game6RestartIcon from "../../assets/game-images/restart.png";
 
 const FRUIT_JUICE_COLORS = ["#FF8C42", "#E63946", "#9B59B6", "#F4D03F"];
+const CORRECT_ADVANCE_MS = 1000;
 
 function createJuiceDroplets(sliceAngle) {
   return Array.from({ length: 14 + Math.floor(Math.random() * 6) }, (_, i) => ({
@@ -73,12 +74,18 @@ export default function Game6({ payload, onLessonComplete }) {
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [isSlicing, setIsSlicing] = useState(false);
   const [slicePath, setSlicePath] = useState([]);
+  const [awaitingContinue, setAwaitingContinue] = useState(false);
+  const [answerLocked, setAnswerLocked] = useState(false);
+  const [slicedFruitId, setSlicedFruitId] = useState(null);
+  const [lastWasCorrect, setLastWasCorrect] = useState(null);
   const gameContainerRef = useRef(null);
   const animationRef = useRef(null);
   const sliceSoundRef = useRef(null);
+  const correctSoundRef = useRef(null);
+  const wrongSoundRef = useRef(null);
   const backgroundMusicRef = useRef(null);
   const scorePopIdRef = useRef(0);
-  const questionAnsweredRef = useRef(false);
+  const advanceTimerRef = useRef(null);
 
   const isPlaying = gameStarted && !gameEnded;
 
@@ -104,6 +111,17 @@ export default function Game6({ payload, onLessonComplete }) {
     sliceSoundRef.current.play().catch(() => {});
   }, [soundEnabled]);
 
+  const playResultSound = useCallback(
+    (isCorrect) => {
+      if (!soundEnabled) return;
+      const ref = isCorrect ? correctSoundRef.current : wrongSoundRef.current;
+      if (!ref) return;
+      ref.currentTime = 0;
+      ref.play().catch(() => {});
+    },
+    [soundEnabled]
+  );
+
   const spawnScorePop = useCallback(() => {
     const id = scorePopIdRef.current + 1;
     scorePopIdRef.current = id;
@@ -121,6 +139,8 @@ export default function Game6({ payload, onLessonComplete }) {
   useEffect(() => {
     sliceSoundRef.current = new Audio(`${publicUrl}/game-noises/chem.mp3`);
     sliceSoundRef.current.volume = 0.8;
+    correctSoundRef.current = new Audio(`${publicUrl}/game-noises/dung.mp3`);
+    wrongSoundRef.current = new Audio(`${publicUrl}/game-noises/sai.mp3`);
     backgroundMusicRef.current = new Audio(`${publicUrl}/music/nhac6.mp3`);
     backgroundMusicRef.current.loop = true;
     backgroundMusicRef.current.volume = 0.5;
@@ -148,11 +168,15 @@ export default function Game6({ payload, onLessonComplete }) {
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prevOverflow;
+      if (advanceTimerRef.current) {
+        window.clearTimeout(advanceTimerRef.current);
+        advanceTimerRef.current = null;
+      }
     };
   }, [gameEnded]);
 
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || answerLocked) return;
 
     const updateFruits = () => {
       const rect = gameContainerRef.current?.getBoundingClientRect();
@@ -193,10 +217,21 @@ export default function Game6({ payload, onLessonComplete }) {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [isPlaying]);
+  }, [isPlaying, answerLocked]);
 
   useEffect(() => {
     if (!currentQuestion || !isPlaying) return;
+
+    setAwaitingContinue(false);
+    setAnswerLocked(false);
+    setSlicedFruitId(null);
+    setLastWasCorrect(null);
+    setIsSlicing(false);
+    setSlicePath([]);
+    if (advanceTimerRef.current) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
 
     const rect = gameContainerRef.current?.getBoundingClientRect();
     const containerW = rect?.width ?? 520;
@@ -233,8 +268,6 @@ export default function Game6({ payload, onLessonComplete }) {
     });
 
     setFruits(newFruits);
-    setSlicePath([]);
-    questionAnsweredRef.current = false;
   }, [currentQuestionIndex, isPlaying, currentQuestion]);
 
   function finishLesson(newCorrectCount) {
@@ -314,14 +347,14 @@ export default function Game6({ payload, onLessonComplete }) {
   }
 
   function handleMouseDown(e) {
-    if (!isPlaying) return;
+    if (!isPlaying || answerLocked) return;
     const rect = gameContainerRef.current.getBoundingClientRect();
     setIsSlicing(true);
     setSlicePath([{ x: e.clientX - rect.left, y: e.clientY - rect.top }]);
   }
 
   function handleMouseMove(e) {
-    if (!isSlicing || !isPlaying) return;
+    if (!isSlicing || !isPlaying || answerLocked) return;
 
     const rect = gameContainerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -341,15 +374,43 @@ export default function Game6({ payload, onLessonComplete }) {
     setTimeout(() => setSlicePath([]), 300);
   }
 
-  function advanceFruitQuestion(newCorrectCount) {
-    setTimeout(() => {
-      questionAnsweredRef.current = false;
-      if (currentQuestionIndex < qs.length - 1) {
-        setCurrentQuestionIndex((prev) => prev + 1);
-      } else {
-        finishLesson(newCorrectCount);
-      }
-    }, 1100);
+  function goToNextQuestion(scoreCount) {
+    if (advanceTimerRef.current) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+    setAwaitingContinue(false);
+    setAnswerLocked(false);
+    setSlicedFruitId(null);
+    setLastWasCorrect(null);
+    setIsSlicing(false);
+    setSlicePath([]);
+
+    if (currentQuestionIndex < qs.length - 1) {
+      setCurrentQuestionIndex((prev) => prev + 1);
+    } else {
+      finishLesson(scoreCount);
+    }
+  }
+
+  function continueToNext() {
+    if (!awaitingContinue) return;
+    goToNextQuestion(correctCount);
+  }
+
+  function getFruitReviewTone(fruit) {
+    if (!answerLocked || lastWasCorrect) return null;
+    if (fruit.id === slicedFruitId) return lastWasCorrect ? "correct" : "wrong";
+    if (fruit.answer?.correct) return "correct";
+    return "dim";
+  }
+
+  function getFruitLabelReviewClass(fruit) {
+    const tone = getFruitReviewTone(fruit);
+    if (tone === "correct") return " game6-fruit-label--correct";
+    if (tone === "wrong") return " game6-fruit-label--wrong";
+    if (tone === "dim") return " game6-fruit-label--dim";
+    return "";
   }
 
   function isSlicedAnswerCorrect(answers, fruitId) {
@@ -358,15 +419,17 @@ export default function Game6({ payload, onLessonComplete }) {
 
   function handleFruitHit(fruitId, pathOverride) {
     const fruit = fruits.find((f) => f.id === fruitId);
-    if (!fruit || !currentQuestion || fruit.hit || questionAnsweredRef.current) return;
+    if (!fruit || !currentQuestion || fruit.hit || answerLocked) return;
 
-    questionAnsweredRef.current = true;
+    setAnswerLocked(true);
+    setSlicedFruitId(fruitId);
     playSliceSound();
 
     const activePath = pathOverride || slicePath;
     const sliceData = buildSliceData(activePath, fruitId);
     const isCorrect = isSlicedAnswerCorrect(currentQuestion.answers, fruitId);
-    const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
+    setLastWasCorrect(isCorrect);
+    playResultSound(isCorrect);
 
     setFruits((prev) =>
       prev.map((f) =>
@@ -375,11 +438,16 @@ export default function Game6({ payload, onLessonComplete }) {
     );
 
     if (isCorrect) {
-      setCorrectCount(newCorrectCount);
+      const nextCount = correctCount + 1;
+      setCorrectCount(nextCount);
       addPoint();
+      advanceTimerRef.current = window.setTimeout(() => {
+        advanceTimerRef.current = null;
+        goToNextQuestion(nextCount);
+      }, CORRECT_ADVANCE_MS);
+    } else {
+      setAwaitingContinue(true);
     }
-
-    advanceFruitQuestion(newCorrectCount);
   }
 
   function startGame() {
@@ -392,6 +460,14 @@ export default function Game6({ payload, onLessonComplete }) {
     setFruits([]);
     setSlicePath([]);
     setIsSlicing(false);
+    setAwaitingContinue(false);
+    setAnswerLocked(false);
+    setSlicedFruitId(null);
+    setLastWasCorrect(null);
+    if (advanceTimerRef.current) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
   }
 
   function restartGame() {
@@ -417,6 +493,14 @@ export default function Game6({ payload, onLessonComplete }) {
   const questionImgSrc = questionImageRaw
     ? questionImageUrl(questionImageRaw) || null
     : null;
+
+  const correctAnswerHint = useMemo(() => {
+    if (!currentQuestion) return "";
+    return currentQuestion.answers
+      .map((a) => (a.correct ? a.text || "—" : null))
+      .filter(Boolean)
+      .join(", ");
+  }, [currentQuestion]);
 
   if (qs.length === 0 && !gameEnded) {
     return (
@@ -483,6 +567,7 @@ export default function Game6({ payload, onLessonComplete }) {
         }
         .game6-question-badge {
           font-size: clamp(1.05rem, 2.5vw, 1.25rem);
+          margin-top: 10%;
           margin-bottom: 12px;
           text-align: center;
           font-weight: 700;
@@ -496,7 +581,7 @@ export default function Game6({ payload, onLessonComplete }) {
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: center;
+          justify-content: flex-start;
           font-size: clamp(1.2rem, 3.2vw, 1.55rem);
           font-weight: 700;
           line-height: 1.5;
@@ -504,16 +589,32 @@ export default function Game6({ payload, onLessonComplete }) {
           overflow-y: auto;
           color: #ffd54f;
           text-shadow: 0 1px 4px rgba(0,0,0,0.85), 0 0 10px rgba(0,0,0,0.35);
+          padding-top: clamp(6px, 1vh, 10px);
         }
         .game6-question-image-wrap {
           width: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
+          flex-shrink: 0;
+          margin-bottom: clamp(8px, 1.2vh, 12px);
         }
-        .game6-question-image-wrap img {
+        .game6-question-image-card {
+          display: inline-block;
           max-width: 100%;
-          max-height: min(38vh, 280px);
+          background: #ffffff;
+          border-radius: 8px;
+          line-height: 0;
+          overflow: hidden;
+        }
+        .game6-question-image-card button {
+          background: #ffffff;
+          border-radius: 8px;
+        }
+        .game6-question-image-card img {
+          display: block;
+          max-width: 100%;
+          max-height: min(32vh, 240px);
           object-fit: contain;
           border-radius: 8px;
         }
@@ -725,6 +826,76 @@ export default function Game6({ payload, onLessonComplete }) {
             opacity: 0;
           }
         }
+        .game6-fruit-label--dim {
+          opacity: 0.45;
+        }
+        .game6-fruit--dim {
+          opacity: 0.55;
+        }
+        .game6-fruit-label--correct {
+          background: rgba(34, 197, 94, 0.88);
+          border-radius: 6px;
+          padding: 3px 8px;
+          color: #fff;
+          text-shadow: none;
+        }
+        .game6-fruit-label--wrong {
+          background: rgba(239, 68, 68, 0.88);
+          border-radius: 6px;
+          padding: 3px 8px;
+          color: #fff;
+          text-shadow: none;
+        }
+        .game6-actions {
+          position: absolute;
+          left: 50%;
+          bottom: clamp(12px, 2.5vh, 20px);
+          transform: translateX(-50%);
+          z-index: 40;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          max-width: min(92%, 420px);
+          padding: clamp(10px, 1.5vh, 14px) clamp(14px, 2vw, 18px);
+          border-radius: 16px;
+          background: rgba(0, 0, 0, 0.58);
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+          pointer-events: auto;
+        }
+        .game6-result-msg {
+          margin: 0;
+          font-size: clamp(1rem, 2.4vw, 1.15rem);
+          font-weight: 800;
+          text-align: center;
+          text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+        }
+        .game6-result-msg--ok { color: #a5d6a7; }
+        .game6-result-msg--bad { color: #ffcdd2; }
+        .game6-correct-hint {
+          margin: 0;
+          font-size: clamp(0.92rem, 2.2vw, 1.08rem);
+          font-weight: 700;
+          color: #ffd54f;
+          text-align: center;
+          line-height: 1.4;
+          text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+        }
+        .game6-continue-btn {
+          padding: 12px 32px;
+          min-width: 160px;
+          border: none;
+          border-radius: 24px;
+          color: #fff;
+          font-weight: 700;
+          font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+          cursor: pointer;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+          background: linear-gradient(135deg, #ff9800, #f57c00);
+        }
+        .game6-continue-btn:hover {
+          filter: brightness(1.05);
+        }
         @media (max-width: 768px) {
           .game6-play { flex-direction: column; }
           .game6-quiz {
@@ -751,25 +922,25 @@ export default function Game6({ payload, onLessonComplete }) {
           <div className="game6-question-badge">
             Câu hỏi: <strong>{currentQuestionIndex + 1}</strong> / {qs.length}
           </div>
-          <div className="game6-question-body">
-            {questionImgSrc ? (
-              <div className="game6-question-image-wrap">
+          {questionImgSrc && (
+            <div className="game6-question-image-wrap">
+              <div className="game6-question-image-card">
                 <GameQuestionImageZoom
                   src={questionImgSrc}
                   alt="question"
                   thumbStyle={{
-                    width: "100%",
-                    maxHeight: "min(38vh, 280px)",
+                    maxWidth: "100%",
+                    maxHeight: "min(32vh, 240px)",
                     objectFit: "contain",
                     borderRadius: 8,
+                    display: "block",
                   }}
                 />
-                <div style={{ height: 10 }} />
-                <div>{currentQuestion.question_text}</div>
               </div>
-            ) : (
-              <div>{currentQuestion.question_text}</div>
-            )}
+            </div>
+          )}
+          <div className="game6-question-body">
+            <div>{currentQuestion.question_text}</div>
           </div>
         </div>
       </div>
@@ -834,7 +1005,7 @@ export default function Game6({ payload, onLessonComplete }) {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          style={{ cursor: isSlicing ? "crosshair" : "default" }}
+          style={{ cursor: isSlicing && !answerLocked ? "crosshair" : "default" }}
         >
           {slicePath.length > 1 && (
             <svg className="game6-slice-trail">
@@ -920,14 +1091,13 @@ export default function Game6({ payload, onLessonComplete }) {
                     );
                   })}
                   <div
-                    className="game6-fruit-label"
+                    className={`game6-fruit-label${getFruitLabelReviewClass(fruit)}`}
                     style={{
                       position: "absolute",
                       left: "50%",
                       top: imgSize + 8,
                       transform: "translateX(-50%)",
                       fontSize: labelSize,
-                      opacity: 0.85,
                       animation: "game6-half-fly-b 0.65s ease-out forwards",
                     }}
                   >
@@ -937,10 +1107,12 @@ export default function Game6({ payload, onLessonComplete }) {
               );
             }
 
+            const reviewTone = getFruitReviewTone(fruit);
+
             return (
               <div
                 key={fruit.id}
-                className="game6-fruit"
+                className={`game6-fruit${reviewTone === "dim" ? " game6-fruit--dim" : ""}`}
                 style={{
                   left: `${fruit.x}px`,
                   top: `${fruit.y}px`,
@@ -966,13 +1138,30 @@ export default function Game6({ payload, onLessonComplete }) {
                     draggable={false}
                   />
                 </div>
-                <div className="game6-fruit-label" style={{ fontSize: labelSize }}>
+                <div className={`game6-fruit-label${getFruitLabelReviewClass(fruit)}`} style={{ fontSize: labelSize }}>
                   {fruit.answer.text}
                 </div>
               </div>
             );
           })}
         </div>
+
+        {awaitingContinue && (
+          <div className="game6-actions">
+            <p className="game6-result-msg game6-result-msg--bad">Chưa đúng!</p>
+            {correctAnswerHint && (
+              <p className="game6-correct-hint">Đáp án đúng: {correctAnswerHint}</p>
+            )}
+            <button
+              type="button"
+              className="game6-continue-btn"
+              onPointerDown={stopControlPointer}
+              onClick={continueToNext}
+            >
+              Tiếp tục
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

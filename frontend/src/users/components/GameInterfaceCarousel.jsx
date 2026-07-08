@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { publicUrl } from "../../lib/publicUrl";
 
 const CARD_WIDTH = 180;
-const CARD_GAP = 16;
+const CARD_GAP = 14;
 /** Ảnh tỉ lệ 3:2 (rộng hơn cao) */
 const VISUAL_HEIGHT = Math.round((CARD_WIDTH * 2) / 3);
 const TEXT_BLOCK_HEIGHT = 52;
 const CARD_SLOT_HEIGHT = VISUAL_HEIGHT + TEXT_BLOCK_HEIGHT;
-const TRACK_VERTICAL_PADDING = 16;
-const ACTIVE_SCALE = 1.14;
-const INACTIVE_SCALE = 0.86;
+const TRACK_VERTICAL_PADDING = 14;
+const ACTIVE_SCALE = 1.08;
+const INACTIVE_SCALE = 0.92;
 
 function ImagePlaceholderIcon() {
   return (
@@ -184,10 +184,10 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
           background: transparent;
         }
         .game-carousel-title {
-          margin: 0 0 16px;
+          margin: 0 0 10px;
           text-align: left;
           color: #1a1d26;
-          font-size: 0.9rem;
+          font-size: 0.95rem;
           font-weight: 700;
         }
         .game-carousel-track {
@@ -224,6 +224,8 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
           cursor: pointer;
           font-family: inherit;
           -webkit-tap-highlight-color: transparent;
+          position: relative;
+          z-index: 1;
         }
         .game-carousel-card:focus-visible .game-carousel-card-inner {
           outline: 3px solid #6c7ee1;
@@ -247,7 +249,7 @@ export default function GameInterfaceCarousel({ options, value, onChange }) {
           pointer-events: none;
         }
         .game-carousel-card.is-active {
-          z-index: 2;
+          z-index: 3;
         }
         .game-carousel-card.is-active .game-carousel-card-inner {
           border-color: #6c7ee1;

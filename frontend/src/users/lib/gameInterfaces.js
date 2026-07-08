@@ -1,5 +1,5 @@
 /**
- * Registry cấu hình 11 giao diện game (metadata UI, không phải logic câu hỏi).
+ * Registry cấu hình 8 giao diện game (metadata UI, không phải logic câu hỏi).
  * Dùng ở `preGameSetUp` (carousel + modal hướng dẫn) và `gamepage` (tên header).
  */
 
@@ -51,11 +51,11 @@ export const GAME_OPTIONS = [
   },
   {
     id: "game3",
-    label: "Ai là triệu phú",
+    label: "Phi hành gia",
     color: GAME_CARD_COLORS[2],
     previewImage: gamePreviewImage("game3"),
     guide:
-      "Trả lời lần lượt từng câu như gameshow. Mỗi câu đúng giúp bạn tiến xa hơn; sai thì kết thúc lượt chơi. Thích hợp để ôn tập theo từng bước.",
+      "Hóa thân phi hành gia, di chuyển trên các hành tinh và nhặt lọ chứa đáp án đúng. Mỗi câu đúng giúp bạn tiến thêm trên hành trình khám phá vũ trụ.",
   },
   {
     id: "game4",
@@ -67,11 +67,11 @@ export const GAME_OPTIONS = [
   },
   {
     id: "game5",
-    label: "Finding Dory",
+    label: "Đào vàng",
     color: GAME_CARD_COLORS[4],
     previewImage: gamePreviewImage("game5"),
     guide:
-      "Giao diện tìm kiếm và ghép đáp án theo chủ đề đại dương. Quan sát kỹ câu hỏi và chọn đáp án phù hợp trong không gian game sinh động.",
+      "Thả móc xuống mỏ để gắp cục vàng mang đáp án đúng. Quan sát kỹ câu hỏi và chọn nhanh trước khi hết thời gian.",
   },
   {
     id: "game6",
@@ -82,44 +82,20 @@ export const GAME_OPTIONS = [
       "Đáp án hiện lên như trái cây bay — “chém” (chạm) đúng đáp án để ăn điểm. Tránh chọn nhầm; game khuyế khích phản xạ nhanh và tập trung.",
   },
   {
-    id: "game7",
-    label: "Nhà thám hiểm tài ba",
-    color: GAME_CARD_COLORS[6],
-    previewImage: gamePreviewImage("game7"),
-    guide:
-      "Hóa thân nhà thám hiểm, mỗi câu trả lời đúng giúp bạn tiến thêm trên hành trình. Phù hợp học sinh thích phiêu lưu và mục tiêu rõ ràng từng câu.",
-  },
-  {
-    id: "game8",
-    label: "Bài kiểm tra",
-    color: GAME_CARD_COLORS[7],
-    previewImage: gamePreviewImage("game8"),
-    guide:
-      "Giao diện giống bài kiểm tra: câu hỏi và đáp án gọn, ít hiệu ứng. Dùng khi muốn luyện tập nghiêm túc như trên lớp hoặc trước khi thi.",
-  },
-  {
-    id: "game9",
-    label: "Dẫn thỏ về hang",
-    color: GAME_CARD_COLORS[8],
-    previewImage: gamePreviewImage("game9"),
-    guide:
-      "Trả lời đúng để dẫn chú thỏ về hang an toàn. Mỗi câu đúng là một bước trên đường — game nhẹ nhàng, dễ theo dõi cho học sinh nhỏ.",
-  },
-  {
     id: "game10",
     label: "Bắn bóng bay",
-    color: GAME_CARD_COLORS[9],
+    color: GAME_CARD_COLORS[6],
     previewImage: gamePreviewImage("game10"),
     guide:
       "Chọn đáp án bằng cách bắn trúng bóng bay mang phương án đúng. Kết hợp toán học với thao tác nhanh tay, tăng hứng thú khi ôn bài.",
   },
   {
     id: "game11",
-    label: "Đố vui nhanh tay",
-    color: GAME_CARD_COLORS[10],
+    label: "Bảo vệ thành trì",
+    color: GAME_CARD_COLORS[7],
     previewImage: gamePreviewImage("game11"),
     guide:
-      "Câu hỏi ngắn, thời gian phản hồi nhanh. Ai trả lời đúng và nhanh sẽ ghi nhiều điểm hơn — thích hợp thi đấu nhẹ hoặc ôn gấp trước giờ học.",
+      "Trả lời đúng để bắn hạ quái vật đang tiến về thành trì. Bảo vệ lâu đài bằng cách chọn đáp án chính xác trước khi kẻ địch tới nơi.",
   },
 ];
 

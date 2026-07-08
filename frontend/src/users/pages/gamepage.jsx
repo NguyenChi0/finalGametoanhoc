@@ -14,9 +14,6 @@ const gameLazyMap = {
   game4: lazy(() => import("../components/game4")),
   game5: lazy(() => import("../components/game5")),
   game6: lazy(() => import("../components/game6")),
-  game7: lazy(() => import("../components/game7")),
-  game8: lazy(() => import("../components/game8")),
-  game9: lazy(() => import("../components/game9")),
   game10: lazy(() => import("../components/game10")),
   game11: lazy(() => import("../components/game11")),
 };
@@ -208,10 +205,10 @@ export default function GamePage() {
   const isFullBleedGame =
     gameId === "game1" ||
     gameId === "game2" ||
+    gameId === "game3" ||
     gameId === "game4" ||
     gameId === "game5" ||
     gameId === "game6" ||
-    gameId === "game9" ||
     gameId === "game10" ||
     gameId === "game11";
 

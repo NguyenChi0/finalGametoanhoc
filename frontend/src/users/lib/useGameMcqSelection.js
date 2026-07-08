@@ -130,6 +130,7 @@ export function useGameMcqSelection() {
     revealAfterConfirm,
     isMultiCorrectQuestion,
     toggleIndex,
+    confirmSelection,
     confirmPending,
     resetAll,
   };
